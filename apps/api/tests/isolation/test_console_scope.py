@@ -483,6 +483,8 @@ def _minimal_body(route: APIRoute) -> dict[str, Any] | None:
         ("PUT", "/console/clients/{ref}/client-access"): {"enabled": False, "modules": []},
         ("POST", "/console/clients/{ref}/client-members"): {"email": "x@example.com"},
         # Spec 057 (T005): «Agenda (Reservas)» de un agente.
+        # Spec 065 (T011): el modelo de un agente.
+        ("PUT", "/console/clients/{ref}/agents/{agent_id}/model"): {"model_id": None},
         ("PUT", "/console/clients/{ref}/agents/{agent_id}/agenda"): {
             "enabled": True,
             "reservas": {"mode": "services"},

@@ -95,6 +95,30 @@ const KINDS_047 = [
   "model.price_change",
 ];
 
+describe("spec 065: el modelo de un agente salió de la lista del partner (8.2)", () => {
+  const n = {
+    kind: "agent.model_reset",
+    data: { agent_id: "a1", agent: "Recepción", from_model: "Luna", to_model: "Sol" },
+    external_client_ref: "flor",
+  };
+
+  it("dice qué agente, de qué cliente, con qué responde ahora y por qué", () => {
+    expect(notificationText("es", n, { flor: "Flor y Encanto" })).toBe(
+      "Recepción (Flor y Encanto) responde ahora con Sol: Luna ya no está en tu cuenta.",
+    );
+    expect(notificationText("en", n, { flor: "Flor y Encanto" })).toBe(
+      "Recepción (Flor y Encanto) now answers with Sol: Luna is no longer in your account.",
+    );
+  });
+
+  it("sin el nombre del agente, lo dice del cliente", () => {
+    const bare = { ...n, data: { agent_id: "a1", from_model: "Luna", to_model: "Sol" } };
+    expect(notificationText("es", bare, { flor: "Flor y Encanto" })).toBe(
+      "Flor y Encanto: un agente responde ahora con Sol: Luna ya no está en tu cuenta.",
+    );
+  });
+});
+
 describe("los avisos de la spec 047 (49.6)", () => {
   it("cada uno tiene palabras propias en los dos idiomas, sin variables sin rellenar", () => {
     const data = { agent_id: "a1", deployment: "Sol", days_left: 30, increase_pct: 12, valid_from: "2026-11-01", sections: ["hours"], by: "Marta" };

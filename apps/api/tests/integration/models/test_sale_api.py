@@ -4,6 +4,9 @@
 - Cada fila trae su bloque ``sale``: coste, peso, venta y multiplicador por carril,
   la propuesta y el estado. El listado trae ``sale_policy``.
 - ``PUT …/weights`` guarda los tres pesos con su motivo y no baja del suelo.
+- Spec 065 (T046, T047): y el cuarto, la escritura en caché. Sin él se queda el guardado;
+  falta si el modelo tiene tarifa de escritura y no lo tiene; no se acepta en un modelo sin
+  tarifa de escritura.
 - ``PUT /admin/models/sale-policy`` cambia el objetivo y, si se pide, aplica la
   propuesta a todos los modelos con coste, en una transacción.
 """
@@ -33,16 +36,24 @@ BASE = "/admin/models/deployments"
 POLICY = "/admin/models/sale-policy"
 TOKENS = "c59s-a/tokens"
 MINUTE = "c59s-b/minute"
+#: Spec 065: con tarifa de escritura (5,00, la de Sol) y sin su peso guardado.
+WRITES = "c59s-c/writes"
 
 
-async def _insert(key: str, *, price: dict[str, Any], weights: tuple[Any, Any, Any]) -> None:
+async def _insert(
+    key: str,
+    *,
+    price: dict[str, Any],
+    weights: tuple[Any, Any, Any],
+    write_price: Decimal | None = None,
+) -> None:
     async with get_sessionmaker()() as session, session.begin():
         await session.execute(
             sa.text(
                 "INSERT INTO model_profiles (provider, model_id, display_name, route, status, "
                 "capabilities, supports_tools, quota_weight_input, quota_weight_cache_read, "
-                "quota_weight_output) VALUES ('c59s', :k, :k, :k, 'active', CAST(:c AS jsonb), "
-                "true, :wi, :wc, :wo)"
+                "quota_weight_output, price_cache_write_per_mtok) VALUES ('c59s', :k, :k, :k, "
+                "'active', CAST(:c AS jsonb), true, :wi, :wc, :wo, :cw)"
             ),
             {
                 "k": key,
@@ -50,15 +61,17 @@ async def _insert(key: str, *, price: dict[str, Any], weights: tuple[Any, Any, A
                 "wi": weights[0],
                 "wc": weights[1],
                 "wo": weights[2],
+                "cw": write_price,
             },
         )
         await session.execute(
             sa.text(
-                "INSERT INTO model_prices (deployment_id, valid_from, input, cache_read, output, "
-                "audio_minute, source_url) SELECT id, DATE '2026-10-28', :i, :c, :o, :m, "
-                "'https://example.invalid' FROM model_profiles WHERE model_id = :k"
+                "INSERT INTO model_prices (deployment_id, valid_from, input, cache_read, "
+                "cache_write, output, audio_minute, source_url) SELECT id, DATE '2026-10-28', "
+                ":i, :c, :cw, :o, :m, 'https://example.invalid' FROM model_profiles "
+                "WHERE model_id = :k"
             ),
-            {"k": key, **price},
+            {"k": key, "cw": write_price, **price},
         )
 
 
@@ -74,7 +87,7 @@ async def _world() -> AsyncIterator[None]:
             for row in await session.execute(
                 sa.text(
                     "SELECT id, quota_weight_input AS i, quota_weight_cache_read AS c, "
-                    "quota_weight_output AS o FROM model_profiles"
+                    "quota_weight_output AS o, quota_weight_cache_write AS w FROM model_profiles"
                 )
             )
         ]
@@ -88,6 +101,12 @@ async def _world() -> AsyncIterator[None]:
         price={"i": None, "c": None, "o": None, "m": Decimal("0.006")},
         weights=(None, None, None),
     )
+    await _insert(
+        WRITES,
+        price={"i": Decimal("4"), "c": Decimal("0.4"), "o": Decimal("20"), "m": None},
+        weights=(Decimal("0.88"), Decimal("0.088"), Decimal("4.4")),
+        write_price=Decimal("5"),
+    )
     model_resolver.invalidate_catalog()
     model_usage.invalidate()
     sale_policy.invalidate()
@@ -98,7 +117,8 @@ async def _world() -> AsyncIterator[None]:
             await session.execute(
                 sa.text(
                     "UPDATE model_profiles SET quota_weight_input = :i, "
-                    "quota_weight_cache_read = :c, quota_weight_output = :o WHERE id = :id"
+                    "quota_weight_cache_read = :c, quota_weight_output = :o, "
+                    "quota_weight_cache_write = :w WHERE id = :id"
                 ),
                 seeded_weights,
             )
@@ -177,8 +197,14 @@ async def test_weights_are_saved_with_their_reason_and_audited(client, ops) -> N
         )
     assert audit.actor == ops["actor"]
     assert audit.before_json["weights"]["output"] == "4.400000"
+    # Spec 065: el cuarto peso no vino y se queda el guardado (nulo: sin tarifa de escritura).
     assert audit.after_json == {
-        "weights": {"input": "1.000000", "cache_read": "0.100000", "output": "5.000000"},
+        "weights": {
+            "input": "1.000000",
+            "cache_read": "0.100000",
+            "output": "5.000000",
+            "cache_write": None,
+        },
         "reason": "subir al 2,5",
     }
 
@@ -236,6 +262,13 @@ async def test_the_target_changes_and_can_apply_to_all(client, ops) -> None:
     listing = await _listing(client, ops)
     assert _row(listing, TOKENS)["sale"]["state"] == "on_target"
     assert _row(listing, TOKENS)["sale"]["lanes"]["output"]["weight"] == "5.000000"
+    # Spec 065: también la escritura. Con tarifa, 2,5 x 5,00 / 10 = 1,25; sin ella, 0.
+    assert WRITES in apply.json()["applied_to"]
+    writes = _row(listing, WRITES)["sale"]
+    assert writes["state"] == "on_target"
+    assert writes["lanes"]["cache_write"]["weight"] == "1.250000"
+    assert writes["lanes"]["cache_write"]["multiplier"] == "2.50"
+    assert _row(listing, TOKENS)["sale"]["lanes"]["cache_write"]["weight"] == "0.000000"
     async with get_sessionmaker()() as session:
         changed = await session.scalar(
             sa.select(sa.func.count())
@@ -278,3 +311,53 @@ async def test_saving_weights_forgets_the_meter_catalog_in_this_process(client, 
     )
     assert r.status_code == 200, r.text
     assert pricing._cache is None
+
+
+async def test_a_write_tariff_needs_its_write_weight(client, ops) -> None:
+    """Spec 065: el modelo factura la escritura y no tiene su peso, así que sin él falta
+    (el medidor no lo cobraría, ``metering.unweighted_model``)."""
+    row = _row(await _listing(client, ops), WRITES)
+    assert row["sale"]["state"] == "unweighted"
+    three = {"input": "0.88", "cache_read": "0.088", "output": "4.4", "reason": "x"}
+    r = await client.put(f"{BASE}/{row['uuid']}/weights", headers=ops["headers"], json=three)
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == {"code": "partial_weights", "lanes": ["cache_write"]}
+
+    # 0,66 sobre 5,00 vende a 1,32x, bajo el suelo.
+    low = {**three, "cache_write": "0.66"}
+    r = await client.put(f"{BASE}/{row['uuid']}/weights", headers=ops["headers"], json=low)
+    assert r.status_code == 422 and r.json()["detail"]["lanes"] == ["cache_write"]
+
+    r = await client.put(
+        f"{BASE}/{row['uuid']}/weights",
+        headers=ops["headers"],
+        json={**three, "cache_write": "1.1", "reason": "la escritura a 2,2"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["sale"]["state"] == "on_target"
+    assert r.json()["sale"]["lanes"]["cache_write"] == {
+        "cost": "5.000000",
+        "weight": "1.100000",
+        "sale": "11.000000",
+        "multiplier": "2.20",
+    }
+    # Sin el cuarto, ahora se queda el guardado.
+    r = await client.put(f"{BASE}/{row['uuid']}/weights", headers=ops["headers"], json=three)
+    assert r.status_code == 200, r.text
+    assert r.json()["sale"]["lanes"]["cache_write"]["weight"] == "1.100000"
+
+
+async def test_a_write_weight_without_a_write_tariff_is_refused(client, ops) -> None:
+    """Spec 065: el suelo no lo vería (no hay coste con el que compararlo) y se cobraría algo
+    que el proveedor no factura. 0 sí vale: es lo que el medidor cobra sin tarifa."""
+    row = _row(await _listing(client, ops), TOKENS)
+    body = {"input": "0.88", "cache_read": "0.088", "output": "4.4", "reason": "x"}
+    r = await client.put(
+        f"{BASE}/{row['uuid']}/weights", headers=ops["headers"], json={**body, "cache_write": "1"}
+    )
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "no_write_tariff"
+    r = await client.put(
+        f"{BASE}/{row['uuid']}/weights", headers=ops["headers"], json={**body, "cache_write": "0"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["sale"]["lanes"]["cache_write"]["weight"] == "0.000000"

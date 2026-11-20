@@ -10,6 +10,8 @@ import {
   type DeploymentRow,
   type PriceIn,
   type ProposalOut,
+  type RespondDefault,
+  type RespondDefaultAffected,
   type SalePolicy,
   type SalePolicyIn,
   type WeightsIn,
@@ -99,4 +101,48 @@ export async function putSalePolicyAction(
   body: SalePolicyIn,
 ): Promise<Result<{ sale_policy: SalePolicy; applied_to: string[] }>> {
   return guarded((op) => modelsBackend.putSalePolicy(body, op), POLICY_ERRORS);
+}
+
+/** Spec 065 (`contracts/api.md`): the model can answer the agents in this environment. */
+export async function respondEnableAction(uuid: string, note: string): Promise<Result<DeploymentRow>> {
+  return guarded((op) => modelsBackend.respondEnable(uuid, note, op));
+}
+
+/** Spec 065: it stops being choosable; a model in use is refused in words (`model_in_use`). */
+export async function respondDisableAction(uuid: string, reason: string): Promise<Result<DeploymentRow>> {
+  return guarded((op) => modelsBackend.respondDisable(uuid, reason, op));
+}
+
+/**
+ * The API asks for a reason even without `confirm`, and stores nothing then: the
+ * reason that goes to the audit is the one of the confirmation.
+ */
+const PREVIEW_REASON = "Revisar los agentes que cambian, sin guardar";
+
+/**
+ * Spec 065 (13.2): which agents would change with the default. Without `confirm`
+ * the API answers `409 confirm_required` with them: that is the answer here, not
+ * a failure. Nothing changes.
+ */
+export async function previewRespondDefaultAction(
+  modelId: string,
+): Promise<Result<{ affected: RespondDefaultAffected[] }>> {
+  const operator = await requireOperator();
+  try {
+    await modelsBackend.putRespondDefault({ model_id: modelId, reason: PREVIEW_REASON, confirm: false }, operator.id);
+    // An API that saved without `confirm` is not this contract: say what it did.
+    revalidatePath("/models");
+    return { ok: false, error: "La API cambió el modelo por defecto sin pedir confirmación. Revisa cuál quedó." };
+  } catch (err) {
+    const detail = detailOf(err);
+    if (detail?.code === "confirm_required" && Array.isArray(detail.affected)) {
+      return { ok: true, data: { affected: detail.affected as RespondDefaultAffected[] } };
+    }
+    return refusal(err, ERRORS);
+  }
+}
+
+/** Spec 065 (13.2–13.5): the change, confirmed, with its reason. Silent for the partners (13.6). */
+export async function confirmRespondDefaultAction(modelId: string, reason: string): Promise<Result<RespondDefault>> {
+  return guarded((op) => modelsBackend.putRespondDefault({ model_id: modelId, reason, confirm: true }, op));
 }

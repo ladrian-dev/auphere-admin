@@ -2,7 +2,8 @@
 
 El partner paga **unidades de cuota** a ``CREDIT_USD_PER_MILLION`` (10 US$) el
 millón, y un token de cada carril cuesta ``peso`` unidades (``metering.quota``).
-Así que, por carril:
+Desde la spec 065 son cuatro carriles: entrada, lectura de caché, salida y escritura en
+caché (0 en los modelos sin tarifa de escritura). Así que, por carril:
 
 - **venta por millón** = ``peso * 10``;
 - **multiplicador** sobre el coste = ``venta / coste``.
@@ -31,7 +32,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.metering.pricing_policy import LANES, QUOTA_FLOOR_MULTIPLIER
+from nexus_api.metering.pricing_policy import LANES, QUOTA_FLOOR_MULTIPLIER, REQUIRED_LANES
 
 log = structlog.get_logger(__name__)
 
@@ -112,13 +113,33 @@ async def store_target(session: AsyncSession, value: Decimal, *, actor: str) -> 
 # ── cálculos puros ─────────────────────────────────────────────────────────
 
 
+def has_write_tariff(costs: Mapping[str, Decimal | None]) -> bool:
+    """¿El modelo factura lo escrito en caché? (spec 065)."""
+    cost = costs.get("cache_write")
+    return cost is not None and Decimal(cost) > 0
+
+
+def effective_weights(
+    weights: Mapping[str, Decimal | None], costs: Mapping[str, Decimal | None]
+) -> dict[str, Decimal | None]:
+    """Los pesos como los cobra el medidor: sin tarifa de escritura, el cuarto es 0 aunque
+    esté nulo (``pricing.lane_weights_from``)."""
+    out = {lane: weights.get(lane) for lane in LANES}
+    if out["cache_write"] is None and not has_write_tariff(costs):
+        out["cache_write"] = Decimal(0)
+    return out
+
+
 def propose(costs: Mapping[str, Decimal | None], target: Decimal) -> dict[str, Decimal] | None:
-    """Los pesos que corresponden a ``target`` sobre ``costs``, o None si algún
-    carril no tiene coste (van los tres o ninguno)."""
-    if any(costs.get(lane) is None for lane in LANES):
+    """Los pesos que corresponden a ``target`` sobre ``costs``, o None si alguno de los tres
+    carriles de siempre no tiene coste (van los tres o ninguno).
+
+    Spec 065: también el de escritura, que es 0 en un modelo sin tarifa de escritura. Sin
+    eso, «aplicar a todos» se saltaría en silencio todos los modelos sin ella."""
+    if any(costs.get(lane) is None for lane in REQUIRED_LANES):
         return None
     return {
-        lane: (target * Decimal(costs[lane]) / SELL_USD_PER_MILLION).quantize(  # type: ignore[arg-type]
+        lane: (target * Decimal(costs.get(lane) or 0) / SELL_USD_PER_MILLION).quantize(
             _WEIGHT_SCALE, rounding=ROUND_HALF_UP
         )
         for lane in LANES
@@ -155,6 +176,7 @@ def sale_view(
     per_minute: bool = False,
 ) -> dict[str, Any]:
     """El bloque ``sale`` de una fila de Modelos (``contracts/admin-api.md`` §1)."""
+    weights = effective_weights(weights, costs)
     lanes = {
         lane: {
             "cost": _fmt(costs.get(lane)),
@@ -167,8 +189,9 @@ def sale_view(
         for lane in LANES
     }
     proposed = None if target is None or per_minute else propose(costs, target)
+    # Spec 065: el cuarto peso, nulo con tarifa de escritura, deja el modelo sin pesar.
     weighted = all(weights.get(lane) is not None for lane in LANES)
-    has_cost = any(costs.get(lane) is not None for lane in LANES)
+    has_cost = any(costs.get(lane) is not None for lane in REQUIRED_LANES)
     if per_minute:
         state = "per_minute"
     elif not has_cost:
@@ -207,6 +230,8 @@ __all__ = [
     "SELL_USD_PER_MILLION",
     "SalePolicyError",
     "check_target",
+    "effective_weights",
+    "has_write_tariff",
     "invalidate",
     "lane_multiplier",
     "lanes_below_floor",

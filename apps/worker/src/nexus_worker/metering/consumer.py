@@ -50,7 +50,6 @@ from nexus_api.metering.quota import (
     billable_qty_for_meter,
     priced_input_tokens,
     quota_tokens,
-    uncached_input_tokens,
 )
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -188,6 +187,11 @@ def _apply_native_breakdown(rows: list[dict[str, Any]]) -> None:
 
     Es la misma separación que la spec 007 hace en el camino del Companion, y
     por el mismo motivo: un nativo no caduca cuando cambia un precio.
+
+    **Spec 065: cuatro carriles.** La entrada es «prompt - lectura - escritura» y la
+    escritura lleva su cantidad, también la de GPT-5.6 (el colector la lee de
+    ``prompt_tokens_details.cache_write_tokens``). Un modelo sin tarifa de escritura la
+    vuelve a meter en la entrada al ponderar (``_apply_lane_weights``).
     """
     groups: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -195,31 +199,39 @@ def _apply_native_breakdown(rows: list[dict[str, Any]]) -> None:
         if meter.startswith("llm."):
             groups.setdefault(_llm_call_key(row), []).append(row)
     for group in groups.values():
-        cache_read = 0
-        prompt = 0
-        for row in group:
-            if row["meter"] == "llm.cache_read":
-                cache_read = int(row["quantity"] or 0)
-            elif row["meter"] == "llm.input_tokens":
-                prompt = int(row["quantity"] or 0)
+        prompt, cache_read, cache_write = _call_natives(group)
         for row in group:
             meter = str(row["meter"])
             if meter == "llm.input_tokens":
-                row["billable_qty"] = float(uncached_input_tokens(prompt, cache_read))
-            elif meter == "llm.cache_write":
-                row["billable_qty"] = 0.0
+                row["billable_qty"] = float(priced_input_tokens(prompt, cache_read, cache_write))
             else:
                 row["billable_qty"] = float(int(row["quantity"] or 0))
+
+
+def _call_natives(group: list[dict[str, Any]]) -> tuple[int, int, int]:
+    """``(prompt, lectura, escritura)`` nativos de las filas de UNA llamada."""
+    prompt = cache_read = cache_write = 0
+    for row in group:
+        if row["meter"] == "llm.input_tokens":
+            prompt = int(row["quantity"] or 0)
+        elif row["meter"] == "llm.cache_read":
+            cache_read = int(row["quantity"] or 0)
+        elif row["meter"] == "llm.cache_write":
+            cache_write = int(row["quantity"] or 0)
+    return prompt, cache_read, cache_write
 
 
 def _apply_lane_weights(rows: list[dict[str, Any]], weights: dict[str, dict[str, Any]]) -> None:
     """Multiplica cada carril por el peso de SU modelo (spec 007, R1.3).
 
-    Segunda mitad de ``_apply_native_breakdown``. Un modelo sin los tres pesos
+    Segunda mitad de ``_apply_native_breakdown``. Un modelo sin sus pesos
     deja su fila con el desglose nativo y **se registra con su motivo**: el mismo
     criterio que ``cost_usd`` NULL — una ausencia declarada es preferible a un
     número inventado que nadie vuelve a mirar. El débito, que es lo que mueve
     dinero, se omite aparte en ``_debit_channel_wallet``.
+
+    Spec 065: con la escritura en su carril y, si el prompt de la llamada pasa el
+    umbral del modelo, con los pesos del tramo.
     """
     groups: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -227,16 +239,11 @@ def _apply_lane_weights(rows: list[dict[str, Any]], weights: dict[str, dict[str,
             groups.setdefault(_llm_call_key(row), []).append(row)
     for group in groups.values():
         model = ""
-        cache_read = 0
-        prompt = 0
         for row in group:
             model = str(row.get("model") or model)
-            if row["meter"] == "llm.cache_read":
-                cache_read = int(row["quantity"] or 0)
-            elif row["meter"] == "llm.input_tokens":
-                prompt = int(row["quantity"] or 0)
+        prompt, cache_read, cache_write = _call_natives(group)
         try:
-            lanes = weights_for(model, weights)
+            lanes = weights_for(model, weights).for_prompt(prompt)
         except UnweightedModel as exc:
             log.error("metering.unweighted_model_breakdown", model=model, error=str(exc))
             continue
@@ -247,6 +254,7 @@ def _apply_lane_weights(rows: list[dict[str, Any]], weights: dict[str, dict[str,
                 weights=lanes,
                 prompt_tokens=prompt,
                 cache_read=cache_read,
+                cache_write=cache_write,
             )
 
 
@@ -262,6 +270,9 @@ def _apply_costs(
     por llamada como en los dos pasos de arriba. No sirve ``billable_qty``: desde
     la spec 007 lleva el peso de la cuota, y esto son dólares. ``quantity`` no se
     toca: es lo medido, y de ahí sale el cobro (``_turn_quota``).
+
+    Spec 065 (5.9): cada fila se valora con el prompt bruto de SU llamada, para que una
+    llamada por encima del tramo del modelo cueste lo que factura el proveedor.
     """
     tokens: dict[str, dict[str, int]] = {}
     for row in rows:
@@ -270,17 +281,20 @@ def _apply_costs(
             tokens.setdefault(_llm_call_key(row), {})[meter] = int(row["quantity"] or 0)
     for row in rows:
         valued = row
-        if row["meter"] == "llm.input_tokens":
+        prompt: int | None = None
+        if str(row.get("meter") or "").startswith("llm."):
             call = tokens[_llm_call_key(row)]
-            valued = {
-                **row,
-                "quantity": priced_input_tokens(
-                    call["llm.input_tokens"],
-                    call.get("llm.cache_read", 0),
-                    call.get("llm.cache_write", 0),
-                ),
-            }
-        row["cost_usd"] = price_row(valued, catalog, unit_prices)
+            prompt = call.get("llm.input_tokens", 0)
+            if row["meter"] == "llm.input_tokens":
+                valued = {
+                    **row,
+                    "quantity": priced_input_tokens(
+                        call["llm.input_tokens"],
+                        call.get("llm.cache_read", 0),
+                        call.get("llm.cache_write", 0),
+                    ),
+                }
+        row["cost_usd"] = price_row(valued, catalog, unit_prices, prompt_tokens=prompt)
 
 
 _INSERT_SQL = sa.text(
@@ -306,6 +320,9 @@ def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str
     (spec 007, R1.2). Se agrupa por llamada porque los pesos son del MODELO, y
     una misma tarea puede encadenar llamadas a cerebros distintos: ponderar el
     turno entero con un solo juego de pesos cobraría mal la mitad.
+
+    Spec 065: la escritura en caché tiene su carril, y el tramo de precio (Haiku 5.5
+    por encima de 100.000 tokens) se decide con el prompt de cada llamada.
     """
     calls: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -313,20 +330,22 @@ def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str
         if not meter.startswith("llm."):
             continue
         call = _llm_call_key(row)
-        g = calls.setdefault(call, {"prompt": 0, "cache": 0, "output": 0, "model": ""})
+        g = calls.setdefault(call, {"prompt": 0, "cache": 0, "write": 0, "output": 0, "model": ""})
         g["model"] = row.get("model") or g["model"]
         qty = int(row.get("quantity") or 0)
         if meter == "llm.input_tokens":
             g["prompt"] = qty
         elif meter == "llm.cache_read":
             g["cache"] = qty
+        elif meter == "llm.cache_write":
+            g["write"] = qty
         elif meter == "llm.output_tokens":
             g["output"] = qty
     turns: dict[str, int] = {}
     for call, g in calls.items():
         turn = call.rsplit(":", 1)[0] if ":" in call else call
         try:
-            lanes = weights_for(str(g["model"]), weights)
+            lanes = weights_for(str(g["model"]), weights).for_prompt(int(g["prompt"]))
         except UnweightedModel as exc:
             # Medido y sin debitar, con su motivo. El mismo criterio que
             # ``cost_usd`` NULL: una ausencia declarada es preferible a un
@@ -337,6 +356,7 @@ def _turn_quota(rows: list[dict[str, Any]], weights: dict[str, Any]) -> dict[str
             prompt_tokens=g["prompt"],
             cache_read=g["cache"],
             output_tokens=g["output"],
+            cache_write=g["write"],
             weights=lanes,
         )
     return turns

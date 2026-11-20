@@ -6,7 +6,8 @@ import { DRIFT, POLICY, SOL, row } from "./fixtures";
 
 vi.mock("@/lib/router-panel", () => ({ ROUTER_PANEL_VISIBLE: false }));
 
-const api = vi.hoisted(() => ({ listDeployments: vi.fn() }));
+// Spec 065: the page also reads Auphere's default model for the agents.
+const api = vi.hoisted(() => ({ listDeployments: vi.fn(), getRespondDefault: vi.fn() }));
 vi.mock("@/lib/backend-models", () => ({ modelsBackend: api }));
 const h = vi.hoisted(() => ({ policy: vi.fn(), success: vi.fn(), refresh: vi.fn() }));
 vi.mock("../actions", () => ({
@@ -29,6 +30,7 @@ const { default: ModelsLoading } = await import("../loading");
 beforeEach(() => {
   for (const fn of Object.values(h)) fn.mockReset();
   api.listDeployments.mockReset().mockResolvedValue({ items: [row(), SOL, DRIFT], statuses: [], sale_policy: POLICY });
+  api.getRespondDefault.mockReset().mockResolvedValue({ model_id: "openai/gpt-5.6-sol", display_name: "Sol", set_by: null, set_at: null, options: [] });
 });
 
 async function page() {
@@ -142,5 +144,21 @@ describe("the states of Modelos (4.7)", () => {
     await page();
     expect(document.body.textContent).toMatch(/No se puede comprobar qué modelos usa la plataforma/);
     expect(document.body.textContent).toMatch(/ningún worker/);
+  });
+});
+
+/** Spec 065 (T078): Auphere's default model for the agents, above the catalog, with a read of its own. */
+describe("the default model of the agents", () => {
+  it("is above the catalog", async () => {
+    await page();
+    expect(screen.getByRole("heading", { name: "Modelo por defecto de los agentes" })).toBeTruthy();
+    expect(screen.getAllByRole("row")).toHaveLength(4);
+  });
+
+  it("a failed read stays in its card: the catalog is still there", async () => {
+    api.getRespondDefault.mockRejectedValue(new Error("down"));
+    await page();
+    expect(screen.getByText("No se pudo leer el modelo por defecto")).toBeTruthy();
+    expect(screen.getAllByRole("row")).toHaveLength(4);
   });
 });

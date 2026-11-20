@@ -214,22 +214,26 @@ ni en base de datos ni en logs, y hay un test de aislamiento que lo vigila.
 [`quota-unit-v2.md`](../specs/007-pesos-de-cuota-por-carril/contracts/quota-unit-v2.md)
 
 La unidad que come el tope se deriva de los tokens nativos con **un peso por
-carril**, no con uno por modelo:
+carril**, no con uno por modelo. Desde la spec 065 son **cuatro carriles**:
 
 ```
-cuota = redondeo( entrada_no_cacheada x w_in
-                + lectura_de_caché    x w_cache
-                + salida              x w_out )
+cuota = redondeo( entrada              x w_in
+                + lectura_de_caché     x w_cache
+                + escritura_en_caché   x w_write
+                + salida               x w_out )
+
+entrada = prompt - lectura - escritura   si w_write > 0
+entrada = prompt - lectura               si w_write = 0 (sin tarifa de escritura)
 ```
 
-Los tres pesos viven en `model_profiles` (columnas `quota_weight_*`) y se
+Los pesos viven en `model_profiles` (columnas `quota_weight_*`) y se
 derivan de la tarifa de **su propio carril**:
 
 ```
 w_carril = objetivo x price_carril_per_mtok / 10
 ```
 
-- **El objetivo es 2,2x** por defecto: margen del **54,5 %**, el mismo en los tres
+- **El objetivo es 2,2x** por defecto: margen del **54,5 %**, el mismo en los cuatro
   carriles de todos los modelos. Por eso **el margen no depende de la mezcla** de
   trabajo que haga el partner — que es la propiedad entera. Desde la spec 059 es un
   **ajuste de plataforma** (`platform_settings.sale_multiplier`, 0231;
@@ -240,7 +244,10 @@ w_carril = objetivo x price_carril_per_mtok / 10
 - **Los pesos se editan en Modelos** (`PUT /admin/models/deployments/{id}/weights`):
   los tres a la vez, con motivo y auditoría (`deployment.weights_changed`), desde el
   turno siguiente y **sin avisar a los partners** (decisión de Luis, 2026-11-11). El
-  panel propone los del objetivo y marca «Desfasado» o «Bajo el suelo».
+  panel propone los del objetivo y marca «Desfasado» o «Bajo el suelo». Spec 065: y
+  `cache_write` en un modelo con tarifa de escritura (si no viene, se queda el
+  guardado; si falta y hay tarifa, `partial_weights`; con peso y sin tarifa,
+  `no_write_tariff`). «Aplicar a todos» propone también el cuarto, 0 sin tarifa.
 - **1,50x es el suelo**: nunca por debajo, en ningún carril y en ningún modelo,
   **nunca en promedio**. Lo vigila
   `tests/integration/test_quota_floor.py`, que lee el **catálogo real de la
@@ -250,6 +257,53 @@ w_carril = objetivo x price_carril_per_mtok / 10
 el carril de cuota de LLM» —`openai/whisper-1` los tiene a NULL y sigue
 funcionando por minutos—, y un modelo con dos pesos y uno nulo lo rechaza un
 `CHECK` del esquema y `weights_for` en el código.
+
+**Claude Opus 5.5 y Sonnet 5.5** (spec 065, migración 0238) entran en el catálogo con sus
+precios y sus pesos, calculados como los demás (precio x multiplicador / 10): Opus 5.5
+0,88 / 0,044 / 4,4 y Sonnet 5.5 0,44 / 0,022 / 2,2 (entrada, lectura, salida), más su peso
+de escritura. Ninguna de sus llamadas sale sin pesos (`metering.unweighted_model`): lo fija
+`apps/worker/tests/unit/test_metering_per_served_model.py`, que además comprueba que la
+llamada de la reserva de otra familia se cobra con los pesos de su modelo.
+
+**El cuarto carril, la escritura en caché** (spec 065, research §D14; migración
+0239). Anthropic y GPT-5.6 facturan lo escrito en caché a 1,25 veces la entrada;
+hasta la 065 se cobraba dentro de la entrada, a 1x, y ese carril se vendía por debajo
+del multiplicador (Sonnet 4.6: 0,66 x 10 / 3,75 = 1,76x). Ahora:
+
+- `quota_weight_cache_write` = tarifa de escritura x multiplicador / 10, como los
+  otros (Sonnet 4.6 0,825; Sol 1,10; Terra 0,55; Luna 0,055; Haiku 5.5 0,0275). Lo
+  escrito sale de la entrada y va por su carril.
+- **Sin tarifa de escritura** (`gpt-4o`) el peso es 0 y se cobra como antes: lo
+  escrito, si lo hubiera, sigue dentro de la entrada. Un modelo dado de alta en el
+  panel nace con el peso nulo, que sin tarifa vale lo mismo que 0.
+- **Con tarifa y sin peso** el medidor no lo cobra a 0: `weights_for` lo rechaza
+  (`metering.unweighted_model`), el turno queda medido y sin débito, como un modelo
+  sin pesos. La resolución vive en un solo sitio, `pricing.lane_weights_from`.
+- GPT-5.6 informa de lo escrito en `usage.prompt_tokens_details.cache_write_tokens`,
+  que LiteLLM deja pasar tal cual (1.83.0 y 1.83.14); el colector lo apunta como
+  `llm.cache_write` (`collector.usage_fields`). En las dos familias `prompt_tokens`
+  ya trae las dos cachés dentro, así que la resta no cuenta nada dos veces
+  (`apps/worker/tests/unit/test_cache_write_on_the_wire.py`).
+- La subida de precio no se anunció a los partners (Luis, 2026-11-20).
+
+**Los tramos de precio.** Una llamada cuyo prompt pasa el umbral de
+`model_prices.surcharge` del precio vigente (Haiku 5.5: x5 por encima de 100.000
+tokens, la petición entera) se cobra con los cuatro pesos multiplicados por el
+factor del tramo. Se decide **por llamada** y estrictamente por encima del umbral
+(`LaneWeights.for_prompt`, en el consumidor). `cost_usd`, lo que creemos que nos
+factura el proveedor, aplica el mismo recargo con el mismo criterio
+(`pricing.tier_factor`, desde `consumer._apply_costs`; enmienda del 2026-11-20,
+requisito 5.9), así que el margen de una llamada larga cuadra con la factura. Un límite
+conocido: el copiloto debita y valora con los totales del turno y no aplica tramos
+(sobre un total cobraría x5 a varias llamadas cortas). Hoy no importa, porque corre en
+Sol, que no tiene tramo; habría que resolverlo antes de pasarlo a Haiku 5.5. Las
+reprecificaciones con SQL (0072, 0076, 0114 y `reprice_cached_input_inc70.py`) son de
+antes de los tramos y no lo aplican.
+
+**Activar un despliegue exige el cuarto peso** si su precio vigente factura la
+escritura en caché (`unweighted_cache_write`, en `router_catalog.activation_problems`;
+requisito 5.10). Sin esa guarda, sus turnos se medirían sin cobrarse. El panel lo
+enseña en la fila con los demás motivos que faltan.
 
 **Si alguien cambia una tarifa y olvida el peso**, `weight_drift` lo detecta al
 cargar el catálogo, contra el objetivo vigente, y lo registra con el modelo y el

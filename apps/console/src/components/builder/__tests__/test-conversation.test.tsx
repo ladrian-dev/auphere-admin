@@ -194,3 +194,89 @@ describe("«Generada» en la guía y en sus pruebas (58.4)", () => {
     expect(screen.queryByText(/se generaron para este cliente/)).toBeNull();
   });
 });
+
+/**
+ * Spec 065 (T062; requisitos 5.3 y 6.1) — en la conversación de una prueba, bajo
+ * cada respuesta del agente, qué modelo respondió. La transcripción solo trae el
+ * id: el nombre sale de los modelos del agente que ya lee la pantalla, y si no
+ * está, el id. Si respondió la reserva, se dice.
+ */
+describe("el modelo que respondió en la prueba (spec 065)", () => {
+  const NAMES = { "openai/gpt-5.6-terra": "Terra", "anthropic/claude-sonnet-5-5": "Claude Sonnet 5.5" };
+  const WITH_MODELS: TestTurn[] = [
+    { role: "customer", text: "Hola, quiero cita mañana a las 10", actions: [] },
+    { role: "agent", text: "Mañana a las 10 tengo hueco.", actions: [], model: "openai/gpt-5.6-terra", fell_back: false },
+    { role: "customer", text: "Corte de pelo", actions: [] },
+    { role: "agent", text: "Perfecto, te lo apunto.", actions: [], model: "anthropic/claude-sonnet-5-5", fell_back: true },
+    { role: "customer", text: "Gracias", actions: [] },
+    { role: "agent", text: "A ti.", actions: [], model: "openai/gpt-5.6-luna", fell_back: false },
+    { role: "customer", text: "Adiós", actions: [] },
+    { role: "agent", text: "Hasta pronto.", actions: [] },
+  ];
+
+  it("dice el nombre bajo cada respuesta del agente, la reserva cuando lo fue, y el id si no hay nombre", async () => {
+    const { container } = render(
+      <LocaleProvider locale="es">
+        <TestConversation transcript={WITH_MODELS} stop="plan_done" modelNames={NAMES} />
+      </LocaleProvider>,
+    );
+    const turns = screen.getAllByRole("listitem").filter((li) => li.dataset.slot === "test-turn");
+    expect(within(turns[1]!).getByText("Respondió Terra")).toBeVisible();
+    expect(within(turns[3]!).getByText("Respondió Claude Sonnet 5.5, el modelo de reserva, porque el del agente no contestó.")).toBeVisible();
+    expect(within(turns[5]!).getByText("Respondió openai/gpt-5.6-luna")).toBeVisible();
+    // Las transcripciones de antes no traen modelo: nada.
+    expect(within(turns[7]!).queryByText(/^Respondió /)).toBeNull();
+    // Nunca bajo el cliente simulado.
+    expect(within(turns[0]!).queryByText(/^Respondió /)).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("sin nombres, el id", () => {
+    render(
+      <LocaleProvider locale="es">
+        <TestConversation transcript={WITH_MODELS.slice(0, 2)} stop={null} />
+      </LocaleProvider>,
+    );
+    expect(screen.getByText("Respondió openai/gpt-5.6-terra")).toBeVisible();
+  });
+
+  it("«Por qué falló» y la tarjeta de pruebas lo dicen con los nombres de la pantalla", async () => {
+    const user = userEvent.setup();
+    const t = failing({ transcript: WITH_MODELS.slice(0, 4) });
+    render(
+      <LocaleProvider locale="es">
+        <TestList
+          refId={REF}
+          agentId={AGENT}
+          suite={suite({ tests: [t] })}
+          canWrite
+          modelNames={NAMES}
+          actions={{
+            load: vi.fn(async () => ok(suite({ tests: [t] }))),
+            run: vi.fn(async () => ok({ job_id: JOB, run_id: "r1", tests: 1 })),
+            poll: vi.fn(async () => ok(job({ kind: "tests", status: "done" }))),
+            notApplicable: vi.fn(async () => ok(suite({ tests: [t] }))),
+            add: vi.fn(async () => ok(suite({ tests: [t] }))),
+          }}
+          wait={noWait}
+        />
+        <TestsBox
+          refId={REF}
+          tests={{ suite: suite({ tests: [t] }), running: null, pending: false, error: null, canRun: false, run: vi.fn(), ask: vi.fn(), confirm: null, reload: vi.fn() }}
+          review={null}
+          canWrite
+          modelNames={NAMES}
+          onFix={vi.fn()}
+          onEdit={vi.fn()}
+          onAll={vi.fn()}
+        />
+      </LocaleProvider>,
+    );
+    const failingRow = row("Reserva una cita");
+    await user.click(within(failingRow).getByText("Por qué falló"));
+    expect(within(failingRow).getByText("Respondió Terra")).toBeVisible();
+    const box = screen.getByRole("alert");
+    await user.click(within(box).getByText("Ver la conversación"));
+    expect(within(box).getByText("Respondió Claude Sonnet 5.5, el modelo de reserva, porque el del agente no contestó.")).toBeVisible();
+  });
+});

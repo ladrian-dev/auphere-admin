@@ -111,14 +111,78 @@ async def test_an_agent_that_chose_the_model_puts_it_in_use(console_world, redis
     assert uses.agents == 1 and uses.clients == ("Client A One",)
 
 
-async def test_a_respond_binding_moves_every_agent_of_the_client(console_world, redis) -> None:
+async def test_a_respond_binding_no_longer_decides(console_world, redis) -> None:
+    """Spec 065 (T081): la 0240 pasó cada asignación ``respond`` a los agentes del cliente; la
+    fila que queda hasta la migración siguiente ya no la lee nadie y no pone nada en uso."""
     await _publish(redis, default_models())
     tenant = console_world["b"]["tenant_id"]
     await _agent(tenant, {}, "Reservas")
     await _agent(tenant, {}, "Ventas")
     await _bind(tenant, "respond", LUNA)
     uses = await model_usage.uses_of(LUNA, redis=redis)
-    assert uses.agents == 2 and uses.clients == ("Client B One",)
+    assert uses.agents == 0 and uses.clients == ()
+
+
+async def _chosen(
+    tenant_id: uuid.UUID, model_id: str, *, status: str = "active", published: bool = True
+) -> uuid.UUID:
+    """Un agente con el modelo elegido en Agente > Avanzado (spec 065), con o sin versión."""
+    agent_id = uuid.uuid4()
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
+        await session.execute(
+            sa.text(
+                "INSERT INTO agents (id, tenant_id, name, status, respond_model_profile_id, "
+                "respond_model_set_by, respond_model_set_at) "
+                "SELECT :a, :t, :n, :s, id, 'partner', now() FROM model_profiles "
+                "WHERE model_id = :m"
+            ),
+            {
+                "a": agent_id,
+                "t": tenant_id,
+                "n": f"Elige {agent_id.hex[:6]}",
+                "s": status,
+                "m": model_id,
+            },
+        )
+        if published:
+            session.add(
+                AgentConfig(
+                    tenant_id=tenant_id,
+                    agent_id=agent_id,
+                    version=1,
+                    status=AgentConfigStatus.ACTIVE,
+                    system_prompt_rendered="x",
+                    channels=[],
+                    tools=[],
+                    policies={},
+                    seed_template_ref=None,
+                )
+            )
+        await session.commit()
+    return agent_id
+
+
+async def test_a_model_an_agent_chose_is_in_use(console_world, redis) -> None:
+    """Spec 065 (T080, requisito 8.1): la elección del agente gana a su versión y al defecto."""
+    await _publish(redis, default_models())
+    await _chosen(console_world["a"]["tenant_id"], LUNA)
+    uses = await model_usage.uses_of(LUNA, redis=redis)
+    assert uses.agents == 1 and uses.clients == ("Client A One",)
+    assert uses.in_use
+
+
+async def test_a_choice_counts_before_the_first_version(console_world, redis) -> None:
+    await _publish(redis, default_models())
+    await _chosen(console_world["a"]["tenant_id"], LUNA, published=False)
+    uses = await model_usage.uses_of(LUNA, redis=redis)
+    assert uses.agents == 1, "un agente no archivado con elección lo tiene en uso"
+
+
+async def test_an_archived_agent_does_not_count(console_world, redis) -> None:
+    await _publish(redis, default_models())
+    await _chosen(console_world["a"]["tenant_id"], LUNA, status="archived")
+    uses = await model_usage.uses_of(LUNA, redis=redis)
+    assert uses.agents == 0 and uses.clients == ()
 
 
 async def test_a_binding_in_any_role_puts_the_model_in_use(console_world, redis) -> None:

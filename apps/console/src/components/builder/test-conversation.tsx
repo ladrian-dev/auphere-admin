@@ -5,6 +5,8 @@ import { Flag, Zap } from "lucide-react";
 import { useT } from "@/i18n/client";
 import type { TestStop, TestTurn } from "@/lib/backend/agent-quality-types";
 
+import { AnsweredBy } from "./answered-by";
+
 /**
  * La conversación de una prueba en «Por qué falló» (spec 047, enmienda del
  * 2026-10-29; requisito 61.6), turno a turno y con el estilo del chat de
@@ -12,8 +14,20 @@ import type { TestStop, TestTurn } from "@/lib/backend/agent-quality-types";
  * izquierda, y lo que habría hecho como una nota discontinua «Lo que habría
  * hecho: …». Debajo, por qué terminó. Quién habla va para los lectores de
  * pantalla. Sin altura fija: está dentro de un desplegable y se lee entera.
+ *
+ * Spec 065 (T062): bajo cada respuesta del agente, con qué modelo respondió y si fue
+ * la reserva. La transcripción solo trae el id: el nombre llega en `modelNames`.
  */
-export function TestConversation({ transcript, stop }: { transcript: TestTurn[]; stop: TestStop | null }) {
+export function TestConversation({
+  transcript,
+  stop,
+  modelNames = {},
+}: {
+  transcript: TestTurn[];
+  stop: TestStop | null;
+  /** Spec 065 (T062): id → nombre de los modelos que conoce la pantalla; sin nombre, el id. */
+  modelNames?: Record<string, string>;
+}) {
   const t = useT();
   return (
     <div className="grid min-w-0 gap-2" data-slot="test-conversation">
@@ -30,6 +44,7 @@ export function TestConversation({ transcript, stop }: { transcript: TestTurn[];
               >
                 {turn.text}
               </p>
+              {!mine ? <AnsweredBy model={turn.model} name={turn.model ? modelNames[turn.model] : null} fellBack={turn.fell_back} /> : null}
               {!mine && turn.actions.length ? (
                 <ul className="grid max-w-full min-w-0 gap-1" data-slot="test-turn-actions">
                   {turn.actions.map((action, j) => (

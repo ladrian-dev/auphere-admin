@@ -1137,28 +1137,34 @@
    }
   },
   {
-   "id": "f1-get-client-model",
+   "id": "f1-get-agent-model",
    "family": "known_answer",
-   "title": "El modelo de un cliente se lee por client_ref",
-   "user_message": "¿En qué modelo corre $a.ref?",
+   "title": "El modelo de un agente se lee por client_ref y agent_id",
+   "user_message": "¿En qué modelo corre el agente de $a.ref?",
    "principal": "a",
    "trajectory": [
     {
-     "tool": "console.get_client_model",
+     "tool": "console.list_agents",
      "args": {
       "client_ref": "$a.ref"
      }
     },
     {
-     "text": "Te digo el modelo de respuesta que acaba de devolver la ficha."
+     "tool": "console.get_agent_model",
+     "args": {
+      "client_ref": "$a.ref",
+      "agent_id": "$a.agent_id"
+     }
+    },
+    {
+     "text": "Te digo con qué modelo responde ese agente y qué otros podría elegir."
     }
    ],
    "expect": {
-    "reads_ok": 1,
+    "reads_ok": 2,
     "tool_body_contains": [
-     "client_ref",
-     "is_bound",
-     "respond"
+     "effective",
+     "options"
     ],
     "unsupported": false
    }
@@ -1167,14 +1173,15 @@
    "id": "f1-propose-model-no-aplica",
    "family": "known_answer",
    "title": "Proponer un modelo no lo aplica",
-   "user_message": "Pon el modelo de $a.ref en Sol",
+   "user_message": "Pon el agente de $a.ref en Luna",
    "principal": "a",
    "trajectory": [
     {
      "tool": "console.propose_model",
      "args": {
       "client_ref": "$a.ref",
-      "model_id": "openai/gpt-5.6-sol"
+      "agent_id": "$a.agent_id",
+      "model_id": "openai/gpt-5.6-luna"
      }
     },
     {
@@ -1242,8 +1249,7 @@
     ],
     "unsupported": false
    }
-  }
-,
+  },
   {
    "id": "f1-get-workflow",
    "family": "known_answer",

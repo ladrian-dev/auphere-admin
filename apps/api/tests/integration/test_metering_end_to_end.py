@@ -173,6 +173,86 @@ async def test_a_turn_becomes_usage_rows(clean_usage_stream) -> None:
     assert all(r[5] == conversation_id for r in rows)
 
 
+async def test_cache_writes_and_price_tiers_are_charged_end_to_end(clean_usage_stream) -> None:
+    """Spec 065 (T047): el cuarto carril y el tramo, con el catálogo de la base.
+
+    Los pesos los pone la migración 0239 (escritura = tarifa x 2,2 / 10: Sonnet 4.6 3,75 →
+    0,825; Sol 5,00 → 1,10) y el tramo sale de ``model_prices.surcharge`` de Haiku 5.5
+    (0221: x5 por encima de 100.000 tokens). ``usage`` tiene la forma que deja
+    ``collector.usage_fields``, también la de GPT-5.6 (``test_cache_write_on_the_wire``).
+    """
+    from nexus_worker.metering import pricing
+
+    # El catálogo del medidor vive en memoria con su TTL: otra prueba del mismo proceso
+    # pudo dejarlo con pesos que ya no son los de la base.
+    pricing.invalidate()
+    tenant_id = uuid.uuid4()
+    turn_id = str(uuid.uuid4())
+    async with get_sessionmaker()() as session:
+        await _seed_tenant(session, tenant_id)
+
+    async with collector.usage_turn(tenant_id=tenant_id, turn_id=turn_id):
+        collector.record_llm_usage(
+            model="anthropic/claude-sonnet-4-6",
+            task="tool_turn",
+            provider="anthropic",
+            usage={
+                "prompt_tokens": 10_000,
+                "completion_tokens": 500,
+                "cache_read_input_tokens": 6_000,
+                "cache_creation_input_tokens": 3_000,
+            },
+        )
+        collector.record_llm_usage(
+            model="openai/gpt-5.6-sol",
+            task="tool_turn",
+            provider="openai",
+            usage={
+                "prompt_tokens": 9_000,
+                "completion_tokens": 20,
+                "cache_read_input_tokens": 5_000,
+                "cache_creation_input_tokens": 3_000,
+            },
+        )
+        collector.record_llm_usage(
+            model="anthropic/claude-haiku-5-5",
+            task="classify",
+            provider="anthropic",
+            usage={"prompt_tokens": 120_000, "completion_tokens": 10},
+        )
+    assert await drain_once(clean_usage_stream, consumer_name="test-metering") == 1
+
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
+        rows = (
+            await session.execute(
+                sa.text(
+                    "SELECT model, meter, billable_qty, cost_usd FROM usage_records "
+                    "WHERE tenant_id = :t"
+                ),
+                {"t": str(tenant_id)},
+            )
+        ).all()
+    billable = {(m.rsplit("/", 1)[-1], meter): float(bq) for m, meter, bq, _ in rows}
+    cost = {(m.rsplit("/", 1)[-1], meter): c for m, meter, _, c in rows}
+    # Sonnet 4.6: 1.000 frescos x 0,66; 6.000 leídos x 0,066; 3.000 escritos x 0,825; 500 x 3,3.
+    assert billable[("claude-sonnet-4-6", "llm.input_tokens")] == 660
+    assert billable[("claude-sonnet-4-6", "llm.cache_read")] == 396
+    assert billable[("claude-sonnet-4-6", "llm.cache_write")] == 2_475
+    assert billable[("claude-sonnet-4-6", "llm.output_tokens")] == 1_650
+    # Sol: 1.000 x 0,88; 5.000 x 0,088; 3.000 x 1,10 (hasta la 065, 0 y 3.000 más de entrada).
+    assert billable[("gpt-5.6-sol", "llm.input_tokens")] == 880
+    assert billable[("gpt-5.6-sol", "llm.cache_read")] == 440
+    assert billable[("gpt-5.6-sol", "llm.cache_write")] == 3_300
+    assert billable[("gpt-5.6-sol", "llm.output_tokens")] == 88
+    # Haiku 5.5 por encima de 100.000: 120.000 x 0,022 x 5 = 13.200; 10 x 0,11 x 5 = 5,5 → 6.
+    assert billable[("claude-haiku-5-5", "llm.input_tokens")] == 13_200
+    assert billable[("claude-haiku-5-5", "llm.output_tokens")] == 6
+    # El coste valora lo escrito una sola vez, a su tarifa: 3.000 x 5,00 / 1e6 la escritura y
+    # 1.000 x 4,00 / 1e6 la entrada de Sol.
+    assert cost[("gpt-5.6-sol", "llm.cache_write")] == Decimal("0.01500000")
+    assert cost[("gpt-5.6-sol", "llm.input_tokens")] == Decimal("0.00400000")
+
+
 async def test_replaying_the_stream_creates_no_duplicates(clean_usage_stream) -> None:
     """Criterio de aceptación del plan: N eventos → N filas; reprocesar → 0.
 

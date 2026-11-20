@@ -21,6 +21,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import { agentModelFixture } from "./agent-model-fixture.mjs";
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8719);
 const REF = "barberia-cultor";
@@ -685,6 +686,8 @@ function conversations(cursor) {
 
 async function partner(req, res, path) {
   const route = `${req.method} ${path}`;
+  const agentModel = agentModelFixture(route);
+  if (agentModel) return send(res, 200, agentModel);
   const clientBase = `/console/clients/${REF}`;
   if (route === "GET /console/me")
     return send(res, 200, {

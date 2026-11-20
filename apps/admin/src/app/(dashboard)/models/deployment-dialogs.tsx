@@ -33,6 +33,8 @@ import {
   createDeploymentAction,
   putSalePolicyAction,
   putWeightsAction,
+  respondDisableAction,
+  respondEnableAction,
   restoreAction,
   retireAction,
   unavailableAction,
@@ -48,6 +50,7 @@ import {
   formatMultiplier,
   laneCosts,
   laneMultiplier,
+  lanesFor,
   multiplierBody,
   newDeploymentBody,
   priceBody,
@@ -57,6 +60,8 @@ import {
   retireAfterIso,
   sameWeights,
   todayUtc,
+  usesLines,
+  weightLanes,
   type LaneValues,
   type NewDeploymentForm,
   type PriceForm,
@@ -209,7 +214,7 @@ function ActionDialog({
       {/* `max-h-svh` + scroll: at 360 px or 200 % zoom the whole dialog, header and footer included, can be reached (WCAG 1.4.10). */}
       <DialogContent className={cn("max-h-svh overflow-y-auto", wide && "sm:max-w-lg")}>
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle className="text-balance wrap-anywhere">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         {done ? (
@@ -304,7 +309,9 @@ function typedCosts(form: PriceForm): LaneValues {
 }
 
 const weightsLine = (w: LaneValues) =>
-  LANES.map((lane) => `${LANE_LABEL[lane].toLowerCase()} ${decimalText(w[lane]) || "—"}`).join(" · ");
+  weightLanes(w)
+    .map((lane) => `${LANE_LABEL[lane].toLowerCase()} ${decimalText(w[lane]) || "—"}`)
+    .join(" · ");
 
 /**
  * El coste nuevo con su vigencia y su fuente (41.1). Spec 059: arranca con el
@@ -444,7 +451,7 @@ function CostPreview({
         Multiplicador con el coste nuevo
       </p>
       <dl className="flex flex-wrap gap-x-4 gap-y-1">
-        {LANES.map((lane) => {
+        {lanesFor(costs).map((lane) => {
           const below = belowFloor(costs[lane], weights[lane], policy);
           return (
             <div key={lane} className="flex items-baseline gap-2">
@@ -516,11 +523,14 @@ export function WeightsDialog({ row, policy, open, onOpenChange }: RowDialogProp
     input: decimalText(start.input),
     cache_read: decimalText(start.cache_read),
     output: decimalText(start.output),
+    cache_write: decimalText(start.cache_write),
     reason: "",
   }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const set = (key: keyof WeightsForm) => (value: string) => setForm((f) => ({ ...f, [key]: value }));
   const noCost = row.sale.state === "no_cost" || LANES.every((lane) => costs[lane] == null);
+  // Spec 065: the cache-write field only on a model that bills cache writes.
+  const lanes = lanesFor(costs);
 
   return (
     <ActionDialog
@@ -555,8 +565,8 @@ export function WeightsDialog({ row, policy, open, onOpenChange }: RowDialogProp
               Los pesos de ahora: {weightsLine(now)}.
             </Callout>
           ) : null}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {LANES.map((lane) => (
+          <div className={cn("grid grid-cols-1 gap-3", lanes.length > 3 ? "sm:grid-cols-2" : "sm:grid-cols-3")}>
+            {lanes.map((lane) => (
               <Field
                 key={lane}
                 label={LANE_LABEL[lane]}
@@ -564,7 +574,7 @@ export function WeightsDialog({ row, policy, open, onOpenChange }: RowDialogProp
                 error={errors[lane]}
                 hint={laneHint(lane, costs, form, policy)}
               >
-                {(a11y) => <Input {...a11y} inputMode="decimal" className={FOCUS_RING} value={form[lane]} onChange={(e) => set(lane)(e.target.value)} />}
+                {(a11y) => <Input {...a11y} inputMode="decimal" className={FOCUS_RING} value={form[lane] ?? ""} onChange={(e) => set(lane)(e.target.value)} />}
               </Field>
             ))}
           </div>
@@ -577,8 +587,9 @@ export function WeightsDialog({ row, policy, open, onOpenChange }: RowDialogProp
 
 /** «Coste 25,00 · venta 55,00 · 2,2×», as the weight is typed. */
 function laneHint(lane: SaleLaneKey, costs: LaneValues, form: WeightsForm, policy: SalePolicy): string {
-  const weight = Number(form[lane].trim().replace(",", "."));
-  const sale = Number.isFinite(weight) && form[lane].trim() ? weight * Number(policy.sell_usd_per_million) : null;
+  const typed = (form[lane] ?? "").trim();
+  const weight = Number(typed.replace(",", "."));
+  const sale = Number.isFinite(weight) && typed ? weight * Number(policy.sell_usd_per_million) : null;
   const parts = [
     costs[lane] != null ? `Coste ${decimalText(costs[lane])}` : null,
     sale !== null ? `venta ${decimalText(Number(sale.toFixed(6)))}` : null,
@@ -846,6 +857,82 @@ export function NewDeploymentDialog() {
             <ReasonField value={form.reason} onChange={set("reason")} error={errors.reason} />
           </div>
         </div>
+      )}
+    </ActionDialog>
+  );
+}
+
+/**
+ * Spec 065 (requisito 1.3): «Habilitar para responder», with the battery pass as
+ * its note — the date, the commit and both results, the wire one and the real
+ * one. From then the partners with the model in their list can choose it, and
+ * Auphere for any agent. Only in this environment.
+ */
+export function RespondEnableDialog({ row, open, onOpenChange }: RowDialogProps) {
+  const [note, setNote] = useState("");
+  const [noteError, setNoteError] = useState<string | undefined>();
+  return (
+    <ActionDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Habilitar ${nameOf(row)} para responder`}
+      description="Desde el próximo minuto podrán elegirlo los partners que lo tengan en su lista, y Auphere para cualquier agente. Vale solo en este entorno."
+      confirm="Habilitar para responder"
+      run={async () => {
+        const ok = Boolean(note.trim());
+        setNoteError(ok ? undefined : "Hace falta la pasada de la batería.");
+        return ok ? respondEnableAction(row.uuid, note.trim()) : null;
+      }}
+    >
+      {() => (
+        <Field
+          label="Pasada de la batería"
+          required
+          requiredLabel="Obligatorio"
+          hint="Fecha, commit y resultado de las dos baterías, la del cable y la real. Queda en la auditoría con tu nombre."
+          error={noteError}
+        >
+          {(a11y) => (
+            <Textarea
+              {...a11y}
+              rows={2}
+              className={FOCUS_RING}
+              placeholder="2026-11-24 · a1b2c3d · cable 42/42 · real 18/18"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          )}
+        </Field>
+      )}
+    </ActionDialog>
+  );
+}
+
+/**
+ * Spec 065 (requisito 1.4): «Deshabilitar para responder». The agents whose
+ * partner chose it go to Auphere's default from their next message, and each
+ * partner gets a notice with the agent's name; Auphere's choices do not move.
+ * The default and the reserves are refused (`409 model_in_use`), in words.
+ */
+export function RespondDisableDialog({ row, open, onOpenChange }: RowDialogProps) {
+  const reason = useReason();
+  const answering = usesLines(row.uses).agents;
+  return (
+    <ActionDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      destructive
+      title={`Deshabilitar ${nameOf(row)} para responder`}
+      description="Deja de poder elegirse en este entorno. Los agentes que lo tienen elegido por su partner pasan al modelo por defecto de Auphere desde su próximo mensaje, y cada partner recibe un aviso con el nombre del agente."
+      confirm="Deshabilitar"
+      run={async () => (reason.check() ? respondDisableAction(row.uuid, reason.value) : null)}
+    >
+      {() => (
+        <>
+          {/* What answers with it today; the API moves only the partners' choices. */}
+          {answering && row.uses.agents > 0 ? <Callout tone="warning" className="wrap-anywhere" title={`Responden con él ${answering}`} /> : null}
+          <ReasonField value={reason.value} onChange={reason.setValue} error={reason.error} />
+        </>
       )}
     </ActionDialog>
   );

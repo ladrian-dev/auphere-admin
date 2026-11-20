@@ -11,6 +11,9 @@ tests) does not pay for langgraph/litellm at import time.
 
 import os
 
+# Spec 065 (research.md §D13): el mapa local de LiteLLM, antes de cualquier import suyo.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
 # ── litellm connection hygiene (root fix for the classify Timeout storm) ──────
 # litellm's aiohttp transport keeps idle keep-alive connections pooled for
 # ``AIOHTTP_KEEPALIVE_TIMEOUT`` seconds (litellm default: 120). Anthropic's edge

@@ -195,7 +195,12 @@ async def test_an_agent_of_today_answers_on_its_model_with_the_real_catalog(
         out_after = await _run(state, thread, after)
 
     assert _wire(after) == _wire(before)
-    assert [c.model for c in after.calls] == ["test/classify", "test/respond"]
+    # Spec 065 (T025): sin elección, el modelo por defecto de Auphere de este entorno, no el
+    # de responder del router.
+    assert [c.model for c in after.calls] == [
+        "test/classify",
+        respond_catalog.agent_respond_default(),
+    ]
     assert out_after["response"] == out_before["response"] == "Abrimos de 10 a 14."
     assert out_after["turn_failure"] is None
     assert not out_after.get("pinned_model")
@@ -276,7 +281,8 @@ async def test_the_classifier_moves_once_a_deployment_passes_the_battery(
     [classify, answer] = provider.calls
     assert classify.model == CLASSIFIER and classify.extra["task"] == "classify"
     assert classify.extra["deployment"] == CLASSIFIER
-    assert answer.model == "test/respond" and "deployment" not in answer.extra
+    assert answer.model == respond_catalog.agent_respond_default()
+    assert "deployment" not in answer.extra
     assert out["classification"]["intent"] == "info"
     assert out["response"] == "Abrimos de 10 a 14."
     assert not out.get("pinned_model"), "el agente de hoy sigue fijado en su modelo de hoy"

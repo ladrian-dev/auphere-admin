@@ -1,5 +1,6 @@
 import type { MessageKey } from "@/i18n/messages";
 import { TEST_STOPS, type AgentTest, type ReviewFix, type TestStatus, type TestStop, type TestTurn } from "@/lib/backend/agent-quality-types";
+import type { AgentModel } from "@/lib/backend/models";
 
 import { POLL_FIRST_MS, nextDelay, type Result } from "./builder-model";
 
@@ -171,6 +172,21 @@ export function failedConversation(test: AgentTest): { transcript: TestTurn[]; s
  */
 export function naReason(reason: string): string {
   return reason.replace(/^\s*no aplica\s*[:.,-]\s*/i, "").trim() || reason.trim();
+}
+
+/**
+ * Spec 065 (T062): el nombre de cada modelo que ya conoce la pantalla del agente
+ * (lo que puede elegir, lo elegido y con qué responde), para decir quién respondió
+ * en la conversación de una prueba, que solo trae el id. Sin el modelo, nada: la
+ * pantalla dice el id.
+ */
+export function modelNamesOf(model: AgentModel | null | undefined): Record<string, string> {
+  if (!model) return {};
+  const names: Record<string, string> = {};
+  for (const m of [...model.options, model.choice, model.effective]) {
+    if (m?.model_id && m.display_name) names[m.model_id] = m.display_name;
+  }
+  return names;
 }
 
 /** Una prueba de la guía generada para este cliente: lleva «Generada» (58.4). */

@@ -101,6 +101,42 @@ export const DRIFT = row({
   },
 });
 
+/**
+ * Spec 065: a model that bills cache writes (Sol, 5,00 por millón), so its sale has a
+ * fourth lane: 2,2 × 5 ÷ 10 = 1,1.
+ */
+const writesRow = row({
+  uuid: "sol-w",
+  display_name: "Sol",
+  current_price: {
+    valid_from: "2026-11-20",
+    source: "https://developers.openai.com/api/docs/guides/prompt-caching",
+    currency: "USD",
+    unit: "per_million_tokens",
+    input: 4,
+    cache_read: 0.4,
+    cache_write: 5,
+    output: 20,
+  },
+  sale: {
+    state: "on_target",
+    lanes: {
+      ...ON_TARGET.lanes,
+      cache_write: { cost: "5.000000", weight: "1.100000", sale: "11.000000", multiplier: "2.20" },
+    },
+    proposed: { input: "0.880000", cache_read: "0.088000", output: "4.400000", cache_write: "1.100000" },
+  },
+});
+export const WRITES: DeploymentRow = {
+  ...writesRow,
+  deployment: {
+    ...writesRow.deployment,
+    id: "openai/gpt-5.6-sol",
+    model: "gpt-5.6-sol",
+    meter_weights: { w_in: 0.88, w_cache: 0.088, w_out: 4.4, w_cache_write: 1.1 },
+  },
+};
+
 /** Whisper: priced by the minute, without lanes (3.11). */
 export const WHISPER = row({
   uuid: "w1",

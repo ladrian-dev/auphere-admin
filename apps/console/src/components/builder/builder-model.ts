@@ -302,8 +302,8 @@ export function groupTemplates<T extends { group: string }>(templates: readonly 
  * Spec 047 (49.6): los avisos enlazan a la pantalla del agente con `?tab=`
  * (`notifications.LINKS` de la API). Cada pestaña es una sección de la pantalla:
  * la página la lleva a la vista al abrirse. «Calidad» (`model.retirement`,
- * `model.price_change`, T147) cae en Avanzado, en la línea que dice que el
- * modelo lo gestiona Auphere (64.1; D55); las
+ * `model.price_change`, T147) cae en Avanzado, en el modelo del agente
+ * (spec 065, 9.2); las
  * sugerencias de la semana (`agent.suggestions.ready`) llevan a Rendimiento y
  * las correcciones del negocio (`agent.correction.proposed`), a Mejoras (T174).
  * `integrations` (y `connectors`) llevan a los Conectores del agente (T129).

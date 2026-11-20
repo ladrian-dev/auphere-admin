@@ -74,7 +74,7 @@ APPLY_ROUTES: dict[str, tuple[ApplyMethod, str]] = {
     "channel_role": ("PATCH", "/console/clients/{client_ref}/channels/{channel_id}/role"),
     "usage_alerts": ("PUT", "/console/usage/alerts"),
     "allocation": ("PUT", "/console/clients/{client_ref}/allocation"),
-    "model": ("PUT", "/console/clients/{client_ref}/model"),
+    "model": ("PUT", "/console/clients/{client_ref}/agents/{agent_id}/model"),
     "knowledge": ("POST", "/console/knowledge/url"),
     "pack": ("PUT", "/console/clients/{client_ref}/workflow"),
     "invite": ("POST", "/console/team/invitations"),
@@ -1149,58 +1149,64 @@ class ProposalBuilder:
         )
 
     async def _model(self, args: dict[str, Any]) -> Proposal:
-        from nexus_api.core.respond_catalog import RESPOND_MODEL_ID_SET
-
+        """Spec 065 (requisito 2.9): el modelo de UN agente, validado contra lo que ese
+        agente puede elegir (``GET …/agents/{id}/model``), sin lista escrita a mano."""
         ref = str(args["client_ref"]).strip()
+        agent_id = str(args.get("agent_id") or "").strip()
         model_id = str(args["model_id"]).strip()
-        if model_id not in RESPOND_MODEL_ID_SET:
+        view = await self._get(f"/console/clients/{ref}/agents/{agent_id}/model")
+        options = {
+            str(o.get("model_id")): o
+            for o in (view or {}).get("options") or []
+            if o.get("model_id")
+        }
+        if model_id not in options:
             raise ProposalRefused(
                 ToolError(
                     "unknown_model",
-                    "Ese model_id no está en el catálogo cerrado. Usa uno de "
-                    "openai/gpt-5.6-sol, openai/gpt-5.6-terra o "
-                    "openai/gpt-5.6-luna. No existe el alias gpt-5.6 aquí.",
+                    "Ese model_id no está entre los que puede elegir este agente. Lee "
+                    "console.get_agent_model y usa uno de sus options.",
                 )
             )
-        catalog = await self._get("/console/models")
-        ids = {str(row.get("model_id")) for row in (catalog if isinstance(catalog, list) else [])}
-        if model_id not in ids:
-            raise ProposalRefused(
-                ToolError(
-                    "unknown_model",
-                    "Ese model_id no está en el catálogo cerrado. "
-                    "Lee console.list_models y elige uno de los tres.",
-                )
-            )
-        current = await self._get(f"/console/clients/{ref}/model")
-        before = str((current or {}).get("model_id") or "")
-        if before == model_id:
+        effective = (view or {}).get("effective") or {}
+        before_id = str(effective.get("model_id") or "")
+        before_name = str(effective.get("display_name") or before_id)
+        after_name = str(options[model_id].get("display_name") or model_id)
+        if before_id == model_id:
             raise ProposalRefused(
                 ToolError(
                     "no_change",
-                    f"El cliente {ref} ya responde con {model_id}. Nada que cambiar.",
+                    f"Ese agente ya responde con {after_name}. Nada que cambiar.",
                 )
             )
-
+        estimate = options[model_id].get("estimate") or {}
         return Proposal(
             kind="model",
-            title=f"Fijar el modelo de {ref} a {model_id}",
+            title=f"Cambiar el modelo del agente a {after_name}",
             preview={
                 "client_ref": ref,
-                "summary": f"{before or '(vacío)'} → {model_id}",
-                "before_model_id": before,
+                "agent_id": agent_id,
+                "summary": f"{before_name} → {after_name}",
+                "before_model_id": before_id,
                 "after_model_id": model_id,
+                "estimate_micros": estimate.get("amount_micros"),
             },
             diff=[
-                {"op": "del", "line": 1, "before": f"model_id: {before or '(vacío)'}"},
-                {"op": "add", "line": 1, "after": f"model_id: {model_id}"},
+                {"op": "del", "line": 1, "before": f"Modelo: {before_name}"},
+                {"op": "add", "line": 1, "after": f"Modelo: {after_name}"},
             ],
-            impact=[_impact("model_id", model_id)],
+            impact=[
+                _impact("agente", agent_id),
+                _impact("desde", "su próximo mensaje"),
+                _impact("los demás agentes del cliente", "no cambian"),
+            ],
             risk="medium",
             reversible=True,
-            state_hash=canonical_hash({"client_ref": ref, "model_id": before}),
+            state_hash=canonical_hash(
+                {"client_ref": ref, "agent_id": agent_id, "model_id": before_id}
+            ),
             apply_method=APPLY_ROUTES["model"][0],
-            apply_path=APPLY_ROUTES["model"][1].format(client_ref=ref),
+            apply_path=APPLY_ROUTES["model"][1].format(client_ref=ref, agent_id=agent_id),
             apply_body={"model_id": model_id},
             expectations={"model_id": model_id},
             client_ref=ref,

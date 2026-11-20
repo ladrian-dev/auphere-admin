@@ -76,13 +76,24 @@ EXCLUDED_SOURCES: Final[dict[str, str]] = {
     "nexus_api/core/litellm_smoke.py": (
         "la prueba de humo manual de LiteLLM (python -m): no corre en ningún servicio"
     ),
+    "nexus_api/core/respond_profiles.py": (
+        "spec 065: cómo se llama a cada modelo que puede responder (parámetros, plazo, "
+        "reserva). No elige modelo para ninguna tarea; las reservas habilitadas entran en "
+        "el registro como usos (T056)"
+    ),
+    "nexus_api/services/agent_model.py": (
+        "spec 065: la gama de cada modelo para la consola y el turno típico de la "
+        "estimación. No elige modelo para ninguna tarea"
+    ),
 }
 
 
 #: Los usos que resuelve el proceso del worker con su propio entorno. Son los que la
 #: API compara con lo que publica el latido (research D2): los demás (companion,
 #: visión, evaluaciones, Playground…) los resuelve la API con el suyo, y que el
-#: worker los vea distintos no es un desacuerdo.
+#: worker los vea distintos no es un desacuerdo. Tampoco entran los que salen del
+#: catálogo cacheado (spec 065: las reservas habilitadas y ``agent_default``): cada
+#: proceso lo lee a su hora.
 WORKER_USES: Final[frozenset[str]] = frozenset(
     {
         "classify",
@@ -103,7 +114,12 @@ def default_models() -> dict[str, str]:
     proceso, con los ajustes del despliegue ya aplicados. Datos planos: el latido
     lo publica tal cual."""
     from nexus_api.config import get_settings
-    from nexus_api.core.respond_catalog import SOL_MODEL_ID
+    from nexus_api.core.respond_catalog import (
+        RESPOND_MODEL_ID_SET,
+        SOL_MODEL_ID,
+        agent_respond_default,
+    )
+    from nexus_api.core.respond_profiles import PROFILES
     from nexus_api.services.evals.companion.driver import COMPANION_EVAL_MODEL
     from nexus_api.services.evals.judge import EVAL_JUDGE_MODEL
     from nexus_api.services.evals.pipeline_driver import (
@@ -147,6 +163,15 @@ def default_models() -> dict[str, str]:
     }
     if api.knowledge_embedding_model:
         models["knowledge_embedding"] = api.knowledge_embedding_model
+    # Spec 065 (T056, research.md §D5 y §D11): la reserva de la otra familia de cada modelo
+    # responde turnos mientras esté habilitada en este entorno; entonces es un uso y la 059
+    # no deja retirarla. ``respond_fallback_openai`` es la reserva de los modelos de OpenAI.
+    for family in ("openai", "anthropic"):
+        reserve = next(p.reserve for p in PROFILES.values() if p.family == family)
+        if reserve in RESPOND_MODEL_ID_SET:
+            models[f"respond_fallback_{family}"] = reserve
+    # Spec 065 (T077, requisito 13): el modelo de los agentes sin elección en este entorno.
+    models["agent_default"] = agent_respond_default()
     for task in PLATFORM_MODELS:
         models[task] = platform_model(task)
     return models

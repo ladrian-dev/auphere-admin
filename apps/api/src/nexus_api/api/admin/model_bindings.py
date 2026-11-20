@@ -155,6 +155,16 @@ async def list_bindings(
     return out
 
 
+def _refuse_respond(role: str) -> None:
+    """Spec 065 (requisito 12.4): el modelo de respuesta es de cada agente
+    (``PUT /admin/tenants/{id}/agents/{agent_id}/model``); los demás roles siguen aquí."""
+    if role == "respond":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "respond_is_per_agent"},
+        )
+
+
 @router.put(
     "/tenants/{tenant_id}/model-bindings/{role}",
     response_model=ModelBindingOut,
@@ -172,6 +182,7 @@ async def upsert_binding(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"rol desconocido: {role}",
         )
+    _refuse_respond(role)
 
     profile = (
         (
@@ -240,6 +251,7 @@ async def delete_binding(
     _: str = Depends(require_admin_token),
 ) -> None:
     """Devuelve el rol a la configuración global."""
+    _refuse_respond(role)
     await session.execute(
         # Sin ``WHERE tenant_id``: la sesión está scopeada y la RLS de la
         # tabla es quien filtra, igual que en el resolver del runtime.

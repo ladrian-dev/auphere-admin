@@ -182,6 +182,7 @@ async def converse(
                 "bubbles": list(outcome.bubbles),
                 "actions": [a.phrase for a in world.actions[before:]],
                 "model": outcome.model,
+                "fell_back": outcome.fell_back,
             }
         )
         if outcome.failure is not None:

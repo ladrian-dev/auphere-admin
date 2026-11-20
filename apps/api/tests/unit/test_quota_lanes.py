@@ -13,8 +13,13 @@ import pytest
 from nexus_api.metering.pricing_policy import LaneWeights
 from nexus_api.metering.quota import billable_qty_for_meter, quota_tokens
 
-# claude-sonnet-4-6 a 2,2x: 3,00 / 0,30 / 15,00 USD por millón.
-SONNET = LaneWeights(input=Decimal("0.66"), cache_read=Decimal("0.066"), output=Decimal("3.3"))
+# claude-sonnet-4-6 a 2,2x: 3,00 / 0,30 / 15,00 USD por millón, y 3,75 la escritura (spec 065).
+SONNET = LaneWeights(
+    input=Decimal("0.66"),
+    cache_read=Decimal("0.066"),
+    output=Decimal("3.3"),
+    cache_write=Decimal("0.825"),
+)
 
 
 def test_each_lane_is_charged_with_its_own_weight() -> None:
@@ -32,17 +37,39 @@ def test_the_flat_cache_discount_is_gone() -> None:
     en gpt-4o, donde el proveedor la cobra a la mitad y no a la décima parte.
     Este caso usa gpt-4o justamente porque ahí los dos caminos divergen.
     """
-    gpt4o = LaneWeights(input=Decimal("0.55"), cache_read=Decimal("0.275"), output=Decimal("2.2"))
+    gpt4o = LaneWeights(
+        input=Decimal("0.55"),
+        cache_read=Decimal("0.275"),
+        output=Decimal("2.2"),
+        cache_write=Decimal("0"),
+    )
     qty = quota_tokens(prompt_tokens=1000, cache_read=1000, output_tokens=0, weights=gpt4o)
     assert qty == 275, "la caché de gpt-4o vale la mitad de su entrada, no una décima"
 
 
-def test_cache_write_never_costs_quota() -> None:
-    """R1.5 — se acepta para no olvidarlo, y vale cero. No gana un cuarto peso."""
+def test_cache_write_has_its_own_lane_when_the_model_bills_it() -> None:
+    """R1.5, cambiado por la spec 065: la escritura gana un cuarto peso.
+
+    1.000 de prompt con 400 escritos: 600 x 0,66 + 400 x 0,825 = 396 + 330. Hasta la 065
+    eran 1.000 x 0,66 = 660, lo escrito a precio de entrada."""
     with_write = quota_tokens(
-        prompt_tokens=1000, cache_read=0, output_tokens=0, cache_write=9_999_999, weights=SONNET
+        prompt_tokens=1000, cache_read=0, output_tokens=0, cache_write=400, weights=SONNET
     )
-    without = quota_tokens(prompt_tokens=1000, cache_read=0, output_tokens=0, weights=SONNET)
+    assert with_write == 396 + 330 == 726
+
+
+def test_without_a_write_tariff_the_write_stays_in_the_input() -> None:
+    """Peso de escritura 0 (sin tarifa): se cobra como antes de la 065, 1.000 x 0,66."""
+    no_tariff = LaneWeights(
+        input=Decimal("0.66"),
+        cache_read=Decimal("0.066"),
+        output=Decimal("3.3"),
+        cache_write=Decimal("0"),
+    )
+    with_write = quota_tokens(
+        prompt_tokens=1000, cache_read=0, output_tokens=0, cache_write=400, weights=no_tariff
+    )
+    without = quota_tokens(prompt_tokens=1000, cache_read=0, output_tokens=0, weights=no_tariff)
     assert with_write == without == 660
 
 
@@ -52,7 +79,7 @@ def test_uncached_input_never_goes_negative() -> None:
 
 
 def test_there_is_exactly_one_rounding_and_it_is_half_away_from_zero() -> None:
-    """R1.3 — se suman los tres productos en Decimal y se cuantiza UNA vez.
+    """R1.3 — se suman los productos en Decimal y se cuantiza UNA vez.
 
     Con la fórmula vieja había dos redondeos encadenados (el aporte de la caché
     y luego el total ponderado). Tres productos homogéneos se pueden sumar antes
@@ -61,7 +88,9 @@ def test_there_is_exactly_one_rounding_and_it_is_half_away_from_zero() -> None:
     El caso elegido cae exactamente en ,5: ``round()`` de Python es banker's y
     daría 2; ``ROUND_HALF_UP`` da 3, que es lo que el contrato exige.
     """
-    half = LaneWeights(input=Decimal("0.25"), cache_read=Decimal("0"), output=Decimal("0"))
+    half = LaneWeights(
+        input=Decimal("0.25"), cache_read=Decimal("0"), output=Decimal("0"), cache_write=Decimal(0)
+    )
     assert quota_tokens(prompt_tokens=10, cache_read=0, output_tokens=0, weights=half) == 3
 
 
@@ -82,7 +111,8 @@ def test_the_breakdown_charges_each_native_row_with_its_lane() -> None:
     assert billable_qty_for_meter("llm.output_tokens", 3000, weights=SONNET) == pytest.approx(
         9900.0
     )
-    assert billable_qty_for_meter("llm.cache_write", 9999, weights=SONNET) == 0.0
+    # Spec 065: 9.999 x 0,825 = 8.249,175, mitad se aleja de cero → 8.249.
+    assert billable_qty_for_meter("llm.cache_write", 9999, weights=SONNET) == 8249.0
 
 
 def test_a_meter_outside_the_llm_lanes_passes_through_untouched() -> None:

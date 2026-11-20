@@ -396,6 +396,43 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   clave se quita al guardar (`suites._test_row`) y, si ya está guardada, no cuenta. Por la
   API, `422 unknown_state_key`. Lo demás se escribe en `criteria`, y el juez lo compara
   con la ficha (66.9): recibe los datos del negocio en `<ficha>`, los mismos que el agente.
+- **Con qué modelo responde** (spec 065): la elección del agente (`agents.respond_model_profile_id`,
+  con `respond_model_set_by` `partner` u `operator`), si no el ajuste de su versión
+  (`policies.llm.respond_model`), si no el modelo por defecto de Auphere de ese entorno
+  (`platform_settings.agent_respond_default`, Sol al desplegar). Una sola resolución,
+  `nexus_api.core.respond_model.resolve`, para el turno, la consola, el panel y el uso de
+  la 059. Si el elegido no puede con lo que el agente usa (Skills o conector MCP de
+  Anthropic), responde el siguiente que pueda y la consola lo avisa
+  (`chosen_model_cannot_run_agent`). Es un ajuste vivo: vale desde el turno siguiente, sin
+  publicar versión ni lanzar pruebas, y no toca la pasada de pruebas. El Playground y las
+  pruebas responden con el mismo modelo y dicen con cuál respondió (`model`, `fell_back`).
+  La asignación `respond` del cliente (`tenant_model_bindings`) ya no decide nada: la 0240
+  la pasó a sus agentes.
+- **Cómo sale cada llamada y quién la termina si falla** (spec 065, T052-T056): el turno
+  va por `LLMRouter.respond_with_tools` sin router, y cada salto lleva el perfil de **su**
+  modelo (`nexus_api.core.respond_profiles`, `llm.respond_hop_extra`): con Claude 5.5,
+  esfuerzo bajo (`output_config`), razonamiento adaptativo con
+  `block_binding.prefix_mismatch_behavior = "drop_block"` y su beta, `max_tokens` 8192, la
+  caché de la conversación (`cache_control` arriba) y su plazo (Opus 90 s, Sonnet 60 s,
+  Haiku 45 s); con GPT-5.6, lo de antes (30 s). Un modelo sin perfil (Sonnet 4.6, Haiku
+  4.5) sale byte a byte como antes. La cadena (`pipeline.turn_model_pin`,
+  `respond_model.respond_reserve`) es el modelo del agente y la **reserva de la otra
+  familia** de su perfil (OpenAI → Sonnet 5.5, Anthropic → Terra) si está habilitada para
+  responder en ese entorno; si no, la de hoy (`llm_respond_model`, Sol). Un agente con
+  Skills o conector MCP de Anthropic solo cae a Sonnet 5.5, y sin ella no tiene reserva.
+  Cuando la reserva responde una llamada, el resto del turno sigue con ella
+  (`TurnModelPin`). Un rechazo del proveedor (`content_filter`, el `refusal` de Claude) es
+  un fallo: sin su texto, sin reintento en el mismo modelo, a la reserva. Con un modelo
+  que razona el turno **solo añade**: los bloques de razonamiento vuelven, firmados, al
+  modelo que los escribió y a ningún otro (`llm.messages_for` sanea por destino), el
+  cierre es la misma llamada con `tool_choice: "none"` (sin la nota del cierre y con las
+  mismas herramientas, `code_execution` incluida) y el reintento del freno de reservas no
+  retira nada. Si GPT-5.6 cae a Sonnet tras llamar a herramientas, Sonnet sigue con
+  `thinking: {"type": "between_tools"}` y nada más. Cada caída deja
+  `llm.respond_fell_back` con `chosen`, `served` y `reason` (`error`, `timeout`,
+  `refusal`, `rate_limit`). Lo prueba en el cable
+  `wk/tests/unit/test_respond_profiles_on_the_wire.py`; la batería real, a mano en
+  staging, es `apps/worker/scripts/respond_compat.py` (se niega con `--env prod`).
 - **Quién clasifica** (requisito 69): Claude Haiku 5.5 (`llm_classify_model`), sin
   razonamiento y con 32 tokens de salida, porque devuelve una palabra. Si falla, cae al
   de responder. La lectura de webs y el sector no lo usan: van con `llm_extract_model`.

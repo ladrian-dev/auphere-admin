@@ -141,6 +141,7 @@ LINKS: dict[str, str] = {
     "build.budget.warning": "/usage",
     "build.budget.exhausted": "/usage",
     "model.retirement": "/clients/{ref}/agents/{agent}?tab=quality",
+    "agent.model_reset": "/clients/{ref}/agents/{agent}?tab=quality",
     "model.price_change": "/clients/{ref}/agents/{agent}?tab=quality",
     "reservas.pass_not_ready": "/clients/{ref}",
 }

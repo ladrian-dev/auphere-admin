@@ -84,17 +84,23 @@ class _Tally:
 
 
 _TENANTS_SQL = sa.text("SELECT id, name FROM tenants WHERE status <> 'archived' ORDER BY name")
+#: Spec 065 (T081): cada agente no archivado con su versión activa (si la tiene) y su
+#: elección. Uno con elección y aún sin versión también tiene el modelo en uso (8.1).
 _AGENTS_SQL = sa.text(
     """
-    SELECT c.policies
+    SELECT c.policies, p.model_id AS chosen
       FROM agents a
-      JOIN agent_configs c ON c.agent_id = a.id
-     WHERE c.status = 'active' AND a.status <> 'archived'
+      LEFT JOIN agent_configs c ON c.agent_id = a.id AND c.status = 'active'
+      LEFT JOIN model_profiles p ON p.id = a.respond_model_profile_id
+     WHERE a.status <> 'archived'
+       AND (c.id IS NOT NULL OR a.respond_model_profile_id IS NOT NULL)
     """
 )
+#: Las asignaciones de cliente que siguen vivas. La de ``respond`` ya no la lee nadie: la
+#: 0240 la pasó a los agentes y la borra la migración siguiente.
 _BINDINGS_SQL = sa.text(
     "SELECT b.role, p.model_id FROM tenant_model_bindings b "
-    "JOIN model_profiles p ON p.id = b.model_profile_id"
+    "JOIN model_profiles p ON p.id = b.model_profile_id WHERE b.role <> 'respond'"
 )
 
 _list_cache: tuple[float, dict[str, ClientUsage]] | None = None
@@ -108,11 +114,12 @@ def invalidate() -> None:
 
 async def scan_usage() -> dict[str, ClientUsage]:
     """``modelo → ClientUsage`` de todos los clientes, cada uno bajo su GUC."""
-    from nexus_worker.platform_models import default_models
-
+    from nexus_api.core.respond_catalog import agent_respond_default
     from nexus_api.services.model_lifecycle import fixed_deployment
 
-    default_respond = default_models()["respond"]
+    # El modelo de los agentes sin elección (spec 065, requisito 13), no el de la plataforma:
+    # ese otro lo pone en uso el registro de usos por defecto.
+    default_respond = agent_respond_default()
     tally: dict[str, _Tally] = defaultdict(_Tally)
     sm = get_sessionmaker()
     async with sm() as session, session.begin():
@@ -120,10 +127,9 @@ async def scan_usage() -> dict[str, ClientUsage]:
     for tenant_id, name in tenants:
         async with sm() as session, tenant_scoped_session(session, tenant_id):
             bindings = [(str(r), str(m)) for r, m in (await session.execute(_BINDINGS_SQL)).all()]
-            respond_binding = next((m for r, m in bindings if r == "respond"), None)
-            for (policies,) in (await session.execute(_AGENTS_SQL)).all():
+            for policies, chosen in (await session.execute(_AGENTS_SQL)).all():
                 fixed_on, _how = fixed_deployment(
-                    policies, respond_binding=respond_binding, default_respond=default_respond
+                    policies, choice=chosen, default_respond=default_respond
                 )
                 if fixed_on:
                     tally[fixed_on].agents += 1

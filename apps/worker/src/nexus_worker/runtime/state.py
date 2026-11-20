@@ -69,6 +69,8 @@ class AgentState(TypedDict, total=False):
     # ``respond`` node is gone.
     response: str
     response_model: str
+    # Spec 065 (T042): the turn ended on a model that was not the first of its chain.
+    response_fell_back: bool
     # Set by the handler when ``response`` is the neutral fallback text
     # rather than something the model said: the router exhausted every
     # model (``kind="llm_failed"``, ``detail`` = provider error) or the

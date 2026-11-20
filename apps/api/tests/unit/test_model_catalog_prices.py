@@ -7,13 +7,14 @@ Companion turn — and therefore every teammate turn — is measured and left
 **unpriced**: ``_turn_cost_usd`` returns ``None`` and ``usage_records.cost_usd``
 stays empty. The margin is not bad, it does not exist.
 
-Cache-write stays NULL on purpose and the test asserts it, because a zero
-would be a different claim. Migration ``0076`` already wrote the reasoning for
-``gpt-4o``: OpenAI does not charge for writing to cache, and the emitter never
-produces ``llm.cache_write`` for OpenAI at all (LiteLLM only reports
-``cache_creation_input_tokens`` on Anthropic). NULL leaves the hole visible if
-that meter ever starts arriving; 0 would say "measured, free", which is a
-statement nobody verified.
+Cache-write: until spec 065 it stayed NULL on purpose, because OpenAI did not charge
+for writing to cache and the emitter never produced ``llm.cache_write`` for OpenAI.
+Both changed. Since GPT-5.6, OpenAI bills cache writes at 1.25x the input rate
+(prompt-caching guide; research.md §D14) and Luis decided on 2026-11-19 to pass it on;
+migration ``0239`` loads the rate. And the collector now records the
+``prompt_tokens_details.cache_write_tokens`` that LiteLLM passes through
+(``apps/worker/tests/unit/test_cache_write_on_the_wire.py``). ``gpt-4o`` keeps NULL:
+no write tariff, so its quota weight for that lane is 0.
 
 Rates verified 2026-09-11 at developers.openai.com/api/docs/pricing.
 """
@@ -68,15 +69,20 @@ async def test_sold_model_has_input_cached_and_output_rates(db_session, model_id
 
 
 @pytest.mark.parametrize("model_id", sorted(SOLD_MODELS))
-async def test_sold_model_leaves_cache_write_absent_not_zero(db_session, model_id) -> None:
-    """NULL, not 0. See the module docstring: they are different claims."""
+async def test_sold_model_bills_cache_write_at_125_percent_of_input(db_session, model_id) -> None:
+    """Spec 065 (0239): 1.25 x input. Sol 4.00 → 5.00, Terra 2.00 → 2.50, Luna 0.20 → 0.25."""
     row = await _row(db_session, model_id)
     assert row is not None
-    assert row["price_cache_write_per_mtok"] is None, (
-        f"{model_id} has a cache-write rate. OpenAI does not charge for it and the "
-        "emitter never produces that meter for OpenAI — a number here would be read "
-        "as a verified price. Leave it NULL."
-    )
+    want_in, _cached, _out = SOLD_MODELS[model_id]
+    assert row["price_cache_write_per_mtok"] == Decimal(want_in) * Decimal("1.25")
+
+
+async def test_gpt4o_still_has_no_cache_write_rate(db_session) -> None:
+    """NULL, not 0: OpenAI does not bill gpt-4o cache writes, and 0 would read as a
+    verified price."""
+    row = await _row(db_session, "openai/gpt-4o")
+    assert row is not None
+    assert row["price_cache_write_per_mtok"] is None
 
 
 async def test_the_companion_default_model_is_priced(db_session) -> None:

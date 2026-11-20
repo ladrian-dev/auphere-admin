@@ -24,6 +24,8 @@ import {
   formatAmount,
   formatMultiplier,
   isInUse,
+  lanesFor,
+  respondState,
   saleChip,
   usesLines,
 } from "./labels";
@@ -225,6 +227,7 @@ function ModelCell({ row }: { row: DeploymentRow }) {
       ) : null}
       {uses.defaults ? <p className="text-xs text-pretty text-muted-foreground">{uses.defaults}</p> : null}
       {uses.agents ? <p className="text-xs text-pretty text-muted-foreground">{uses.agents}</p> : null}
+      <RespondLine row={row} />
     </div>
   );
 }
@@ -241,7 +244,7 @@ function CostCell({ price, perMinute }: { price: PriceContract | null; perMinute
   }
   return (
     <dl className="flex flex-col text-sm">
-      {LANES.map((lane) => (
+      {lanesFor(price).map((lane) => (
         <div key={lane} className="flex items-baseline justify-between gap-2">
           <dt className="text-xs text-muted-foreground">{LANE_LABEL[lane]}</dt>
           <dd className="font-mono tabular-nums">{formatAmount(price[lane])}</dd>
@@ -283,7 +286,7 @@ function SaleCell({ sale, policy }: { sale: SaleInfo; policy: SalePolicy }) {
   return (
     <div className="flex flex-col gap-1">
       <dl className="flex flex-col text-sm">
-        {LANES.map((lane) => {
+        {lanesFor({ cache_write: lanes.cache_write?.cost ?? null }).map((lane) => {
           const l = lanes[lane];
           const below = l ? belowFloor(l.cost, l.weight, policy) : false;
           return (
@@ -305,4 +308,32 @@ function SaleCell({ sale, policy }: { sale: SaleInfo; policy: SalePolicy }) {
       {badge}
     </div>
   );
+}
+
+/**
+ * Spec 065 (1.3): whether the model can answer the agents in this environment —
+ * since when and with which battery pass — or what it lacks. Nothing without a
+ * call profile, nor with an API that does not say it yet.
+ */
+function RespondLine({ row }: { row: DeploymentRow }) {
+  const state = respondState(row);
+  if (state === "enabled") {
+    const since = row.respond_enabled_at ? DATE.format(new Date(row.respond_enabled_at)) : null;
+    const detail = [since ? `El ${since}` : null, row.respond_enabled_note?.trim() || null].filter(Boolean).join(" · ");
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <Badge variant="outline">Habilitado para responder</Badge>
+        {detail ? <span className="min-w-0 text-pretty break-words">{detail}</span> : null}
+      </div>
+    );
+  }
+  if (state === "disabled") {
+    return (
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <Badge variant="secondary">Sin habilitar para responder</Badge>
+        <span className="min-w-0 text-pretty">Pasa primero la batería en este entorno.</span>
+      </div>
+    );
+  }
+  return null;
 }

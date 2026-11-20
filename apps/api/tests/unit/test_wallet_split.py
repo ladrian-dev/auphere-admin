@@ -50,7 +50,9 @@ def test_unit_is_quota_tokens_per_lane() -> None:
     esa unidad y no otra, no cuánto vale cada carril — eso lo fija
     ``test_quota_lanes.py``.
     """
-    neutral = LaneWeights(input=Decimal(1), cache_read=Decimal(1), output=Decimal(1))
+    neutral = LaneWeights(
+        input=Decimal(1), cache_read=Decimal(1), output=Decimal(1), cache_write=Decimal(1)
+    )
     qty = quota_tokens(
         prompt_tokens=10_000,
         cache_read=9_000,

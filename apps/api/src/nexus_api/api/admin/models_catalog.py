@@ -38,6 +38,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.admin.agent_configs import PROMOTE_CHANNEL
 from nexus_api.api.admin.operator import operator_actor, require_operator
 from nexus_api.api.deps import get_db_session, get_redis
+from nexus_api.core import respond_catalog
+from nexus_api.core.respond_profiles import profile_for
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import OperatorAccount
 from nexus_api.metering import sale_policy
@@ -147,6 +149,9 @@ class WeightsIn(BaseModel):
     w_in: Decimal | None = None
     w_cache: Decimal | None = None
     w_out: Decimal | None = None
+    #: Spec 065: el cuarto carril. Si no viene, no se toca (un alta nace nula: 0 si el
+    #: modelo no tiene tarifa de escritura, sin pesar si la tiene).
+    w_cache_write: Decimal | None = Field(default=None, ge=0)
 
 
 class DeploymentIn(BaseModel):
@@ -236,6 +241,12 @@ class DeploymentRow(BaseModel):
     #: Spec 059 (3.1, 3.8): coste, peso, venta y multiplicador por carril, la
     #: propuesta del objetivo y el estado.
     sale: dict[str, Any] | None = None
+    #: Spec 065 (requisitos 1.3 y 1.4): si responde agentes en este entorno, quién lo
+    #: habilitó y con qué nota (la pasada de la batería); y si tiene perfil de llamada.
+    respond_enabled_at: datetime | None = None
+    respond_enabled_by: str | None = None
+    respond_enabled_note: str | None = None
+    has_respond_profile: bool = False
 
 
 class DeploymentList(BaseModel):
@@ -251,6 +262,9 @@ class WeightsPut(BaseModel):
     input: Decimal | None = Field(default=None, gt=0)
     cache_read: Decimal | None = Field(default=None, gt=0)
     output: Decimal | None = Field(default=None, gt=0)
+    #: Spec 065: el peso de la escritura en caché. 0 en un modelo sin tarifa de escritura;
+    #: si no viene, se queda el guardado.
+    cache_write: Decimal | None = Field(default=None, ge=0)
     reason: str = Field(min_length=1, max_length=500)
 
 
@@ -292,17 +306,23 @@ def _costs(deployment: Deployment) -> tuple[dict[str, Decimal | None], bool]:
     """El coste vigente por carril y si el modelo se cobra por minuto."""
     price = deployment.current_price()
     if price is None:
-        return {"input": None, "cache_read": None, "output": None}, False
+        return {"input": None, "cache_read": None, "output": None, "cache_write": None}, False
     per_minute = price.audio_minute is not None and price.input is None and price.output is None
     return {
         "input": price.input,
         "cache_read": price.cache_read,
         "output": price.output,
+        "cache_write": price.cache_write,
     }, per_minute
 
 
 def _weights(deployment: Deployment) -> dict[str, Decimal | None]:
-    return {"input": deployment.w_in, "cache_read": deployment.w_cache, "output": deployment.w_out}
+    return {
+        "input": deployment.w_in,
+        "cache_read": deployment.w_cache,
+        "output": deployment.w_out,
+        "cache_write": deployment.w_cache_write,
+    }
 
 
 def _sale(deployment: Deployment, target: Decimal | None) -> dict[str, Any]:
@@ -319,6 +339,7 @@ def _row(
     uses: ModelUses | None = None,
     blocked: int | None = None,
     target: Decimal | None = None,
+    respond: dict[str, Any] | None = None,
 ) -> DeploymentRow:
     certified = snapshot.certified_tasks(deployment.key)
     missing = activation_problems(deployment, class_certified_tasks=certified)
@@ -335,7 +356,23 @@ def _row(
         uses=None if uses is None else uses.to_contract(),
         retirement_blocked_agents=blocked,
         sale=_sale(deployment, target),
+        respond_enabled_at=(respond or {}).get("at"),
+        respond_enabled_by=(respond or {}).get("by"),
+        respond_enabled_note=(respond or {}).get("note"),
+        has_respond_profile=profile_for(deployment.key) is not None,
     )
+
+
+async def _respond_state(session: AsyncSession) -> dict[str, dict[str, Any]]:
+    """``model_id → {at, by, note}`` de lo habilitado para responder (spec 065, 0238)."""
+    async with session.begin():
+        rows = await session.execute(
+            sa.text(
+                "SELECT model_id, respond_enabled_at, respond_enabled_by, respond_enabled_note "
+                "FROM model_profiles"
+            )
+        )
+        return {str(m): {"at": a, "by": b, "note": n} for m, a, b, n in rows}
 
 
 async def _snapshot(session: AsyncSession) -> CatalogSnapshot:
@@ -374,8 +411,16 @@ async def list_deployments(
     uses = await uses_of_many([d.key for d in chosen], redis=redis, cached=True)
     blocked = await model_lifecycle.blocked_retirements()
     target = await sale_policy.target_multiplier()
+    respond = await _respond_state(session)
     items = [
-        _row(d, snapshot, uses=uses[d.key], blocked=blocked.get(d.key), target=target)
+        _row(
+            d,
+            snapshot,
+            uses=uses[d.key],
+            blocked=blocked.get(d.key),
+            target=target,
+            respond=respond.get(d.key),
+        )
         for d in chosen
     ]
     return DeploymentList(
@@ -453,6 +498,12 @@ def _columns(
         "quota_weight_input": weights.w_in,
         "quota_weight_cache_read": weights.w_cache,
         "quota_weight_output": weights.w_out,
+        # Spec 065: solo si viene; un alta o una edición sin él no lo borra.
+        **(
+            {"quota_weight_cache_write": weights.w_cache_write}
+            if "w_cache_write" in weights.model_fields_set
+            else {}
+        ),
     }
 
 
@@ -471,7 +522,14 @@ async def _reload(
     snapshot = await _snapshot(session)
     deployment = _by_uuid(snapshot, deployment_id)
     uses = None if redis is None else await uses_of(deployment.key, redis=redis)
-    return _row(deployment, snapshot, uses=uses, target=await sale_policy.target_multiplier())
+    respond = (await _respond_state(session)).get(deployment.key)
+    return _row(
+        deployment,
+        snapshot,
+        uses=uses,
+        target=await sale_policy.target_multiplier(),
+        respond=respond,
+    )
 
 
 @router.post("/deployments", response_model=DeploymentRow, status_code=status.HTTP_201_CREATED)
@@ -763,6 +821,137 @@ async def unavailable(
     return await _reload(session, deployment_id, redis=redis)
 
 
+class RespondEnableIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: La pasada de la batería real: fecha, commit y resultado (spec 065, 1.3).
+    note: str = Field(min_length=1, max_length=500)
+
+
+class RespondDisableIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(min_length=1, max_length=500)
+
+
+def _reserve_uses(key: str) -> list[str]:
+    """Las familias cuya reserva habilitada es ``key`` (spec 065, 11.2)."""
+    offered = {m for m, _ in respond_catalog.RESPOND_MODELS}
+    out: set[str] = set()
+    for model_id in offered:
+        profile = profile_for(model_id)
+        if profile is not None and profile.reserve == key:
+            out.add(f"respond_fallback_{profile.family}")
+    return sorted(out)
+
+
+@router.post("/deployments/{deployment_id}/respond-enable", response_model=DeploymentRow)
+async def respond_enable(
+    deployment_id: uuid.UUID,
+    body: RespondEnableIn,
+    session: AsyncSession = Depends(get_db_session),
+    operator: OperatorAccount = Depends(require_operator),
+    redis: Redis = Depends(get_redis),
+) -> DeploymentRow:
+    """Spec 065 (1.3): el modelo puede responder agentes en este entorno. Exige perfil de
+    llamada (``409 no_respond_profile``) y una nota con la pasada de la batería real."""
+    actor = operator_actor(operator)
+    current = _by_uuid(await _snapshot(session), deployment_id)
+    if profile_for(current.key) is None:
+        raise _http("no_respond_profile", status.HTTP_409_CONFLICT)
+    if current.status != "active":
+        raise _http("not_active", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    note = body.note.strip()
+    if not note:
+        raise _http("note_required", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    async with session.begin():
+        before = (
+            await session.execute(
+                sa.text(
+                    "SELECT respond_enabled_at, respond_enabled_note FROM model_profiles "
+                    "WHERE model_id = :m FOR UPDATE"
+                ),
+                {"m": current.key},
+            )
+        ).one()
+        await session.execute(
+            sa.text(
+                "UPDATE model_profiles SET respond_enabled_at = now(), respond_enabled_by = :a, "
+                "respond_enabled_note = :n WHERE model_id = :m"
+            ),
+            {"a": actor, "n": note, "m": current.key},
+        )
+        await AuditRepository(session).record(
+            actor=actor,
+            action="admin.model.respond_enable",
+            target=f"deployment:{current.key}",
+            before={
+                "enabled": before.respond_enabled_at is not None,
+                "note": before.respond_enabled_note,
+            },
+            after={"enabled": True, "note": note},
+            platform=True,
+        )
+    await publish_catalog_change(redis)
+    await respond_catalog.refresh_from_db(session)
+    await session.rollback()
+    return await _reload(session, deployment_id, redis=redis)
+
+
+@router.post("/deployments/{deployment_id}/respond-disable", response_model=DeploymentRow)
+async def respond_disable(
+    deployment_id: uuid.UUID,
+    body: RespondDisableIn,
+    session: AsyncSession = Depends(get_db_session),
+    operator: OperatorAccount = Depends(require_operator),
+    redis: Redis = Depends(get_redis),
+) -> DeploymentRow:
+    """Spec 065 (1.4, 8.2 y 11.2): deja de responder agentes en este entorno. Las elecciones
+    de los partners con ese modelo pasan al modelo por defecto, con ``agent.model_reset``; las
+    de Auphere no cambian. No se puede con el modelo por defecto ni con la reserva habilitada
+    de la otra familia (``409 model_in_use``)."""
+    from nexus_api.core.partner_allowlist import reset_choices_of_model
+
+    actor = operator_actor(operator)
+    reason = body.reason.strip()
+    if not reason:
+        raise _http("reason_required", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    current = _by_uuid(await _snapshot(session), deployment_id)
+    async with session.begin():
+        await respond_catalog.refresh_from_db(session)
+    uses = ["agent_default"] if current.key == respond_catalog.agent_respond_default() else []
+    uses += _reserve_uses(current.key)
+    if uses:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail={"code": "model_in_use", "uses": uses}
+        )
+    async with session.begin():
+        await session.execute(
+            sa.text(
+                "UPDATE model_profiles SET respond_enabled_at = NULL, respond_enabled_by = NULL, "
+                "respond_enabled_note = NULL WHERE model_id = :m"
+            ),
+            {"m": current.key},
+        )
+        await AuditRepository(session).record(
+            actor=actor,
+            action="admin.model.respond_disable",
+            target=f"deployment:{current.key}",
+            before={"enabled": True},
+            after={"enabled": False, "reason": reason},
+            platform=True,
+        )
+    await publish_catalog_change(redis)
+    async with session.begin():
+        await respond_catalog.refresh_from_db(session)
+    for reset in await reset_choices_of_model(current.key, actor=actor):
+        try:
+            await redis.publish(PROMOTE_CHANNEL, f"{reset.tenant_id}:{reset.agent_id}")
+        except Exception as exc:
+            log.warning("admin.respond_disable_invalidate_failed", error=str(exc))
+    return await _reload(session, deployment_id, redis=redis)
+
+
 @router.post("/deployments/{deployment_id}/cancel-retirement", response_model=DeploymentRow)
 async def cancel_retirement(
     deployment_id: uuid.UUID,
@@ -814,21 +1003,31 @@ def _six(value: Decimal | None) -> str | None:
 async def _write_weights(
     session: AsyncSession, key: str, weights: dict[str, Decimal], *, actor: str, reason: str
 ) -> None:
+    """Guarda los pesos con su auditoría. ``cache_write`` (spec 065) solo si viene; si no,
+    se queda el guardado y la auditoría lo enseña igual en el antes y el después."""
     before = (
         await session.execute(
             sa.text(
-                "SELECT quota_weight_input, quota_weight_cache_read, quota_weight_output "
-                "FROM model_profiles WHERE model_id = :k FOR UPDATE"
+                "SELECT quota_weight_input, quota_weight_cache_read, quota_weight_output, "
+                "quota_weight_cache_write FROM model_profiles WHERE model_id = :k FOR UPDATE"
             ),
             {"k": key},
         )
     ).one()
+    write = weights.get("cache_write", before[3])
     await session.execute(
         sa.text(
             "UPDATE model_profiles SET quota_weight_input = :i, quota_weight_cache_read = :c, "
-            "quota_weight_output = :o, updated_at = now() WHERE model_id = :k"
+            "quota_weight_output = :o, quota_weight_cache_write = :w, updated_at = now() "
+            "WHERE model_id = :k"
         ),
-        {"k": key, "i": weights["input"], "c": weights["cache_read"], "o": weights["output"]},
+        {
+            "k": key,
+            "i": weights["input"],
+            "c": weights["cache_read"],
+            "o": weights["output"],
+            "w": write,
+        },
     )
     await AuditRepository(session).record(
         actor=actor,
@@ -839,9 +1038,18 @@ async def _write_weights(
                 "input": _six(before[0]),
                 "cache_read": _six(before[1]),
                 "output": _six(before[2]),
+                "cache_write": _six(before[3]),
             }
         },
-        after={"weights": {k: _six(v) for k, v in weights.items()}, "reason": reason},
+        after={
+            "weights": {
+                "input": _six(weights["input"]),
+                "cache_read": _six(weights["cache_read"]),
+                "output": _six(weights["output"]),
+                "cache_write": _six(write),
+            },
+            "reason": reason,
+        },
         platform=True,
     )
 
@@ -854,8 +1062,13 @@ async def put_weights(
     operator: OperatorAccount = Depends(require_operator),
     redis: Redis = Depends(get_redis),
 ) -> DeploymentRow:
-    """Spec 059 (3.2 a 3.5, 3.11): los tres pesos de venta de un modelo, con su
-    motivo. Entran desde el turno siguiente y no avisan a los partners."""
+    """Spec 059 (3.2 a 3.5, 3.11): los pesos de venta de un modelo, con su
+    motivo. Entran desde el turno siguiente y no avisan a los partners.
+
+    Spec 065: también el de la escritura en caché. Sin él se queda el guardado, salvo que el
+    modelo tenga tarifa de escritura y no lo tenga guardado: entonces falta, como faltaría
+    cualquiera de los otros tres. Con peso de escritura y sin tarifa se rechaza: el suelo no
+    lo vería y se cobraría algo que el proveedor no factura."""
     current = _by_uuid(await _snapshot(session), deployment_id)
     if not body.reason.strip():
         raise _http("reason_required", status.HTTP_422_UNPROCESSABLE_ENTITY)
@@ -866,6 +1079,13 @@ async def put_weights(
     costs, per_minute = _costs(current)
     if per_minute:
         raise _http("per_minute", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    tariff = sale_policy.has_write_tariff(costs)
+    if body.cache_write is not None:
+        if body.cache_write > 0 and not tariff:
+            raise _http("no_write_tariff", status.HTTP_422_UNPROCESSABLE_ENTITY)
+        weights["cache_write"] = Decimal(body.cache_write)
+    elif tariff and current.w_cache_write is None:
+        raise _http("partial_weights", status.HTTP_422_UNPROCESSABLE_ENTITY, lanes=["cache_write"])
     sinking = sale_policy.lanes_below_floor(weights, costs)
     if sinking:
         raise _http("below_floor", status.HTTP_422_UNPROCESSABLE_ENTITY, lanes=sinking)

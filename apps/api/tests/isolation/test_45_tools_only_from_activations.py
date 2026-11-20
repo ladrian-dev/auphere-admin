@@ -267,6 +267,11 @@ NOT_TOOL_SOURCES: dict[str, str] = {
     "grader_mode": "Cuándo corre el grader.",
     "grader_sample_rate": "Con qué muestreo corre el grader.",
     "model_bindings": "Qué modelo responde; no qué herramientas tiene (garantía 7).",
+    "respond_model": (
+        "Spec 065: el modelo que eligió el agente (leído con la sesión de su cliente, "
+        "test_agent_bundle_respond_model). Decide quién responde, nunca qué herramientas ve."
+    ),
+    "respond_model_set_by": "Spec 065: quién eligió ese modelo (partner u operador).",
     "prompt_sha256": "La huella del system de la versión, para trazas y caché.",
     "memory_scope": (
         "Spec 047 (37.4): si la memoria del contacto es compartida o propia. No añade "

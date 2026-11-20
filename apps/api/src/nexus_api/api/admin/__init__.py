@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from nexus_api.api.admin import (
     agent_configs,
+    agent_models,
     agents,
     audit,
     auphere_channels,
@@ -36,6 +37,7 @@ from nexus_api.api.admin import (
     partner_money,
     partner_wallet,
     partners,
+    platform_settings,
     prompt_library,
     receipts,
     router_policies,
@@ -69,6 +71,10 @@ router.include_router(tenant_payments.router)
 router.include_router(unlimited_consumption.router)
 router.include_router(agent_configs.router)
 # Spec 030: los agentes de un cliente.
+# Spec 065: antes que ``agents`` para que ``…/agents/models`` no se lea como un agente.
+router.include_router(agent_models.router)
+# Spec 065 (requisito 13): el modelo por defecto de Auphere.
+router.include_router(platform_settings.router)
 router.include_router(agents.router)
 # Spec 049: erase one person's Instagram / Messenger data.
 router.include_router(meta_social.router)

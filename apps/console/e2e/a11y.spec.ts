@@ -87,14 +87,11 @@ test.describe("CP-30 — axe + overflow on every main view", () => {
   });
 
   // Spec 016 (T059): the dialogs of the block, opened, under axe.
-  test("spec 016: the move-quota dialog and the model card pass axe when open", async ({ page }) => {
-    // Spec 018 (R3.1): la tarjeta de modelo vive ahora dentro de «Agente».
+  test("spec 016: the agent tab and the move-quota dialog pass axe when open", async ({ page }) => {
+    // Spec 065 (9.3): la tarjeta de modelo del cliente salió de «Agente»; el
+    // modelo se elige por agente en Agente › Avanzado de la consola nueva.
     await page.goto(`/clients/${encodeURIComponent(ref)}/agent`);
     await expect(page.locator("main#main")).toBeVisible();
-    const model = page.getByRole("radiogroup", { name: /Modelo|Model/ });
-    if (await model.count()) {
-      await model.getByRole("radio").last().click();
-    }
     let axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "best-practice"]).exclude("iframe").analyze();
     expect(axe.violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
 

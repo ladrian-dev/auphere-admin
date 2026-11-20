@@ -32,7 +32,7 @@ y por unidad a la vez lo cobra dos veces, o toma el que la consulta lea primero
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 #: Se valoran contra ``model_profiles``: llevan un modelo detrás.
@@ -114,9 +114,25 @@ def weight_for(model_id: str, weights: Mapping[str, Decimal | None]) -> Decimal:
     return Decimal(weight)
 
 
-#: Los tres carriles que llevan peso. ``cache_write`` **no está**, y no es un
-#: olvido: la escritura en caché no come tope y no gana un cuarto multiplicador.
-LANES: tuple[str, ...] = ("input", "cache_read", "output")
+#: Los tres carriles que todo modelo cobrado por tokens pesa (spec 007).
+REQUIRED_LANES: tuple[str, ...] = ("input", "cache_read", "output")
+#: Spec 065 (research.md §D14): el cuarto, la escritura en caché. Anthropic y GPT-5.6 la
+#: facturan a 1,25 veces la entrada; dentro de la entrada se cobraba a 1x y el margen de ese
+#: carril quedaba por debajo del multiplicador. Pesa solo en los modelos con tarifa de
+#: escritura: en los demás el peso es 0 y lo escrito sigue dentro de la entrada, como antes.
+LANES: tuple[str, ...] = (*REQUIRED_LANES, "cache_write")
+
+
+@dataclass(frozen=True)
+class PriceTier:
+    """El tramo de precio de una llamada larga (``model_prices.surcharge``, 0221).
+
+    Haiku 5.5 cobra la petición entera a 5 veces por encima de 100.000 tokens de prompt.
+    Se decide **por llamada**: dos llamadas de 60.000 en un turno no pasan el umbral.
+    """
+
+    above_tokens: int
+    multiplier: Decimal
 
 
 @dataclass(frozen=True)
@@ -124,21 +140,51 @@ class LaneWeights:
     """Cuántas unidades de cuota cuesta un token de cada carril (spec 007, R1).
 
     Cada uno se deriva de la tarifa de **su propio carril**, de modo que el
-    cociente entre lo cobrado y lo que cuesta sea el mismo en los tres. Esa es
+    cociente entre lo cobrado y lo que cuesta sea el mismo en los cuatro. Esa es
     la propiedad entera: **el margen deja de depender de la mezcla** de entrada,
     caché y salida que produzca el trabajo del partner.
+
+    ``cache_write`` no tiene valor por defecto (spec 065): un 0 olvidado cobraría lo
+    escrito a precio de entrada en un modelo que lo factura a 1,25x. ``tier`` es el tramo
+    del modelo, si lo tiene; lo aplica :meth:`for_prompt` llamada a llamada, nunca
+    ``quota_tokens`` sobre un total.
     """
 
     input: Decimal
     cache_read: Decimal
     output: Decimal
+    cache_write: Decimal
+    tier: PriceTier | None = None
+
+    @property
+    def weighs_writes(self) -> bool:
+        """¿Lo escrito en caché sale de la entrada y va por su carril?"""
+        return self.cache_write > 0
+
+    def for_prompt(self, prompt_tokens: int) -> LaneWeights:
+        """Los pesos de UNA llamada con ``prompt_tokens`` de prompt: los del tramo si lo pasa.
+
+        Estrictamente por encima del umbral, sobre el prompt bruto de la llamada (con las
+        dos cachés dentro, que es lo que cuenta el proveedor). Devuelve pesos sin tramo, para
+        que aplicarlo dos veces no multiplique dos veces.
+        """
+        tier = self.tier
+        if tier is None or prompt_tokens <= tier.above_tokens:
+            return self if tier is None else replace(self, tier=None)
+        m = tier.multiplier
+        return LaneWeights(
+            input=self.input * m,
+            cache_read=self.cache_read * m,
+            output=self.output * m,
+            cache_write=self.cache_write * m,
+        )
 
 
 def weights_for(
     model_id: str,
     weights: Mapping[str, Mapping[str, Decimal | None] | None],
 ) -> LaneWeights:
-    """Los tres pesos de un modelo, o ``UnweightedModel`` diciendo qué falta.
+    """Los cuatro pesos de un modelo, o ``UnweightedModel`` diciendo qué falta.
 
     **Los tres o ninguno.** Un modelo con dos pesos y uno nulo se rechaza igual
     que uno sin ninguno, y el modo de fallo peligroso es justamente ése: parece
@@ -147,6 +193,12 @@ def weights_for(
     depender de la base — porque un catálogo se sirve desde una caché en memoria
     y un ``CHECK`` no protege lo que ya está cargado.
 
+    **La escritura (spec 065).** El mapa trae ``cache_write`` ya resuelto por
+    ``pricing.lane_weights_from``: el peso guardado, 0 si el modelo no tiene tarifa de
+    escritura, o nulo si la tiene y nadie le puso peso. Nulo se rechaza como los otros: cobrar
+    lo escrito a 0 sería el cobro silencioso a la baja. El tramo, si lo hay, viaja en
+    ``tier_above_tokens`` y ``tier_multiplier``.
+
     El error **nombra el modelo y el carril**: en producción, quien lo lea tiene
     que saber qué fila mirar sin abrir un depurador.
     """
@@ -154,19 +206,28 @@ def weights_for(
     if lanes is None:
         raise UnweightedModel(
             f"{model_id} has no quota lane weights: it is in the catalog but cannot "
-            "be charged against a pool. Load its three weights in model_profiles."
+            "be charged against a pool. Load its weights in model_profiles."
         )
     missing = [lane for lane in LANES if lanes.get(lane) is None]
     if missing:
         raise UnweightedModel(
             f"{model_id} is missing the quota weight for {', '.join(missing)}: "
-            "a model is weighted on all three lanes or on none. Load the missing "
-            "one in model_profiles."
+            "a model is weighted on input, cache_read and output (and on cache_write "
+            "when it has a cache write tariff) or on none. Load the missing one in "
+            "model_profiles."
         )
+    above = lanes.get("tier_above_tokens")
+    multiplier = lanes.get("tier_multiplier")
     return LaneWeights(
         input=Decimal(lanes["input"]),  # type: ignore[arg-type]
         cache_read=Decimal(lanes["cache_read"]),  # type: ignore[arg-type]
         output=Decimal(lanes["output"]),  # type: ignore[arg-type]
+        cache_write=Decimal(lanes["cache_write"]),  # type: ignore[arg-type]
+        tier=(
+            None
+            if above is None or multiplier is None
+            else PriceTier(above_tokens=int(above), multiplier=Decimal(multiplier))
+        ),
     )
 
 
@@ -222,14 +283,15 @@ def weight_drift(
     sin el acoplamiento. Se ejecuta al cargar el catálogo y no bloquea nada — una
     divergencia no puede tumbar la plataforma, pero tampoco puede ser invisible.
     """
-    lane_prices = {"input": "input", "cache_read": "cache_read", "output": "output"}
     drifts: list[WeightDrift] = []
     for model_id, lanes in weights.items():
-        if lanes is None or any(lanes.get(lane) is None for lane in LANES):
+        if lanes is None or any(lanes.get(lane) is None for lane in REQUIRED_LANES):
             continue
         model_prices = prices.get(model_id) or {}
+        # Spec 065: también la escritura. Sin tarifa (precio nulo o 0) no hay nada que
+        # comparar, y una tarifa sin peso ya la rechaza ``weights_for``.
         for lane in LANES:
-            price = model_prices.get(lane_prices[lane])
+            price = model_prices.get(lane)
             stored = lanes.get(lane)
             if price is None or stored is None or Decimal(price) <= 0:
                 continue
@@ -254,7 +316,9 @@ __all__ = [
     "NOT_VALUED_METERS",
     "QUOTA_FLOOR_MULTIPLIER",
     "QUOTA_TARGET_MULTIPLIER",
+    "REQUIRED_LANES",
     "LaneWeights",
+    "PriceTier",
     "UnweightedModel",
     "WeightDrift",
     "lane_needs_weight",

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { DeploymentRow, SalePolicy } from "@/lib/backend-models";
 
-import { DRIFT, POLICY, row } from "./fixtures";
+import { DRIFT, POLICY, WRITES, row } from "./fixtures";
 
 const h = vi.hoisted(() => ({ weights: vi.fn(), success: vi.fn(), refresh: vi.fn() }));
 vi.mock("../actions", () => ({
@@ -101,5 +101,38 @@ describe("the weights dialog", () => {
     const dialog = await openWeights(row({ current_price: null, sale: { state: "no_cost", lanes: null, proposed: null } }));
     expect(weight(dialog, "Salida").value).toBe("4,4");
     expect(dialog.textContent).toMatch(/Sin coste vigente/);
+  });
+});
+
+/** Spec 065: the fourth lane, the cache write, on a model that bills it. */
+describe("the cache-write weight", () => {
+  it("is edited and saved with the others on a model that bills cache writes", async () => {
+    h.weights.mockResolvedValue({ ok: true, data: WRITES });
+    const dialog = await openWeights(WRITES);
+    expect(weight(dialog, "Escritura en caché").value).toBe("1,1");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "La escritura a 2,2");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Guardar los pesos" }));
+    expect(h.weights).toHaveBeenCalledWith("sol-w", {
+      input: "0.88",
+      cache_read: "0.088",
+      output: "4.4",
+      cache_write: "1.1",
+      reason: "La escritura a 2,2",
+    });
+  });
+
+  it("refuses a write weight under the floor: 0,66 × 10 ÷ 5 = 1,32×", async () => {
+    const dialog = await openWeights(WRITES);
+    await retype(weight(dialog, "Escritura en caché"), "0,66");
+    await userEvent.type(within(dialog).getByRole("textbox", { name: /Motivo/ }), "x");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Guardar los pesos" }));
+    expect(h.weights).not.toHaveBeenCalled();
+    expect(weight(dialog, "Escritura en caché").getAttribute("aria-invalid")).toBe("true");
+    expect(dialog.textContent).toMatch(/1,32×/);
+  });
+
+  it("has no field on a model without a write tariff: the meter keeps the write in the input", async () => {
+    const dialog = await openWeights();
+    expect(within(dialog).queryByRole("textbox", { name: /^Escritura en caché/ })).toBeNull();
   });
 });

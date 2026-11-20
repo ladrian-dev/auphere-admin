@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 import sqlalchemy as sa
 
-from nexus_api.core.respond_catalog import RESPOND_MODEL_IDS
+from nexus_api.core.respond_catalog import OFFERABLE_MODELS, RESPOND_MODEL_IDS
 
 pytestmark = pytest.mark.asyncio
 
@@ -43,8 +43,10 @@ async def test_admin_models_seeded_and_a_is_not_b(client, console_world, admin_h
     _assert_no_sk(got_b)
     ids_a = [row["model_id"] for row in got_a.json()["items"] if row["allowed"]]
     ids_b = [row["model_id"] for row in got_b.json()["items"] if row["allowed"]]
-    assert ids_a == list(RESPOND_MODEL_IDS)
-    assert ids_b == list(RESPOND_MODEL_IDS)
+    # Spec 065 (0238): los seis, también los de Anthropic sin habilitar.
+    assert ids_a == [m for m, _ in OFFERABLE_MODELS]
+    assert ids_b == [m for m, _ in OFFERABLE_MODELS]
+    assert set(RESPOND_MODEL_IDS) <= set(ids_a)
 
     put_a = await client.put(
         _models(a["partner_id"]),
@@ -61,77 +63,7 @@ async def test_admin_models_seeded_and_a_is_not_b(client, console_world, admin_h
     assert still_b.status_code == 200, still_b.text
     allowed_b = {row["model_id"] for row in still_b.json()["items"] if row["allowed"]}
     assert TERRA in allowed_b
-    assert allowed_b == set(RESPOND_MODEL_IDS)
-
-
-async def test_console_picker_hides_terra_and_put_is_422(
-    client, console_world, admin_headers, db_session
-) -> None:
-    a, b = console_world["a"], console_world["b"]
-    put_a = await client.put(
-        _models(a["partner_id"]),
-        headers=admin_headers,
-        json={"model_ids": [SOL, LUNA]},
-    )
-    assert put_a.status_code == 200, put_a.text
-
-    picker_a = await client.get("/console/models", headers=a["headers"]())
-    assert picker_a.status_code == 200, picker_a.text
-    assert [row["model_id"] for row in picker_a.json()] == [SOL, LUNA]
-    assert TERRA not in {row["model_id"] for row in picker_a.json()}
-    _assert_no_sk(picker_a)
-
-    picker_b = await client.get("/console/models", headers=b["headers"]())
-    assert picker_b.status_code == 200, picker_b.text
-    assert [row["model_id"] for row in picker_b.json()] == list(RESPOND_MODEL_IDS)
-
-    denied = await client.put(
-        "/console/clients/{}/model".format(a["ref"]),
-        headers=a["headers"](),
-        json={"model_id": TERRA},
-    )
-    assert denied.status_code == 422, denied.text
-    _assert_no_sk(denied)
-
-    ok = await client.put(
-        "/console/clients/{}/model".format(a["ref"]),
-        headers=a["headers"](),
-        json={"model_id": SOL},
-    )
-    assert ok.status_code == 200, ok.text
-
-    bindings = (
-        await db_session.execute(
-            sa.text(
-                "SELECT p.model_id FROM tenant_model_bindings b "
-                "JOIN model_profiles p ON p.id = b.model_profile_id "
-                "WHERE b.tenant_id = :t"
-            ),
-            {"t": str(a["tenant_id"])},
-        )
-    ).all()
-    assert [row[0] for row in bindings] == [SOL]
-
-    # Spec 016 (R5.3): la allowlist que deja fuera el modelo enlazado borra
-    # el binding —antes se quedaba y el cliente seguía con un modelo que el
-    # plan ya no incluía— y avisa al partner. Ver ``test_shrinking_the_allowlist…``.
-    shrink = await client.put(
-        _models(a["partner_id"]),
-        headers=admin_headers,
-        json={"model_ids": [LUNA]},
-    )
-    assert shrink.status_code == 200, shrink.text
-    still = (
-        await db_session.execute(
-            sa.text(
-                "SELECT p.model_id FROM tenant_model_bindings b "
-                "JOIN model_profiles p ON p.id = b.model_profile_id "
-                "WHERE b.tenant_id = :t"
-            ),
-            {"t": str(a["tenant_id"])},
-        )
-    ).all()
-    assert still == []
+    assert allowed_b == {m for m, _ in OFFERABLE_MODELS}
 
 
 async def test_admin_models_rejects_extra_and_outside_catalog(
@@ -359,105 +291,27 @@ async def _bound_model(db_session, tenant_id) -> str | None:
     return None if row is None else str(row[0])
 
 
-async def test_shrinking_the_allowlist_resets_the_binding_and_tells_the_partner(
-    client, console_world, admin_headers, db_session
+async def test_claude_can_go_on_a_partners_list_before_it_is_enabled(
+    client, console_world, admin_headers
 ) -> None:
-    from nexus_api.db.models import ConsoleNotification
-
-    a, b = console_world["a"], console_world["b"]
-    for world, model in ((a, SOL), (b, SOL)):
-        ok = await client.put(
-            "/console/clients/{}/model".format(world["ref"]),
-            headers=world["headers"](),
-            json={"model_id": model},
-        )
-        assert ok.status_code == 200, ok.text
-
-    # A pierde Sol: su binding se borra y recibe el aviso. B no cambia.
-    shrink = await client.put(
-        _models(a["partner_id"]), headers=admin_headers, json={"model_ids": [LUNA]}
-    )
-    assert shrink.status_code == 200, shrink.text
-    assert await _bound_model(db_session, a["tenant_id"]) is None
-    assert await _bound_model(db_session, b["tenant_id"]) == SOL
-
-    notices = (
-        await db_session.scalars(
-            sa.select(ConsoleNotification).where(
-                ConsoleNotification.partner_id == a["partner_id"],
-                ConsoleNotification.kind == "client.model_reset",
-            )
-        )
-    ).all()
-    assert len(notices) == 1
-    assert notices[0].external_client_ref == a["ref"]
-    assert (
-        notices[0].payload
-        == {
-            "external_client_ref": a["ref"],
-            "from_model": "Sol",
-            "to_model": "Sol",
-        }
-        or notices[0].payload["from_model"] == "Sol"
-    )
-    assert notices[0].severity == "info"
-    _assert_no_sk(shrink)
-    assert (
-        await db_session.scalar(
-            sa.select(sa.func.count())
-            .select_from(ConsoleNotification)
-            .where(ConsoleNotification.partner_id == b["partner_id"])
-        )
-    ) == 0
-
-    # Reescribir la misma lista no avisa otra vez (ya no hay binding).
-    again = await client.put(
-        _models(a["partner_id"]), headers=admin_headers, json={"model_ids": [LUNA]}
-    )
-    assert again.status_code == 200
-    assert (
-        await db_session.scalar(
-            sa.select(sa.func.count())
-            .select_from(ConsoleNotification)
-            .where(
-                ConsoleNotification.partner_id == a["partner_id"],
-                ConsoleNotification.kind == "client.model_reset",
-            )
-        )
-    ) == 1
-
-    # El cliente lo ve en su binding: sin modelo, con el defecto nombrado.
-    now = (
-        await client.get("/console/clients/{}/model".format(a["ref"]), headers=a["headers"]())
-    ).json()
-    assert now["is_bound"] is False
-    assert now["fallback_display_name"] == "Sol"
-
-
-async def test_rewriting_the_allowlist_with_the_bound_model_changes_nothing(
-    client, console_world, admin_headers, db_session
-) -> None:
-    from nexus_api.db.models import ConsoleNotification
-
+    """Spec 065 (T008; requisito 7.4): la lista se valida contra lo ofrecible, no contra lo
+    habilitado. Auphere puede preparar la lista de un partner antes de la batería real."""
     a = console_world["a"]
-    ok = await client.put(
-        "/console/clients/{}/model".format(a["ref"]),
-        headers=a["headers"](),
-        json={"model_id": LUNA},
+    put = await client.put(
+        _models(a["partner_id"]),
+        headers=admin_headers,
+        json={"model_ids": [SOL, "anthropic/claude-sonnet-5-5"]},
     )
-    assert ok.status_code == 200, ok.text
-    keep = await client.put(
-        _models(a["partner_id"]), headers=admin_headers, json={"model_ids": [LUNA, SOL]}
+    assert put.status_code == 200, put.text
+    allowed = {row["model_id"] for row in put.json()["items"] if row["allowed"]}
+    assert allowed == {SOL, "anthropic/claude-sonnet-5-5"}
+    bad = await client.put(
+        _models(a["partner_id"]),
+        headers=admin_headers,
+        json={"model_ids": [SOL, "anthropic/claude-sonnet-4-6"]},
     )
-    assert keep.status_code == 200, keep.text
-    assert await _bound_model(db_session, a["tenant_id"]) == LUNA
-    assert (
-        await db_session.scalar(
-            sa.select(sa.func.count())
-            .select_from(ConsoleNotification)
-            .where(
-                ConsoleNotification.partner_id == a["partner_id"],
-                ConsoleNotification.kind == "client.model_reset",
-            )
-        )
-    ) == 0
+    assert bad.status_code == 422, "sin perfil de llamada no es ofrecible"
+
+
+# Spec 065: la lista del partner ya no reconcilia la asignación de cliente; las elecciones
+# de cada agente se reconcilian con T082/T083 (test_agent_model_admin.py).

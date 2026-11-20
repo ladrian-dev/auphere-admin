@@ -46,9 +46,10 @@ async def test_roles_without_a_binding_are_listed_as_inherited(
 
 
 async def test_binding_a_role_survives_a_round_trip(client, admin_headers, seed_tenants) -> None:
+    # Spec 065: ``respond`` ya no se asigna por cliente (422); el rol que queda es ``classify``.
     tenant = seed_tenants["a"]
     r = await client.put(
-        f"/admin/tenants/{tenant}/model-bindings/respond",
+        f"/admin/tenants/{tenant}/model-bindings/classify",
         headers=admin_headers,
         json={
             "model_id": "anthropic/claude-haiku-4-5",
@@ -59,14 +60,14 @@ async def test_binding_a_role_survives_a_round_trip(client, admin_headers, seed_
     assert r.json()["model_id"] == "anthropic/claude-haiku-4-5"
 
     listed = await client.get(f"/admin/tenants/{tenant}/model-bindings", headers=admin_headers)
-    respond = next(b for b in listed.json() if b["role"] == "respond")
-    assert respond["is_bound"] is True
-    assert respond["fallback_chain"] == ["anthropic/claude-sonnet-4-6"]
+    classify = next(b for b in listed.json() if b["role"] == "classify")
+    assert classify["is_bound"] is True
+    assert classify["fallback_chain"] == ["anthropic/claude-sonnet-4-6"]
 
     # Segundo PUT: reasignar, no duplicar. El UNIQUE (tenant, role) lo
     # impide en la base, pero el endpoint tiene que responder 200, no 500.
     r2 = await client.put(
-        f"/admin/tenants/{tenant}/model-bindings/respond",
+        f"/admin/tenants/{tenant}/model-bindings/classify",
         headers=admin_headers,
         json={"model_id": "anthropic/claude-sonnet-4-6"},
     )
@@ -97,7 +98,7 @@ async def test_a_model_outside_the_catalog_is_rejected(client, admin_headers, se
     """Se rechaza en el PUT y no al resolver: un binding a un modelo
     inexistente no daría error hasta el primer turno del cliente."""
     r = await client.put(
-        f"/admin/tenants/{seed_tenants['a']}/model-bindings/respond",
+        f"/admin/tenants/{seed_tenants['a']}/model-bindings/classify",
         headers=admin_headers,
         json={"model_id": "anthropic/claude-que-no-existe"},
     )

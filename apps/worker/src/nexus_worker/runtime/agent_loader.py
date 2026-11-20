@@ -45,9 +45,10 @@ from typing import Any
 import sqlalchemy as sa
 import structlog
 from nexus_api.core.errors import IsolationViolation
+from nexus_api.core.respond_profiles import ANTHROPIC_MCP, ANTHROPIC_SKILLS
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Agent, Tenant
+from nexus_api.db.models import Agent, ModelProfile, Tenant
 from nexus_api.repositories import AgentConfigRepository
 from nexus_api.services.business.hours import RUNTIME_KEY, runtime_snapshot
 from nexus_api.services.reception import targets_of
@@ -132,6 +133,21 @@ class AgentBundle:
     # Spec 047 (requisito 53) — the agents this version may hand a conversation
     # to, when it is «Recepción» (``AgentSpec.reception``). Empty for any other.
     reception_targets: tuple[ReceptionTarget, ...] = ()
+
+    # Spec 065 (requisito 2.1) — the model this agent chose to answer with, and who chose
+    # it (``partner`` / ``operator``). ``None``: Auphere's default for this environment.
+    respond_model: str | None = None
+    respond_model_set_by: str | None = None
+
+    @property
+    def agent_needs(self) -> frozenset[str]:
+        """What this agent uses that only some models can run (requisito 4.8)."""
+        needs: set[str] = set()
+        if self.runtime_skills:
+            needs.add(ANTHROPIC_SKILLS)
+        if self.runtime_mcp_connector:
+            needs.add(ANTHROPIC_MCP)
+        return frozenset(needs)
 
 
 #: Cache key: the tenant and the agent; ``None`` = «the principal agent».
@@ -305,7 +321,27 @@ async def bundle_of(session: Any, tenant_id: uuid.UUID, cfg: Any) -> AgentBundle
         grader_sample_rate=float(cfg.grader_sample_rate or 0),
         model_bindings=model_bindings,
         reception_targets=await _reception_targets(session, cfg),
+        **await _respond_choice(session, cfg.agent_id),
     )
+
+
+async def _respond_choice(session: Any, agent_id: uuid.UUID | None) -> dict[str, str | None]:
+    """Spec 065 (T012): the agent's choice of model, read in the client's scoped session.
+
+    By the agent's id and with no ``tenant_id`` of its own: the forced RLS of ``agents``
+    is what keeps another client's agent out, as for the rest of the bundle."""
+    if agent_id is None:
+        return {"respond_model": None, "respond_model_set_by": None}
+    row = (
+        await session.execute(
+            sa.select(ModelProfile.model_id, Agent.respond_model_set_by)
+            .join(ModelProfile, ModelProfile.id == Agent.respond_model_profile_id)
+            .where(Agent.id == agent_id)
+        )
+    ).one_or_none()
+    if row is None:
+        return {"respond_model": None, "respond_model_set_by": None}
+    return {"respond_model": str(row[0]), "respond_model_set_by": str(row[1])}
 
 
 async def _reception_targets(session: Any, cfg: Any) -> tuple[ReceptionTarget, ...]:

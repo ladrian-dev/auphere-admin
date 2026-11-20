@@ -111,6 +111,18 @@ class ModelProfile(Base):
     quota_weight_output: Mapped[decimal.Decimal | None] = mapped_column(
         Numeric(12, 6), nullable=True
     )
+    #: Spec 065 (0238, requisito 1.3): desde cuándo, quién y con qué pasada de la batería se
+    #: puede elegir este modelo para responder en este entorno. Nulo = no habilitado.
+    respond_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    respond_enabled_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    respond_enabled_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Spec 065 (0239): el cuarto carril, la escritura en caché. Cero en un modelo por
+    #: tokens sin tarifa de escritura; nulo en los que no se cobran por tokens.
+    quota_weight_cache_write: Mapped[decimal.Decimal | None] = mapped_column(
+        Numeric(12, 6), nullable=True
+    )
 
     max_context: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

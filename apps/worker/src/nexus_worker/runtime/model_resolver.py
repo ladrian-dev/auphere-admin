@@ -120,6 +120,9 @@ _BINDINGS_SQL = sa.text(
            b.max_cost_per_turn_usd
       FROM tenant_model_bindings b
       JOIN model_profiles p ON p.id = b.model_profile_id
+     -- Spec 065 (requisito 12.4): el modelo de respuesta es de cada agente; la asignación
+     -- de cliente del rol respond ya no decide nada.
+     WHERE b.role <> 'respond'
     """
 )
 

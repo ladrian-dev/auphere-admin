@@ -12,6 +12,7 @@ valor por defecto nuevo que no pase por el registro rompe este test.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -112,3 +113,66 @@ def test_the_worker_uses_are_part_of_the_registry() -> None:
     assert set(default_models()) >= WORKER_USES
     assert {"respond", "classify", "judge"} <= WORKER_USES
     assert "companion" not in WORKER_USES, "la resuelve la API con su entorno"
+
+
+# ── Spec 065 (T056 y T077): las reservas habilitadas y el modelo por defecto ──
+
+
+@pytest.fixture
+def catalog() -> Iterator[Callable[..., None]]:
+    """Instala un catálogo con los modelos habilitados que se pidan; al acabar, la semilla."""
+    from nexus_api.core import respond_catalog
+    from nexus_api.core.respond_profiles import PROFILES
+
+    def install(*enabled: str, agent_default: str | None = None) -> None:
+        rows = [
+            {
+                "model_id": m,
+                "status": "active",
+                "offer_label": m,
+                "price_input_per_mtok": 1,
+                "respond_enabled_at": "2026-11-20" if m in enabled else None,
+            }
+            for m in PROFILES
+        ]
+        assert respond_catalog.refresh_from_rows(rows, agent_default=agent_default)
+
+    yield install
+    respond_catalog.reset()
+
+
+def test_the_enabled_cross_family_reserves_are_uses(catalog: Callable[..., None]) -> None:
+    """Research §D5 y §D11: la reserva de cada familia es un uso mientras esté habilitada en
+    este entorno, para que la 059 no deje retirarla. Sin habilitar, no responde a nadie."""
+    from nexus_api.core.respond_profiles import SONNET_55, TERRA
+
+    models = default_models()
+    assert models["respond_fallback_anthropic"] == TERRA, "Terra ya responde al desplegar"
+    assert "respond_fallback_openai" not in models, "Sonnet 5.5 sin habilitar no es uso"
+
+    catalog(TERRA, SONNET_55)
+    models = default_models()
+    assert models["respond_fallback_openai"] == SONNET_55
+    assert models["respond_fallback_anthropic"] == TERRA
+
+    catalog(SONNET_55)
+    assert "respond_fallback_anthropic" not in default_models()
+
+
+def test_auphere_default_for_agents_is_a_use(catalog: Callable[..., None]) -> None:
+    """Spec 065 (requisito 13; T077): el modelo de los agentes sin elección
+    (``platform_settings.agent_respond_default``) es un uso: la 059 no deja retirarlo."""
+    from nexus_api.core.respond_catalog import SOL_MODEL_ID, agent_respond_default
+
+    assert default_models()["agent_default"] == agent_respond_default() == SOL_MODEL_ID
+    catalog("anthropic/claude-haiku-5-5", agent_default="anthropic/claude-haiku-5-5")
+    assert default_models()["agent_default"] == "anthropic/claude-haiku-5-5"
+
+
+def test_the_catalog_dependent_uses_are_not_compared_with_the_heartbeat() -> None:
+    """Las reservas y el modelo por defecto salen del catálogo cacheado de cada proceso: la
+    API y el worker pueden leerlo en momentos distintos sin que eso sea un desacuerdo."""
+    from nexus_worker.platform_models import WORKER_USES
+
+    for use in ("respond_fallback_openai", "respond_fallback_anthropic", "agent_default"):
+        assert use not in WORKER_USES

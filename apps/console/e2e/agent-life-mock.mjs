@@ -16,6 +16,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
+import { agentModelFixture } from "./agent-model-fixture.mjs";
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8716);
 const REF = "barberia-cultor";
@@ -258,6 +259,8 @@ const server = createServer(async (req, res) => {
   const path = url.pathname;
   const route = `${req.method} ${path}`;
   process.stderr.write(`[life-mock] ${route}\n`);
+  const agentModel = agentModelFixture(route);
+  if (agentModel) return send(res, 200, agentModel);
 
   if (route === "GET /health") return send(res, 200, { status: "ok" });
   if (route === "POST /__test/reset") {

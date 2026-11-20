@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
 
 from nexus_api.api.deps import get_redis
-from nexus_api.db.models import AgentConfig, AgentConfigStatus
+from nexus_api.db.models import AgentConfig, AgentConfigStatus, ModelProfile
 
 from .agent_draft_routes import agent_in_path
 from .deps import ClientScope, require_build_room
@@ -91,6 +91,11 @@ class TurnOut(BaseModel):
     several_bubbles: bool = False
     actions: list[ActionOut] = Field(default_factory=list)
     failure: TurnFailureOut | None = None
+    #: Spec 065 (T062): el modelo que respondió de verdad, su nombre, y si fue la reserva.
+    #: Solo en los turnos del agente.
+    model: str | None = None
+    model_name: str | None = None
+    fell_back: bool = False
 
 
 class SessionOut(BaseModel):
@@ -310,12 +315,22 @@ async def send_message(
             raise _error("unknown_version", status.HTTP_404_NOT_FOUND) from exc
         except TimeoutError as exc:
             raise _error("turn_timeout", status.HTTP_504_GATEWAY_TIMEOUT) from exc
+        model_name = (
+            await scope.session.scalar(
+                sa.select(ModelProfile.display_name).where(ModelProfile.model_id == outcome.model)
+            )
+            if outcome.model
+            else None
+        )
         turn = TurnOut(
             role="agent",
             bubbles=outcome.bubbles,
             several_bubbles=outcome.several_bubbles,
             actions=[ActionOut(**a) for a in outcome.actions],
             failure=TurnFailureOut(reason=outcome.failure.reason) if outcome.failure else None,
+            model=outcome.model,
+            model_name=str(model_name) if model_name else outcome.model,
+            fell_back=outcome.fell_back,
         )
         transcript = list(data.get("transcript") or [])
         transcript.append(

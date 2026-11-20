@@ -7,7 +7,6 @@ import { AgentPromptEditor } from "@/components/agent-draft/prompt-editor";
 import { DraftSaveBar } from "@/components/agent-draft/save-bar";
 import { AgentVersionHistory } from "@/components/agent-draft/version-history";
 import { AgentSettingsForm } from "@/components/agent-tools/agent-settings-form";
-import { ModelPicker } from "@/components/agent-tools/model-picker";
 import { AgentVersions } from "@/components/clients/agent-versions";
 import { getT } from "@/i18n/server";
 import { backendFor } from "@/lib/backend";
@@ -35,9 +34,12 @@ import { agentChoice, getAgentsCached } from "../data";
  * Sin agente todavía (un cliente recién creado sin plantilla) no hay borrador
  * que leer: la pantalla de antes ofrece escribir el primero.
  *
- * El selector de modelo se degrada solo: un catálogo que no se puede leer
- * esconde la tarjeta, nunca rompe los ajustes. Spec 030: con varios agentes,
- * `?agent=` dice de cuál son; sin él, del principal. El modelo es del cliente.
+ * Spec 030: con varios agentes, `?agent=` dice de cuál son; sin él, del
+ * principal.
+ *
+ * Spec 065 (9.3): aquí ya no se elige el modelo. Era del cliente y ahora es de
+ * cada agente: se elige en Agente › Avanzado de la consola nueva, y Auphere lo
+ * cambia desde el panel.
  */
 export default async function AgentPage({
   params,
@@ -57,11 +59,9 @@ export default async function AgentPage({
   const draftAgent = agentId ?? listed?.find((a) => a.is_principal)?.id;
   const canWrite = can(principal.role, "agents:write");
 
-  const [bundle, settings, models, current, draft, history] = await Promise.all([
+  const [bundle, settings, draft, history] = await Promise.all([
     api.getAgent(ref, agentId),
     api.getAgentSettings(ref, agentId),
-    api.listModels().catch(() => null),
-    api.getClientModel(ref).catch(() => null),
     draftAgent ? api.getAgentDraft(ref, draftAgent).catch(() => null) : Promise.resolve(null),
     draftAgent ? api.listAgentVersions(ref, draftAgent).catch(() => null) : Promise.resolve(null),
   ]);
@@ -72,14 +72,12 @@ export default async function AgentPage({
       <AgentSettingsForm key={agentId ?? "principal"} refId={ref} data={settings} canWrite={canWrite} actor={principal.email} agentId={agentId} />
     </Section>
   );
-  const modelPicker = models && current ? <ModelPicker refId={ref} models={models} current={current} canWrite={canWrite} /> : null;
 
   if (!draftAgent || !draft) {
     return (
       <section className="flex min-w-0 flex-col gap-(--space-section)" aria-label={t("agent.title")}>
         <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t("agent.description")}</p>
         <AgentVersions key={agentId ?? "principal"} refId={ref} bundle={bundle} canWrite={canWrite} agentId={agentId} />
-        {modelPicker}
         {settingsSection}
       </section>
     );
@@ -93,7 +91,6 @@ export default async function AgentPage({
         aria-label={t("agent.title")}
       >
         <AgentPromptEditor />
-        {modelPicker}
         {settingsSection}
         <AgentVersionHistory entries={history} prompts={prompts} />
         <DraftSaveBar />

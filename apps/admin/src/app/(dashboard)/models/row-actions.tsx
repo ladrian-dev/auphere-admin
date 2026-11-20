@@ -19,6 +19,8 @@ import {
   ActivateDialog,
   CancelRetirementDialog,
   PriceDialog,
+  RespondDisableDialog,
+  RespondEnableDialog,
   RestoreDialog,
   RetireDialog,
   UnavailableDialog,
@@ -26,13 +28,16 @@ import {
 } from "./deployment-dialogs";
 import { rowMenu } from "./labels";
 
-type Open = "weights" | "activate" | "cancel" | "restore" | "retire" | "unavailable";
+type Open = "weights" | "activate" | "cancel" | "restore" | "retire" | "unavailable" | "respondEnable" | "respondDisable";
 
 /**
  * Spec 059 (4.2, guías de Apple del dueño): one action in sight per row,
  * «Precio»; the rest in «⋯», with the destructive ones last and apart. A
  * model in use offers neither «Retirar» nor «No disponible» (1.1, 1.2): the
  * absence is designed, not a disabled button.
+ *
+ * Spec 065: «Habilitar para responder» with the regular ones, and «Deshabilitar
+ * para responder» last, with the destructive ones.
  */
 export function RowActions({
   row,
@@ -65,10 +70,14 @@ export function RowActions({
     menu.activate ? { key: "activate" as const, label: "Activar" } : null,
     menu.cancelRetirement ? { key: "cancel" as const, label: "Cancelar retirada" } : null,
     menu.restore ? { key: "restore" as const, label: "Volver a disponible" } : null,
+    // Spec 065 (1.3): only with a call profile, on an active model.
+    menu.respondEnable ? { key: "respondEnable" as const, label: "Habilitar para responder" } : null,
   ].filter((i) => i !== null);
   const destructive = [
     menu.retire ? { key: "retire" as const, label: "Retirar" } : null,
     menu.unavailable ? { key: "unavailable" as const, label: "No disponible" } : null,
+    // Spec 065 (1.4): not on Auphere's default for the agents nor on a reserve.
+    menu.respondDisable ? { key: "respondDisable" as const, label: "Deshabilitar para responder" } : null,
   ].filter((i) => i !== null);
 
   return (
@@ -106,6 +115,12 @@ export function RowActions({
       {menu.restore || open === "restore" ? <RestoreDialog key={`restore-${nonce}`} {...props("restore")} /> : null}
       {menu.retire || open === "retire" ? <RetireDialog key={`retire-${nonce}`} {...props("retire")} /> : null}
       {menu.unavailable || open === "unavailable" ? <UnavailableDialog key={`unavailable-${nonce}`} {...props("unavailable")} /> : null}
+      {menu.respondEnable || open === "respondEnable" ? (
+        <RespondEnableDialog key={`respond-enable-${nonce}`} {...props("respondEnable")} />
+      ) : null}
+      {menu.respondDisable || open === "respondDisable" ? (
+        <RespondDisableDialog key={`respond-disable-${nonce}`} {...props("respondDisable")} />
+      ) : null}
     </div>
   );
 }

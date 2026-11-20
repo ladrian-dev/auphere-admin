@@ -42,8 +42,12 @@ export async function generateMetadata() {
  * ellas. Cada parte que no llega lo dice en su sección.
  *
  * Spec 047 (historia 21): Conectores (el catálogo del agente, conectar y el
- * permiso de cada uno; `?tab=integrations`). Avanzado dice que el modelo lo
- * gestiona Auphere (64.1; D55); `?tab=quality` llega a esa línea.
+ * permiso de cada uno; `?tab=integrations`).
+ *
+ * Spec 065 (9.2): Avanzado enseña el modelo con el que responde el agente y los
+ * que el partner puede elegir, con su precio; `?tab=quality` llega ahí. Se lee
+ * con `agents:read`, como la pantalla; si no llega, el bloque lo dice y deja
+ * reintentar.
  *
  * Spec 047 (historias 10, 11 y 22): con `knowledge:read`, la sección
  * Conocimiento (sus fuentes y «Enseñar»); con `channels:read`, la sección
@@ -108,7 +112,7 @@ export default async function AgentScreenPage({
   const biz = businessSectionsApi(callFor(principal));
   // Spec 047 (63.1): el canal que se configura dentro del agente.
   const canal = readsChannels && typeof query.canal === "string" && UUID_RE.test(query.canal) ? query.canal : null;
-  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements, client, bizServices, bizLocations, bizHours, canalPage, canalHistory, agenda] = await Promise.all([
+  const [draft, proposals, tests, preview, history, sessions, agents, knowledge, channels, performance, conversations, improvements, client, bizServices, bizLocations, bizHours, canalPage, canalHistory, agenda, model] = await Promise.all([
     run(() => api.getBuilderDraft(ref, agentId)),
     run(() => api.listProposals(ref, agentId)),
     run(() => api.getAgentTests(ref, agentId)),
@@ -129,6 +133,7 @@ export default async function AgentScreenPage({
     canal ? run(() => api.getChannelPage(ref, canal)) : null,
     canal ? run(() => api.getChannelHistory(ref, canal)) : null,
     run(() => api.getAgentAgenda(ref, agentId)),
+    run(() => api.getAgentModel(ref, agentId)),
   ]);
   // Pasó a otro agente: su configuración se abre en el suyo.
   if (canal && canalPage?.ok && canalPage.data.agent && canalPage.data.agent.id !== agentId) redirect(channelHref(ref, canalPage.data.agent.id, canal));
@@ -213,8 +218,9 @@ export default async function AgentScreenPage({
       improvements={{ data: ok(improvements) }}
       // Spec 047 (historia 21): los Conectores se leen al montar su sección: el
       // catálogo pregunta al proveedor y no frena el resto de la pantalla.
-      // Avanzado ya no lee la calidad (64.1; D55): el modelo lo gestiona Auphere.
       connectors={{ canWrite: can(principal.role, "agents:write") }}
+      // Spec 065 (9.2): el modelo del agente, en Avanzado; `null` si no se pudo leer.
+      model={ok(model)}
       channelConfig={channelConfig}
       // T218: se pidió un canal que no se pudo leer (404, de otro cliente o la API no respondió): la pestaña Canales lo dice.
       channelUnavailable={Boolean(canal && canalPage && !canalPage.ok)}

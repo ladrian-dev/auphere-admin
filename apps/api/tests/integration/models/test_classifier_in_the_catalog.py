@@ -39,7 +39,8 @@ async def test_the_classifier_can_be_called_priced_and_charged(db_session: Any) 
         await db_session.execute(
             sa.text(
                 "SELECT quota_weight_input AS input, quota_weight_cache_read AS cache_read, "
-                "quota_weight_output AS output FROM model_profiles WHERE model_id = :m"
+                "quota_weight_output AS output, quota_weight_cache_write AS cache_write "
+                "FROM model_profiles WHERE model_id = :m"
             ),
             {"m": MODEL},
         )
@@ -48,3 +49,5 @@ async def test_the_classifier_can_be_called_priced_and_charged(db_session: Any) 
     lanes = weights_for(MODEL, {MODEL: dict(row._mapping)})
     assert lanes is not None
     assert Decimal(str(row.output)) == Decimal("0.11"), "2,2 sobre 10 USD por millón de unidades"
+    # Spec 065 (0239): el cuarto carril, 0,125 de tarifa de escritura x 2,2 / 10.
+    assert lanes.cache_write == Decimal("0.0275")

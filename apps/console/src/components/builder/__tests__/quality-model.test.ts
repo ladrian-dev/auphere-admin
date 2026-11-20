@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { QualityJob } from "@/lib/backend/agent-quality-types";
 
-import { channelsHref, groupTests, partKey, reviewFixLink, simTimeLabel, undoOpen, waitForJob, wallTime } from "../quality-model";
+import { channelsHref, groupTests, modelNamesOf, partKey, reviewFixLink, simTimeLabel, undoOpen, waitForJob, wallTime } from "../quality-model";
 
 import { REF, TESTS, job } from "./quality-fixtures";
 
@@ -86,5 +86,24 @@ describe("las pruebas, los arreglos y las partes", () => {
   it("las partes del AgentSpec tienen palabra; las desconocidas, no", () => {
     expect(partKey("rules")).toBe("builder.part.rules");
     expect(partKey("test_suite")).toBeNull();
+  });
+});
+
+describe("el nombre de los modelos que respondieron (spec 065, T062)", () => {
+  it("junta lo que se puede elegir, lo elegido y con qué responde; sin modelo, nada", () => {
+    const names = modelNamesOf({
+      agent_id: "a",
+      choice: { model_id: "anthropic/claude-opus-5-5", display_name: "Claude Opus 5.5", set_by: "operator", set_at: null },
+      effective: { model_id: "anthropic/claude-opus-5-5", display_name: "Claude Opus 5.5", source: "agent_operator", outside_offer: "operator", estimate: null },
+      options: [
+        { model_id: "openai/gpt-5.6-luna", display_name: "Luna", provider: "openai", line: "economy", estimate: null },
+        { model_id: "openai/gpt-5.6-terra", display_name: "Terra", provider: "openai", line: "balanced", estimate: null },
+      ],
+      notice: null,
+      can_change: true,
+    });
+    expect(names).toEqual({ "anthropic/claude-opus-5-5": "Claude Opus 5.5", "openai/gpt-5.6-luna": "Luna", "openai/gpt-5.6-terra": "Terra" });
+    expect(modelNamesOf(null)).toEqual({});
+    expect(modelNamesOf(undefined)).toEqual({});
   });
 });

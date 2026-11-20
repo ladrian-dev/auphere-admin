@@ -24,6 +24,13 @@ export type PlaygroundTurn = {
   actions: PlaygroundAction[];
   /** El modelo no respondió. Ausente en las conversaciones de antes. */
   failure?: { reason: PlaygroundFailureReason } | null;
+  /**
+   * Spec 065 (T062): en los turnos del agente, el modelo que respondió de verdad, su
+   * nombre y si fue la reserva. Ausentes en las conversaciones de antes.
+   */
+  model?: string | null;
+  model_name?: string | null;
+  fell_back?: boolean;
 };
 
 /** Una cita de la agenda simulada; `when` ya viene dicho en la zona del negocio. */
@@ -61,7 +68,14 @@ export type TestCriterion = { key: string; text: string };
  * pasada es una conversación con un cliente simulado. Un turno, lo que dijo
  * cada uno; en el del agente, lo que habría hecho, ya en palabras del negocio.
  */
-export type TestTurn = { role: "customer" | "agent"; text: string; actions: string[] };
+export type TestTurn = {
+  role: "customer" | "agent";
+  text: string;
+  actions: string[];
+  /** Spec 065 (T062): en los del agente, el id del modelo que respondió y si fue la reserva. */
+  model?: string | null;
+  fell_back?: boolean;
+};
 /** Por qué terminó la conversación: plan cumplido, despedida, paso a una persona, 8 turnos o un modelo que no respondió. */
 export type TestStop = "plan_done" | "goodbye" | "handoff" | "turn_limit" | "model_failed";
 export const TEST_STOPS: readonly TestStop[] = ["plan_done", "goodbye", "handoff", "turn_limit", "model_failed"];

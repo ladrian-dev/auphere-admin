@@ -54,6 +54,8 @@ from typing import Any
 import sqlalchemy as sa
 import structlog
 
+from nexus_api.core.respond_catalog import agent_respond_default
+from nexus_api.core.respond_model import AgentChoice, resolve
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import AgentConfig, NotificationKind, NotificationSeverity
@@ -166,15 +168,12 @@ _TENANTS_SQL = sa.text("SELECT id FROM tenants WHERE status <> 'archived'")
 _MAPPINGS_SQL = sa.text("SELECT tenant_id, partner_id, external_client_ref FROM partner_tenants")
 _AGENTS_SQL = sa.text(
     """
-    SELECT a.id AS agent_id, a.name, c.id AS version_id, c.policies
+    SELECT a.id AS agent_id, a.name, c.id AS version_id, c.policies, p.model_id AS chosen
       FROM agents a
       JOIN agent_configs c ON c.agent_id = a.id
+      LEFT JOIN model_profiles p ON p.id = a.respond_model_profile_id
      WHERE c.status = 'active' AND a.status <> 'archived'
     """
-)
-_RESPOND_BINDING_SQL = sa.text(
-    "SELECT p.model_id FROM tenant_model_bindings b "
-    "JOIN model_profiles p ON p.id = b.model_profile_id WHERE b.role = 'respond' LIMIT 1"
 )
 _FACTS_SQL = sa.text("SELECT eu_only, sovereign FROM business_profiles")
 _USAGE_SQL = sa.text(
@@ -189,18 +188,26 @@ _USAGE_SQL = sa.text(
 
 
 def fixed_deployment(
-    policies: Mapping[str, Any] | None, *, respond_binding: str | None, default_respond: str | None
+    policies: Mapping[str, Any] | None, *, choice: str | None, default_respond: str | None
 ) -> tuple[str | None, str | None]:
     """En qué despliegue está fijado un agente, y cómo (``pinned`` o ``today``).
-    Mismo orden que el turno de hoy: la asignación gana a la política."""
+
+    Spec 065 (T081): con la resolución única del turno, ``resolve()``: la elección del agente
+    (``choice``), si no el ajuste de su versión, si no el modelo por defecto de Auphere
+    (``default_respond``; si no se pasa, el del catálogo). Sin lo que necesita el agente: una
+    elección cuenta como en uso aunque hoy no la pueda ejecutar, que es lo prudente para no
+    retirar un modelo que alguien eligió."""
     policy = model_policy_of(policies)
     if policy is not None:
         return (policy.deployment, "pinned") if policy.kind == "pinned" else (None, None)
     llm = (policies or {}).get("llm")
     override = llm.get("respond_model") if isinstance(llm, Mapping) else None
-    key = respond_binding or (override if isinstance(override, str) and override else None)
-    key = key or default_respond
-    return (key, "today") if key else (None, None)
+    resolved = resolve(
+        AgentChoice(choice, "partner") if choice else None,
+        override if isinstance(override, str) and override else None,
+        default_respond or agent_respond_default(),
+    )
+    return resolved.model_id, "today"
 
 
 async def scan_agents(
@@ -221,7 +228,6 @@ async def scan_agents(
             rows = (await session.execute(_AGENTS_SQL)).all()
             if not rows:
                 continue
-            binding = await session.scalar(_RESPOND_BINDING_SQL)
             facts = (await session.execute(_FACTS_SQL)).one_or_none()
             usage: dict[uuid.UUID, dict[str, dict[str, tuple[Decimal, Decimal]]]] = {}
             if usage_since is not None:
@@ -232,9 +238,9 @@ async def scan_agents(
                         Decimal(str(qty)),
                         Decimal(str(cost)),
                     )
-            for agent_id, name, version_id, policies in rows:
+            for agent_id, name, version_id, policies, chosen in rows:
                 fixed_on, how = fixed_deployment(
-                    policies, respond_binding=binding, default_respond=default_respond
+                    policies, choice=chosen, default_respond=default_respond
                 )
                 certified = await certified_deployments_for_agent(
                     session, agent_id=agent_id, agent_config_id=None, suite_revision=None

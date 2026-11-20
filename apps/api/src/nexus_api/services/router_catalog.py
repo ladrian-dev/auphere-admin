@@ -325,6 +325,8 @@ class Deployment:
     w_in: Decimal | None = None
     w_cache: Decimal | None = None
     w_out: Decimal | None = None
+    #: Spec 065 (0239): el cuarto carril, la escritura en caché.
+    w_cache_write: Decimal | None = None
     id: uuid.UUID | None = None
     display_name: str | None = None
 
@@ -376,6 +378,7 @@ class Deployment:
             w_in=_dec(weights.get("w_in")),
             w_cache=_dec(weights.get("w_cache")),
             w_out=_dec(weights.get("w_out")),
+            w_cache_write=_dec(weights.get("w_cache_write")),
         )
 
     def to_contract(self) -> dict[str, Any]:
@@ -415,6 +418,7 @@ class Deployment:
                 "w_in": _num(self.w_in),
                 "w_cache": _num(self.w_cache),
                 "w_out": _num(self.w_out),
+                "w_cache_write": _num(self.w_cache_write),
             },
         }
 
@@ -465,6 +469,7 @@ def deployment_from_row(row: Mapping[str, Any], *, prices: Iterable[Price]) -> D
         w_in=_dec(row.get("quota_weight_input")),
         w_cache=_dec(row.get("quota_weight_cache_read")),
         w_out=_dec(row.get("quota_weight_output")),
+        w_cache_write=_dec(row.get("quota_weight_cache_write")),
     )
 
 
@@ -490,6 +495,10 @@ ACTIVATION_MESSAGES: dict[str, str] = {
         "Qwen3.8-Flash-Next y AGPL están excluidas)."
     ),
     "unweighted": "Faltan los pesos del medidor por carril: sin ellos el medidor rechaza el turno.",
+    "unweighted_cache_write": (
+        "Falta el peso de la escritura en caché: el modelo la factura y, sin ese peso, "
+        "sus turnos se miden pero no se cobran."
+    ),
     "no_class_certification": "No tiene certificación por clase en ninguna tarea.",
 }
 
@@ -499,6 +508,18 @@ def license_excluded(license_id: str | None) -> bool:
         return False
     normalized = license_id.strip().lower().replace(" ", "-")
     return any(fnmatch.fnmatch(normalized, p) for p in EXCLUDED_LICENSE_PATTERNS)
+
+
+def _bills_cache_writes(deployment: Deployment) -> bool:
+    """¿Su precio vigente factura la escritura en caché? El criterio de la edición de pesos
+    del panel (``sale_policy.has_write_tariff``).
+
+    El medidor mira ``model_profiles.price_cache_write_per_mtok``, que se llena desde este
+    precio cuando entra en vigor (``model_lifecycle._apply_due_prices``). Un modelo de antes
+    de la 0180 con la tarifa solo en esa columna no se vería aquí; la 0239 les puso a todos
+    su peso de escritura."""
+    price = deployment.current_price()
+    return price is not None and price.cache_write is not None and price.cache_write > 0
 
 
 def activation_problems(
@@ -517,6 +538,9 @@ def activation_problems(
             problems.append("license_unread")
     if not deployment.weighted:
         problems.append("unweighted")
+    if deployment.w_cache_write is None and _bills_cache_writes(deployment):
+        # Spec 065, 5.10: el medidor rechazaría sus turnos (``pricing._write_weight``).
+        problems.append("unweighted_cache_write")
     if not any(True for _ in class_certified_tasks):
         problems.append("no_class_certification")
     return tuple(problems)
@@ -796,7 +820,8 @@ _DEPLOYMENTS_SQL = sa.text(
            contract_dpa, subprocessor_listed, status, retire_after, capabilities, quota,
            supports_tools, supports_vision, max_context, cache_min_tokens,
            quota_weight_input, quota_weight_cache_read, quota_weight_output,
-           offer_label, price_input_per_mtok
+           quota_weight_cache_write,
+           offer_label, price_input_per_mtok, respond_enabled_at
       FROM model_profiles
     """
 )
@@ -893,7 +918,9 @@ async def load_snapshot(session: AsyncSession, *, refresh_hop: bool = True) -> C
     if refresh_hop:
         from nexus_api.core import respond_catalog
 
-        respond_catalog.refresh_from_rows(rows)
+        respond_catalog.refresh_from_rows(
+            rows, agent_default=await respond_catalog.read_agent_default(session)
+        )
     return CatalogSnapshot(
         taxonomy=taxonomy,
         deployments=deployments,

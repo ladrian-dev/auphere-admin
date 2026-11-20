@@ -361,9 +361,13 @@ async def test_the_turn_is_priced_component_by_component(monkeypatch) -> None:
     # 1.100.000 porque llevaba dentro el 0,1 de la caché, y ``_turn_cost_usd``
     # tenía que deshacer esa suma para valorar. Ahora no hay nada que deshacer:
     # un millón de tokens sin cachear son un millón, y valen 3 $.
+    #
+    # Spec 065: el grafo acumula «prompt - lectura» (``_billable_input``), con lo escrito
+    # dentro, así que un millón fresco y un millón escrito son 2.000.000. Lo escrito se
+    # valora una vez, a 3,75; hasta la 065 se cobraba además a 3 como entrada.
     handle = SimpleNamespace(
         model="anthropic/claude-sonnet-4-6",
-        total_input_tokens=1_000_000,
+        total_input_tokens=2_000_000,
         total_output_tokens=1_000_000,
         total_cache_read=1_000_000,
         total_cache_write=1_000_000,

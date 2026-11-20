@@ -14,6 +14,7 @@ import {
   multiplierBody,
   priceFormFrom,
   proposalFor,
+  sameWeights,
   saleChip,
   todayUtc,
   isInUse,
@@ -258,6 +259,26 @@ describe("numbers of the catalog", () => {
     });
     expect(proposalFor({ input: 4, cache_read: null, output: 25 }, "2.2", "10")).toBeNull();
     expect(proposalFor({ input: 4, cache_read: 0.4, output: 25 }, null, "10")).toBeNull();
+  });
+
+  it("proposes the cache-write weight only on a model that bills it (spec 065)", () => {
+    expect(proposalFor({ input: 4, cache_read: 0.4, output: 20, cache_write: 5 }, "2.2", "10")).toEqual({
+      input: "0.88",
+      cache_read: "0.088",
+      output: "4.4",
+      cache_write: "1.1",
+    });
+    expect(proposalFor({ input: 4, cache_read: 0.4, output: 20, cache_write: null }, "2.2", "10")).toEqual({
+      input: "0.88",
+      cache_read: "0.088",
+      output: "4.4",
+    });
+  });
+
+  it("reads a missing cache-write weight as 0 when comparing (spec 065)", () => {
+    const three = { input: "0.88", cache_read: "0.088", output: "4.4" };
+    expect(sameWeights(three, { ...three, cache_write: "0.000000" })).toBe(true);
+    expect(sameWeights(three, { ...three, cache_write: "1.1" })).toBe(false);
   });
 });
 

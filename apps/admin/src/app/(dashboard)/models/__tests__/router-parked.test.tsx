@@ -16,7 +16,8 @@ vi.mock("@/lib/router-panel", () => ({
   },
 }));
 
-const api = vi.hoisted(() => ({ listDeployments: vi.fn() }));
+// Spec 065: the page also reads Auphere's default model for the agents.
+const api = vi.hoisted(() => ({ listDeployments: vi.fn(), getRespondDefault: vi.fn() }));
 vi.mock("@/lib/backend-models", () => ({ modelsBackend: api }));
 vi.mock("../actions", () => ({
   activateAction: vi.fn(),
@@ -76,6 +77,7 @@ describe("the table of Modelos", () => {
 describe("the page of Modelos", () => {
   beforeEach(() => {
     api.listDeployments.mockReset().mockResolvedValue({ items: [row(), DRAFT], statuses: [], sale_policy: POLICY });
+    api.getRespondDefault.mockReset().mockResolvedValue({ model_id: "openai/gpt-5.6-sol", display_name: "Sol", set_by: null, set_at: null, options: [] });
   });
 
   it("parked, offers no «Nuevo despliegue» and does not speak of the router", async () => {
