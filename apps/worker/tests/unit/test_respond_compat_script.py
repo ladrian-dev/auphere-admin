@@ -160,3 +160,29 @@ def test_the_report_counts(compat: ModuleType) -> None:
     assert (opus["p95_s"], opus["spend_vs_sol"], opus["green"]) == (3.0, 5.0, False)
     assert "rojo: no_tools" in compat.markdown(summary)
     json.dumps(summary)  # el informe es JSON
+
+
+# ── T100: lo responde el modelo que se prueba ───────────────────────────────
+
+
+def test_a_turn_only_counts_if_the_model_being_tried_answered(compat: ModuleType) -> None:
+    """La primera pasada real (2026-11-20) dio en verde a los tres de Claude cuando todas sus
+    llamadas con herramientas habían recibido un 400 y había respondido Terra."""
+    opus = "anthropic/claude-opus-5-5"
+    ok = {"response": "Hola", "response_model": opus, "response_fell_back": False}
+    assert compat.problem_of(ok, opus) == ""
+    by_terra = {**ok, "response_model": "openai/gpt-5.6-terra", "response_fell_back": True}
+    assert compat.problem_of(by_terra, opus) == "respondió openai/gpt-5.6-terra, no " + opus
+    assert compat.problem_of({**ok, "response_fell_back": True}, opus).startswith("respondió")
+    assert compat.problem_of({**ok, "response": " "}, opus) == "sin texto"
+    failed = {"turn_failure": {"kind": "llm_failed"}}
+    assert compat.problem_of(failed, opus).startswith("turn_failure=")
+
+
+def test_each_cache_fact_starts_from_a_prompt_nobody_cached(compat: ModuleType) -> None:
+    """Con el mismo prompt, la segunda comprobación leía de la caché lo que la primera había
+    escrito y daba «escritos=0»: un rojo de la batería, no del proveedor."""
+    first, second = compat.fact_prompt(), compat.fact_prompt()
+    assert first != second
+    assert first[:40] != second[:40], "lo distinto va al principio: la caché es por prefijo"
+    assert len(first) > 4096 * 4, "más que el mínimo de caché de cualquiera de los seis"

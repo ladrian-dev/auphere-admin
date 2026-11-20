@@ -423,10 +423,17 @@ async def unbacked_claim(
     return await claims_booking(llm, bundle, text, turn=turn, only_new=earlier)
 
 
-def retry_messages() -> list[dict[str, str]]:
-    """What the second attempt appends: the brake's note as ``system``, and not
-    the draft (see :data:`BOOKING_BRAKE_NOTE`)."""
-    return [{"role": "system", "content": BOOKING_BRAKE_NOTE}]
+def retry_messages(*, only_appends: bool = False) -> list[dict[str, str]]:
+    """What the second attempt appends: the brake's note, and not the draft (see
+    :data:`BOOKING_BRAKE_NOTE`).
+
+    As ``system`` by default, as it always went. Spec 065 (T102): with a model that
+    keeps its reasoning (``only_appends``) the note goes as ``user``. LiteLLM lifts
+    every ``system`` message into Anthropic's top-level ``system``, which then
+    differs from the one the earlier thinking blocks were made with. The first real
+    battery got ``Invalid `signature` in `thinking` block`` in strict mode; in
+    production, with ``drop_block``, that reasoning would be thrown away."""
+    return [{"role": "user" if only_appends else "system", "content": BOOKING_BRAKE_NOTE}]
 
 
 # ── the record ───────────────────────────────────────────────────────────────

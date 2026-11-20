@@ -673,6 +673,12 @@ repite herramientas (`tool_once`).
   sigue siendo el del cliente, como con la nota de memoria de herramientas. En un
   turno enrutado sigue dentro de su `turn_budget`; si se agota, es el
   `turn_limit` de siempre.
+  **Con un modelo que conserva su razonamiento** (los Claude 5.5, spec 065, T102)
+  la nota va como `user`, al final, y no como `system`. Subida a la cabecera, el
+  `system` cambiaba a mitad de turno y Anthropic invalidaba el razonamiento
+  anterior. La primera batería real recibió `Invalid `signature` in `thinking`
+  block` en modo estricto; con `drop_block`, en producción, ese razonamiento se
+  habría tirado. Con GPT-5.6 sigue como `system`, como antes.
 - **Si vuelve a afirmarla**, la conversación pasa a una persona:
   - el contacto recibe la frase de traspaso, sin componente interactivo;
   - `turn_failure = {"kind": "handoff", "reason": "booking_unbacked"}`;

@@ -36,7 +36,14 @@ Anotar aquí el resultado de cada pasada antes de habilitar los modelos de Anthr
 
 | Fecha | Commit | Resultado | p95 por modelo | Coste |
 |---|---|---|---|---|
-| | | | | |
+| 2026-11-20 | `9c836f31` | **No vale.** Los tres de Claude salieron «en verde», pero ninguno respondió un turno con herramientas: 63 llamadas rechazadas por el nombre con punto (`tools.0.custom.name`) y en todos sus escenarios respondió Terra. GPT-5.6, en rojo en la caída y el cruce a Sonnet por lo mismo. Lo arreglan T099 y T100. | — | US$ 0,45 |
+| 2026-11-20 | `9c836f31` + T099 y T100 (sin commit) | Todo en verde salvo Haiku 5.5 en `booking_brake_retry`: la nota del freno en el `system` invalidó su razonamiento (`Invalid signature in thinking block`). Lo arregla T102. | Sol 2,4 s · Terra 1,5 · Luna 1,2 · Opus 3,1 · Sonnet 3,2 · Haiku 1,8 | US$ 0,51 |
+| 2026-11-20 | + T102 (sin commit) | `booking_brake_retry`, tres pasadas en los seis: en verde, ningún error de firma. | — | céntimos |
+| 2026-11-20 | + T102 (sin commit) | **Los seis en verde**, completa: 0 rechazos por nombre, 0 errores de firma, solo las caídas que provocan los escenarios de caída y cruce. | Sol 2,4 s · Terra 1,5 · Luna 1,6 · Opus 4,5 · Sonnet 3,1 · Haiku 2,0 | US$ 0,51 |
+
+Gasto frente a Sol con los mismos escenarios de turno y el agente de prueba (tokens de las llamadas del propio modelo, salida a 5 veces la entrada): Terra 0,86, Luna 0,87, Opus 1,94, Sonnet 1,84 y Haiku 2,58. En entrada, Claude gasta entre 1,65 y 2 veces más, y en salida entre 2,6 y 4,8, porque el razonamiento cuenta como salida. Con el mismo texto largo (9.000 tokens en Sol) Claude cuenta 1,33 veces más. Los `estimate_factor` del registro siguen en 1,0: elegir su valor queda para Luis antes de habilitar Claude (T064, paso 4).
+
+GPT-5.6 informa de lo escrito en caché (`prompt_tokens_details.cache_write_tokens`: 9.028 de un prompt de 9.031) y el colector lo apunta (`cache_creation_input_tokens`). El carril de escritura de GPT-5.6 se mide con el proveedor real.
 
 ## 4. El selector en la consola (staging)
 

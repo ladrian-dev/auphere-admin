@@ -1171,6 +1171,7 @@ def _wire_openai_tool_names(kwargs: dict[str, Any], *, force: bool = False) -> d
 
     Spec 047 (41.3): ``force`` does the same for every deployment that
     declares ``tool_name_charset = no_dots``, not only GPT-5.6.
+    Spec 065 (T099): and for every ``anthropic/`` hop, which rejects dots too.
     """
     model = kwargs.get("model")
     openai_hop = isinstance(model, str) and model.startswith("openai/")
@@ -1274,7 +1275,11 @@ async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
         no_dots = hop.deployment.capabilities.tool_name_charset == "no_dots"
     _proxy_kwargs(kwargs)
     _drop_openai_unsupported(kwargs)
-    back = _wire_openai_tool_names(kwargs, force=no_dots)
+    # Spec 065 (T099): Anthropic tampoco admite el punto (``tools.0.custom.name: String should
+    # match pattern '^[a-zA-Z0-9_-]{1,128}$'``). Sin esto, todo turno de Claude con
+    # herramientas por el camino directo recibía un 400 y lo terminaba la reserva.
+    anthropic_hop = isinstance(model, str) and _is_anthropic(model)
+    back = _wire_openai_tool_names(kwargs, force=no_dots or anthropic_hop)
     try:
         response = await litellm.acompletion(**kwargs)
     except Exception as exc:

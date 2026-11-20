@@ -58,6 +58,34 @@ def tool_name(body, family):
     return "x"
 
 
+# T099: los nombres que acepta cada proveedor, en ``tools`` y en las llamadas del historial.
+# Anthropic contesta 400 (``tools.0.custom.name: String should match pattern``) y OpenAI
+# también; un eco que aceptara cualquiera esconde que el turno cae a la reserva.
+import re
+NAME = {"anthropic": re.compile(r"^[a-zA-Z0-9_-]{1,128}$"),
+        "openai": re.compile(r"^[a-zA-Z0-9_-]{1,64}$")}
+
+
+def bad_tool_names(body, family):
+    names = []
+    for tool in body.get("tools") or []:
+        if family == "anthropic":
+            if "name" in tool:
+                names.append(str(tool["name"]))
+        else:
+            names.append(str((tool.get("function") or {}).get("name") or ""))
+    for message in body.get("messages") or []:
+        if family == "anthropic":
+            content = message.get("content")
+            if isinstance(content, list):
+                names += [str(b.get("name") or "") for b in content
+                          if isinstance(b, dict) and b.get("type") == "tool_use"]
+        else:
+            names += [str((c.get("function") or {}).get("name") or "")
+                      for c in message.get("tool_calls") or []]
+    return [n for n in names if not NAME[family].match(n)]
+
+
 class Provider(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -65,6 +93,22 @@ class Provider(BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["content-length"])))
         family = "anthropic" if "/messages" in self.path else "openai"
+        bad = bad_tool_names(body, family)
+        if bad:
+            # Como el proveedor: rechaza antes de contestar nada, sin gastar el guion.
+            calls.append({"path": self.path, "family": family, "kind": "rejected", "body": body,
+                          "beta": self.headers.get("anthropic-beta") or "", "bad_names": bad})
+            message = "tools.0.custom.name: String should match pattern '^[a-zA-Z0-9_-]{1,128}$'"
+            out = ({"type": "error", "error": {"type": "invalid_request_error", "message": message}}
+                   if family == "anthropic" else
+                   {"error": {"message": message, "type": "invalid_request_error", "code": None}})
+            raw = json.dumps(out).encode()
+            self.send_response(400)
+            self.send_header("content-type", "application/json")
+            self.send_header("content-length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+            return
         kind, n = next_kind(family)
         if kind == "auto":
             kind = "text" if body.get("tool_choice") in ("none", {"type": "none"}) else "tool"
@@ -190,7 +234,7 @@ async def _policy(*_a, **_k):
 
 
 async def _dispatch(_registry, call, _available, intent, conversation_id=None):
-    DISPATCHED.append(call.id)
+    DISPATCHED.append(f"{call.id}|{call.name}")
     return {"tool": call.name, "intent": intent, "status": "ok", "result": {"visits": 2}}
 
 
@@ -373,6 +417,33 @@ BINDING_BETA = "thinking-binding-controls-2026-08-01"
 #: Lo que solo existe en la memoria del turno y nunca sale (``runtime/llm.py``).
 PRIVATE = "nexus_served_by"
 FINAL_NOTE_HEAD = "Es tu última respuesta de este turno"
+#: El nombre de catálogo de la herramienta del turno (``TOOL`` en el guion), con su punto.
+CATALOG_TOOL = "client.get_history"
+
+
+@pytest.mark.parametrize("model", (*GPT, *CLAUDE))
+def test_each_model_answers_a_turn_with_dotted_tool_names_itself(model: str) -> None:
+    """T099 (requisitos 4.1 y 4.9). El catálogo nombra las herramientas con punto y ningún
+    proveedor lo admite. La primera batería real dio en verde a los tres de Claude cuando
+    todas sus llamadas con herramientas habían recibido un 400 y había respondido Terra.
+    Cada modelo responde él mismo, y la herramienta llega al despacho con su nombre de
+    catálogo."""
+    flow = _flow("turn:" + model)
+    rejected = [c["bad_names"] for c in flow["calls"] if c["kind"] == "rejected"]
+    assert not rejected, rejected
+    assert flow["out"]["response_model"] == model
+    assert flow["out"]["response_fell_back"] is False
+    assert flow["dispatched"], "el turno llegó a llamar a la herramienta"
+    assert {d.split("|", 1)[1] for d in flow["dispatched"]} == {CATALOG_TOOL}
+
+
+def test_no_provider_rejects_a_tool_name_in_any_flow() -> None:
+    """Tampoco en la reserva, el cruce a Sonnet, el freno ni el saneado."""
+    rejected = {
+        name: [c["bad_names"] for c in flow["calls"] if c["kind"] == "rejected"]
+        for name, flow in _run().items()
+    }
+    assert not {name: bad for name, bad in rejected.items() if bad}
 
 
 @cache
@@ -405,11 +476,12 @@ def _flow(name: str) -> dict[str, Any]:
 
 
 def _ok(flow: dict[str, Any], family: str | None = None) -> list[dict[str, Any]]:
-    """Las peticiones que el proveedor contestó (no las que hizo fallar el guion)."""
+    """Las peticiones que el proveedor contestó (no las que hizo fallar el guion ni las que
+    rechazó por un nombre de herramienta)."""
     return [
         c
         for c in flow["calls"]
-        if c["kind"] != "error" and (family is None or c["family"] == family)
+        if c["kind"] not in {"error", "rejected"} and (family is None or c["family"] == family)
     ]
 
 
@@ -598,18 +670,33 @@ def test_claude_caches_the_system_and_the_conversation(model: str) -> None:
                 assert "cache_control" not in block, "ninguna marca que se mueva"
 
 
+def _blocks(content: Any) -> list[Any]:
+    return [{"type": "text", "text": content}] if isinstance(content, str) else list(content)
+
+
 def test_the_brake_retry_takes_nothing_away() -> None:
-    """El reintento del freno de reservas en un turno con Claude no retira nada: lo anterior
-    sigue byte a byte y su nota es lo único nuevo (LiteLLM la sube al ``system`` como un
-    bloque al final; si eso cuenta como edición lo decide la batería real, T055)."""
+    """El reintento del freno de reservas en un turno con Claude no retira nada.
+
+    La primera batería real (T101, 2026-11-20) dijo que la nota no puede ir al ``system``.
+    LiteLLM la subía al ``system`` de arriba y Anthropic invalidaba el razonamiento anterior
+    (``The `system` prompt differs from the one this block was created with``). Así que el
+    ``system`` no cambia y la nota va al final del último mensaje del usuario, después de lo
+    que ya había. Lo anterior sigue byte a byte."""
     flow = _flow("brake")
     bodies = [c["body"] for c in flow["calls"]]
     assert len(bodies) == 4, [c["kind"] for c in flow["calls"]]
     draft, retry = bodies[1], bodies[2]
-    assert retry["system"][: len(draft["system"])] == draft["system"]
-    [note] = retry["system"][len(draft["system"]) :]
-    assert note["text"].startswith("Tu respuesta anterior daba por hecha una cita")
-    assert retry["messages"][: len(draft["messages"])] == draft["messages"]
+    assert retry["system"] == draft["system"]
+    assert retry["messages"][: len(draft["messages"]) - 1] == draft["messages"][:-1]
+    before, after = draft["messages"][-1], retry["messages"][len(draft["messages"]) - 1]
+    assert before["role"] == after["role"] == "user"
+    kept = _blocks(before["content"])
+    assert _blocks(after["content"])[: len(kept)] == kept
+    note = retry["messages"][-1]
+    assert note["role"] == "user"
+    assert _blocks(note["content"])[-1]["text"].startswith(
+        "Tu respuesta anterior daba por hecha una cita"
+    )
     assert retry["tools"] == draft["tools"]
     for key in set(draft) - {"messages", "system"}:
         assert retry[key] == draft[key], key
