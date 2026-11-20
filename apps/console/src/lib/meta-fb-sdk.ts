@@ -32,6 +32,9 @@ interface FbSdk {
       response_type: "code";
       override_default_response_type?: boolean;
       extras?: Record<string, unknown>;
+      /** Always offer both ways in (Facebook and Instagram) instead of
+       *  carrying on with an open Facebook session (spec 049, R8). */
+      prompt?: "login";
     },
   ): void;
 }
@@ -302,8 +305,12 @@ export async function loginWithMeta(opts: {
  * WhatsApp signup, but no `WA_EMBEDDED_SIGNUP` message: what the business
  * granted is read by the server after it exchanges the code. Resolves with
  * the single-use code.
+ *
+ * `prompt: "login"` (spec 049, requirement 8, Instagram only) makes Meta offer
+ * both Facebook and Instagram even when the browser has a Facebook session
+ * open; without it the dialog carries on as that Facebook account.
  */
-export async function loginForCode(opts: { appId: string; version: string; configId: string }): Promise<string> {
+export async function loginForCode(opts: { appId: string; version: string; configId: string; prompt?: "login" }): Promise<string> {
   const sdk = await loadFbSdk(opts.appId, opts.version);
   return new Promise<string>((resolve, reject) => {
     const timer = setTimeout(() => reject(new SignupError("timeout")), TIMEOUT_MS);
@@ -314,7 +321,7 @@ export async function loginForCode(opts: { appId: string; version: string; confi
           if (response.authResponse?.code) resolve(response.authResponse.code);
           else reject(new SignupError(response.status === "not_authorized" ? "cancelled" : "no_code"));
         },
-        { config_id: opts.configId, response_type: "code", override_default_response_type: true },
+        { config_id: opts.configId, response_type: "code", override_default_response_type: true, ...(opts.prompt ? { prompt: opts.prompt } : {}) },
       ),
     );
   });

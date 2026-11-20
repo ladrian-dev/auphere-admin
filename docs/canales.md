@@ -141,9 +141,22 @@ Spec 049. Meta aprobó los permisos el 2026-11-19 (solicitud del 2026-11-03).
   equipo responde hasta 7 días después del último mensaje del contacto, con la
   etiqueta `HUMAN_AGENT`. El agente sigue con 24 horas (`services/meta_window`).
   La leen la API y el worker que envía.
-- **Configuraciones de Facebook Login for Business:** Instagram
-  `1157578836735566` (7 permisos) y «Auphere Messenger» `2188508105420190`
-  (7 permisos). Las dos dan un token de usuario del sistema que no caduca.
+- **Configuraciones de Facebook Login for Business** (`config.py`,
+  `meta_config_id_instagram` y `meta_config_id_messenger`). Las dos dan un
+  token de usuario del sistema que no caduca.
+  - **Instagram: «Auphere Instagram» `29353122964304011`.** Solo pide la
+    cuenta de Instagram y `instagram_basic`, `instagram_manage_messages` e
+    `instagram_manage_comments`, y Meta la marca como compatible con el inicio
+    de sesión con Instagram: el negocio puede entrar con Instagram o con
+    Facebook. La consola le añade `prompt=login`, porque sin él quien tiene una
+    sesión de Facebook abierta entra con ella y no ve la opción de Instagram
+    (spec 049, requisito 8).
+  - **No puede pedir Páginas.** Entrar con Instagram no puede conceder
+    Páginas, y una configuración que las pide deja de ser compatible. Le pasó
+    a la anterior, `1157578836735566`, cuando se le añadieron por INC-53
+    (2026-11-01). Las cuentas conectadas con ella siguen funcionando.
+  - **Messenger: «Auphere Messenger» `2188508105420190`** (7 permisos). Solo
+    se entra con Facebook, sin `prompt=login`.
 - **Webhooks:** Meta admite **una sola URL por app** para los objetos `page` e
   `instagram`. El entorno que recibe un evento de una cuenta que no es suya lo
   reenvía al otro, con el cuerpo y la firma intactos (`meta_webhook_peer`). Si

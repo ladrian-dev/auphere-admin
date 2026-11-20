@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { centeredPopupFeatures, parseMetaSignupMessage, signupExtras, signupOutcome, withCenteredPopup } from "../meta-fb-sdk";
+import { centeredPopupFeatures, loginForCode, parseMetaSignupMessage, signupExtras, signupOutcome, withCenteredPopup } from "../meta-fb-sdk";
 
 describe("meta-fb-sdk (CP-17)", () => {
   it("parses the JSON-string envelope Meta posts", () => {
@@ -107,5 +107,27 @@ describe("la ventana de Meta, centrada (2026-09-30)", () => {
       }),
     ).toThrow("boom");
     expect(window.open).toBe(original);
+  });
+});
+
+/**
+ * Spec 049, requisito 8: Instagram se conecta también entrando con Instagram.
+ * Sin `prompt=login`, quien tiene una sesión de Facebook abierta entra con
+ * ella y Meta no le ofrece Instagram (guía del inicio de sesión unificado,
+ * paso 4). Messenger no lo pide.
+ */
+describe("prompt=login en la ventana de Meta (spec 049, requisito 8)", () => {
+  type LoginCb = (r: { status?: string; authResponse?: { code?: string } }) => void;
+  const login = vi.fn<(cb: LoginCb, opts: Record<string, unknown>) => void>((cb) => cb({ status: "connected", authResponse: { code: "C" } }));
+  window.FB = { init: vi.fn(), login } as unknown as NonNullable<typeof window.FB>;
+
+  it("lo pasa a FB.login cuando se le pide", async () => {
+    await expect(loginForCode({ appId: "1", version: "v26.0", configId: "9", prompt: "login" })).resolves.toBe("C");
+    expect(login.mock.lastCall?.[1]).toMatchObject({ config_id: "9", response_type: "code", prompt: "login" });
+  });
+
+  it("sin pedirlo, no lo manda", async () => {
+    await expect(loginForCode({ appId: "1", version: "v26.0", configId: "9" })).resolves.toBe("C");
+    expect(login.mock.lastCall?.[1]).not.toHaveProperty("prompt");
   });
 });

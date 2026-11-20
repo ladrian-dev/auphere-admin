@@ -59,3 +59,48 @@ Decisión del owner, 2026-11-20: abrir Instagram y Messenger **a todos los partn
 - [ ] T066 Respuestas rápidas en Instagram. **Decisión del owner, 2026-11-20: se mantienen.** El agente puede seguir ofreciendo opciones como respuestas rápidas en Instagram. Queda actualizar en el panel de Meta la descripción de `instagram_manage_messages`, que dice «Auphere does not use ice breakers, quick replies or a persistent menu on Instagram». Lo hace el owner. _Req: 2.4_
 - [x] T067 Los avisos por WhatsApp cuando Auphere no tiene número de avisos: requisito 7.1 (enmienda del 2026-11-20, también bajo el requisito 33 de la 047). `notify_from` vale `none` (`channel_config.notify_from_shown`) y la página lo dice en WhatsApp y en Instagram y Messenger. Pruebas: `test_channel_config.py`, `test_escalation_recipients.py` (vistas en rojo) y `channel-meta-social-copy.test.tsx`. _Req: 7.1; 047: 33.3_
 - [x] T068 Cancelar la espera de la ventana de Meta (7.2, `meta-social-connect.test.tsx`), la Bandeja entre 24 horas y 7 días con Human Agent (7.3: `window.agent_open` desde `inbox_view.reply_windows`, `test_inbox_reply_windows.py`, `inbox-model.test.ts` y `composer.test.tsx`) y «Pasar el canal» al pasar un canal de Instagram o Messenger (7.4, `channel-meta-social-copy.test.tsx`). Todas vistas en rojo antes del cambio. Puertas de UI en estático (sin navegador): el «Cancelar» va fuera de la región que se anuncia, recibe el foco al abrirse la espera y lo devuelve al cancelar, Escape también cancela, mide 36 px de alto, y usa la variante `on-dark` nueva de `Button` en `@nexus/ui`, con contorno de foco pistacho a 9,6:1 sobre el verde oscuro (el `ring` de antes daba 2,8:1). En vivo queda en staging: cancelar y volver a conectar hasta el final con el SDK de Meta real (paso 3 del guion de apertura), y el texto de la Bandeja entre 24 horas y 7 días (paso 7). _Req: 7.2, 7.3, 7.4_
+
+## Fase 8 — Entrar con Instagram (requisito 8, 2026-11-20)
+
+Decisión del owner, 2026-11-20: abrir la enmienda para que Instagram se conecte también entrando con Instagram. Las cuentas ya conectadas no se tocan.
+
+- [x] T069 Configuración nueva en Meta, compatible con el inicio de sesión con Instagram: Casos de uso → API de Instagram → «API setup with Unified login» → «Crear nueva configuración».
+  - Permisos: solo `instagram_basic`, `instagram_manage_messages` e `instagram_manage_comments`. Se quitan `instagram_content_publish`, `ads_management` y `ads_read`, que Meta pone por defecto.
+  - Activo: la cuenta de Instagram, sin cuenta publicitaria. Token de usuario del sistema que no caduca.
+  - La pestaña tiene que mostrarla como compatible. Se anota su `config_id`.
+  - Antes de escribir código, se abre la URL de inicio de sesión de la guía de Meta (paso 4) con el `config_id` nuevo y `prompt=login`, y se comprueba que salen las dos opciones, Instagram y Facebook.
+  - La configuración `1157578836735566` no se toca: la usan las cuentas ya conectadas y es la vuelta atrás.
+  - Cambia la app de Meta, que es la misma en staging y en producción. Lo hace el owner, o Claude en su Chrome con su OK.
+  - **Hecha el 2026-11-20** por Claude en el Chrome del owner, con su OK: «Auphere Instagram», `29353122964304011`, marcada «Compatible con el inicio de sesión de Instagram», solo la cuenta de Instagram y los tres permisos. Su ventana, abierta sin entrar: con `prompt=login` ofrece «Continuar con» el perfil de Facebook y «Continuar con Instagram»; sin `prompt=login` entra directamente con la sesión de Facebook; la configuración antigua, con `prompt=login`, solo ofrece Facebook.
+  _Req: 8.2_
+- [x] T070 Pruebas en rojo:
+  - `meta-fb-sdk.test.ts`: `loginForCode` pasa `prompt: "login"` a `FB.login` cuando se le pide, y no lo pasa si no.
+  - `meta-social-connect.test.tsx`: conectar Instagram lo pide; conectar Messenger, no.
+  - `test_endpoint_console_meta_social.py`: la oferta de Instagram trae el `config_id` de T069, y la de Messenger sigue con `2188508105420190`.
+  - Vistas en rojo el 2026-11-20 las tres. `channel-connect.test.tsx` esperaba la llamada sin `prompt`; se actualiza.
+  _Req: 8.1, 8.2, 8.5_
+- [x] T071 El cambio:
+  - `loginForCode` acepta `prompt`, y `meta-social-connect.tsx` lo manda solo para Instagram.
+  - `meta_config_id_instagram` pasa al `config_id` de T069 en `config.py`. No hay variable de entorno que lo pise.
+  - `docs/canales.md` §5 dice qué configuración va con cada canal y por qué la de Instagram no puede pedir Páginas.
+  - `auditoria-docs-oficiales.md` deja de decir que `1157578836735566` tiene la marca de compatible: la perdió con INC-53.
+  - En verde el 2026-11-20: consola (vitest de `src/lib`, `channels`, `builder` e `i18n`, 916; `tsc --noEmit`; `eslint --max-warnings=0` de lo tocado), API (`test_endpoint_console_meta_social.py`, 18) y `verify.sh lint`. Sin navegador: `prompt=login` llegando a la ventana desde `FB.login` se comprueba en T072.
+  _Req: 8.1, 8.2, 8.5_
+- [ ] T072 Staging, en vivo, con el owner. Antes de empezar:
+  - staging está despierto (se aparca de noche);
+  - la cuenta de prueba es pública y no está conectada en producción, porque producción se queda los eventos de sus cuentas y no los reenvía a staging;
+  - los comentarios se escriben desde otra cuenta.
+
+  Pasos:
+  1. **Control, primero:** un DM y un comentario a `@somos.auphere`, conectada en staging con `1157578836735566`, llegan a staging reenviados por producción y reciben respuesta. Sin esto, un comentario que no llega en el paso 5 no distingue INC-53 de un reenvío roto.
+  2. Con una sesión de Facebook abierta en el navegador, la ventana ofrece Instagram y Facebook, y la URL que abre lleva `prompt=login` (se ve en el envoltorio de `window.open` de `meta-fb-sdk.ts`).
+  3. Se conecta una cuenta profesional entrando con Instagram, y otra (o la misma, tras desconectarla) entrando con Facebook.
+     - Entrando con Instagram, el `code` vuelve al callback de `FB.login`. La ventana nueva carga con `is_ig_oidc_with_redirect=1`. Si el código no vuelve, hace falta el flujo con redirección: es otra enmienda, no las salidas a) o b).
+     - En cada una se anota el `source` de `meta_social.connect.instagram_accounts`: el 2026-10-31 `assigned_instagram_accounts` vino vacío, y sin Páginas hay un respaldo menos.
+  4. Un DM recibe la respuesta del agente, en las dos.
+  5. Un comentario recibe la respuesta privada y la pública, en las dos. Es la puerta del riesgo de INC-53.
+  6. Conectar Messenger sigue igual.
+
+  **Si falla el paso 5, se para aquí:** el cambio se revierte en `develop` antes del siguiente paso a `main`, y el owner elige entre las salidas a) y b) del requisito 8. **Hasta que pase, ningún PR de `develop` a `main`:** llevaría a producción la configuración nueva sin probar.
+  _Req: 8.1, 8.3, 8.4, 8.5_
+- [ ] T073 Producción, después de fusionar en `main` y con la consola de `main` publicada: el owner conecta una cuenta entrando con Instagram y comprueba un DM. _Req: 8.1, 8.3_

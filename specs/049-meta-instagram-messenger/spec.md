@@ -214,6 +214,39 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 3. WHEN una persona abre en la Bandeja una conversación de Instagram o Messenger que atiende el agente AND han pasado más de 24 horas desde el último mensaje del contacto AND Human Agent está activo AND faltan menos de 7 días THEN la Bandeja DEBE decir que el agente ya no puede responder, que una persona puede hacerlo tomando el control, y hasta cuándo.
 4. WHEN se pasa un canal de Instagram o Messenger a otro agente THEN el diálogo DEBE nombrarlo como canal, no como número.
 
+### Requisito 8 — Conectar Instagram entrando con Instagram *(enmienda del 2026-11-20)*
+
+**Historia de usuario:** Como partner que conecta la cuenta de Instagram de un cliente, quiero poder entrar con esa cuenta de Instagram y no solo con un perfil de Facebook, para conectar cuentas que nadie gestiona desde Facebook.
+
+**Origen:** el owner conectó Instagram en producción el 2026-11-20, después de abrir los canales a todos, y la ventana de Meta solo le ofreció Facebook.
+- La pestaña «API setup with Unified login» de la app de Meta dice «No se encontraron configuraciones compatibles».
+- La configuración que usa la consola, `1157578836735566`, pide Páginas y cuatro permisos de Página (`pages_manage_metadata`, `pages_messaging`, `pages_read_engagement`, `pages_show_list`) desde INC-53, el 2026-11-01, y entrar con Instagram no puede conceder Páginas.
+- Además, la consola no manda `prompt=login`. Según la documentación de Meta (*Primeros pasos con la API de Instagram con inicio de sesión unificado*, paso 4), sin él quien tiene una sesión de Facebook abierta entra con ella y no ve la opción de Instagram.
+
+Para los mensajes y la suscripción, el backend ya va por el inicio de sesión unificado y no usa Páginas: token de usuario del sistema, `graph.facebook.com`, `/me/assigned_instagram_accounts`, `POST /{IG_ID}/subscribed_apps` y `POST /{IG_ID}/messages`. Los comentarios son la duda (ver «Riesgo» al final del requisito).
+
+#### Criterios de aceptación
+
+1. WHEN el partner pulsa conectar Instagram THEN la ventana de Meta DEBE ofrecer entrar con Instagram y con Facebook, también si el navegador tiene una sesión de Facebook abierta.
+2. Toda conexión nueva de Instagram, se entre con Instagram o con Facebook, DEBE abrirse con una configuración que Meta marque como compatible con el inicio de sesión con Instagram. Esa configuración DEBE pedir solo la cuenta de Instagram como activo y `instagram_basic`, `instagram_manage_messages` e `instagram_manage_comments` como permisos (5.4).
+3. WHEN una cuenta se conecta con esa configuración, entrando con Instagram o con Facebook, THEN DEBE funcionar igual que hoy: mensajes directos y respuesta del agente (requisito 2), comentarios y menciones con la respuesta privada y la pública (requisito 4), la ventana de Human Agent (requisito 3) y la comprobación periódica (5.7).
+4. IF una cuenta de Instagram ya está conectada con la configuración anterior THEN DEBE seguir recibiendo y enviando sin que haya que reconectarla.
+5. La conexión de Messenger NO DEBE cambiar: sigue con su configuración (`2188508105420190`) y sin `prompt=login`.
+
+**Sin nueva revisión de Meta.** Los tres permisos tienen acceso avanzado desde el 2026-11-19. Según la documentación (mismos *Primeros pasos*, paso 8), si la app ya tiene acceso avanzado a los permisos de la configuración, no hay que pedirlos otra vez.
+
+**Riesgo, que decide la prueba en staging.** INC-53 pasó con una configuración como la de 8.2.
+- El 2026-10-31, `1157578836735566` tenía solo los tres permisos de Instagram y la marca de compatible, y no llegaba el webhook de los comentarios. Llegó el 2026-11-01, al añadir Páginas y reconectar.
+- La tabla de Meta *Campos y permisos de webhook de Instagram* dice lo contrario: con el inicio de sesión unificado, `comments` y `mentions` solo necesitan `instagram_manage_comments`.
+- Aquel día la app aún no tenía acceso avanzado, y Meta lo exige para las notificaciones de `comments` (*Configurar webhooks de Instagram*, «Limitaciones»). Puede ser la causa, pero no está probado.
+- La configuración es una sola para las dos formas de entrar. Si los comentarios necesitan Páginas, toda cuenta nueva los pierde, también entrando con Facebook.
+
+Si en staging no llegan los comentarios (T072, paso 5), el cambio se revierte en `develop` antes del siguiente paso a `main`, porque `develop` se despliega solo en staging y viaja con el próximo PR. Quedan dos salidas, que decide el owner:
+- **a)** Volver a entrar solo con Facebook, con la configuración actual y con comentarios.
+- **b)** Dos formas de conectar: con Instagram, solo mensajes y con la configuración nueva; con Facebook, mensajes y comentarios con la actual. La consola dice qué da cada una. Sería un requisito aparte.
+
+**`prompt=login` por el SDK.** La consola abre la ventana con `FB.login` del SDK de Meta. El SDK pasa sus opciones al diálogo (leído en su código el 2026-11-20), pero falta ver que el parámetro llega y que la ventana lo respeta. Si no, la alternativa es abrir la URL de inicio de sesión con redirección, como en la guía de Meta. Sería otro alcance y otra enmienda.
+
 ### Entidades clave
 
 - **Canal de Instagram / de Messenger**: una cuenta profesional o una Página conectada a **un** cliente. Pertenece al tenant del cliente (columna de tenant, RLS). Guarda su estado, su acceso cifrado y la última comprobación.
