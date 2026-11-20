@@ -125,3 +125,81 @@ describe("a refusal, in words", () => {
     expect(!restore.ok && restore.error).toContain("ya no está «No disponible»");
   });
 });
+
+/**
+ * Spec 065 (`specs/065-modelo-por-agente/contracts/api.md` § Panel de operador):
+ * habilitar y deshabilitar un modelo para responder, el modelo por defecto de los
+ * agentes y el modelo de cada agente. Cada escritura lleva al operador y su motivo.
+ */
+describe("spec 065: responder, el modelo por defecto y el de cada agente", () => {
+  it("habilita con la nota de la pasada y deshabilita con el motivo", async () => {
+    await modelsBackend.respondEnable("d1", "2026-11-24 · a1b2c3d · cable 42/42 · real 18/18", "op-1");
+    expect(last().method).toBe("POST");
+    expect(last().url).toMatch(/\/admin\/models\/deployments\/d1\/respond-enable$/);
+    expect(last().body).toEqual({ note: "2026-11-24 · a1b2c3d · cable 42/42 · real 18/18" });
+    expect(last().headers["X-Operator-Id"]).toBe("op-1");
+
+    await modelsBackend.respondDisable("d1", "Falla la batería real", "op-1");
+    expect(last().url).toMatch(/\/admin\/models\/deployments\/d1\/respond-disable$/);
+    expect(last().body).toEqual({ reason: "Falla la batería real" });
+    expect(last().headers["X-Operator-Id"]).toBe("op-1");
+  });
+
+  it("dice en palabras por qué no se habilita ni se deshabilita (409)", async () => {
+    reply = { status: 409, body: { detail: { code: "no_respond_profile" } } };
+    const enable = await actions.respondEnableAction("d1", "pasada");
+    expect(!enable.ok && enable.error).toMatch(/perfil de llamada/);
+    reply = { status: 422, body: { detail: { code: "not_active" } } };
+    const inactive = await actions.respondEnableAction("d1", "pasada");
+    expect(!inactive.ok && inactive.error).toBe("Solo se puede habilitar para responder un modelo activo.");
+
+    // La de «Deshabilitar» dice sus usos en `uses`, no en `defaults` como la de «Retirar».
+    reply = { status: 409, body: { detail: { code: "model_in_use", uses: ["agent_default", "respond_fallback_anthropic"] } } };
+    const disable = await actions.respondDisableAction("d1", "x");
+    expect(disable.ok).toBe(false);
+    if (disable.ok) return;
+    expect(disable.error).toBe(
+      "El modelo está en uso: por defecto para los agentes sin modelo elegido y reserva de los modelos de Anthropic. Por eso no cambia de estado.",
+    );
+  });
+
+  it("lee el modelo por defecto y lo cambia en dos pasos: primero la lista de afectados, después con confirmación", async () => {
+    reply = { status: 200, body: { model_id: "openai/gpt-5.6-sol", display_name: "Sol", set_by: null, set_at: null, options: [] } };
+    expect(await modelsBackend.getRespondDefault()).toMatchObject({ model_id: "openai/gpt-5.6-sol" });
+    expect(last().url).toMatch(/\/admin\/platform\/agent-respond-default$/);
+
+    const affected = [
+      { tenant_id: "t1", external_client_ref: "jemma", agent_id: "a1", agent_name: "Recepción", current_model: "openai/gpt-5.6-sol" },
+    ];
+    reply = { status: 409, body: { detail: { code: "confirm_required", affected } } };
+    const preview = await actions.previewRespondDefaultAction("anthropic/claude-haiku-5-5");
+    expect(last().method).toBe("PUT");
+    expect(last().headers["X-Operator-Id"]).toBe("op-1");
+    // Sin confirmar no se guarda nada, pero la API pide un motivo igual.
+    expect(last().body).toMatchObject({ model_id: "anthropic/claude-haiku-5-5", confirm: false });
+    expect(String((last().body as { reason: string }).reason).trim()).not.toBe("");
+    expect(preview).toEqual({ ok: true, data: { affected } });
+
+    reply = { status: 200, body: { model_id: "anthropic/claude-haiku-5-5", display_name: "Claude Haiku 5.5", set_by: "operator:luis@auphere.com", set_at: "2026-11-24T10:00:00Z", options: [] } };
+    const saved = await actions.confirmRespondDefaultAction("anthropic/claude-haiku-5-5", "Haiku pasó la batería");
+    expect(last().body).toEqual({ model_id: "anthropic/claude-haiku-5-5", reason: "Haiku pasó la batería", confirm: true });
+    expect(saved.ok).toBe(true);
+
+    reply = { status: 422, body: { detail: { code: "unknown_model", model_id: "x" } } };
+    const refused = await actions.previewRespondDefaultAction("x");
+    expect(!refused.ok && refused.error).toMatch(/no está habilitado para responder/);
+  });
+
+  it("lee el modelo de cada agente y lo cambia con el motivo", async () => {
+    reply = { status: 200, body: [] };
+    await modelsBackend.listAgentModels("t1");
+    expect(last().url).toMatch(/\/admin\/tenants\/t1\/agents\/models$/);
+
+    reply = { status: 200, body: {} };
+    await modelsBackend.setAgentModel("t1", "a1", { model_id: null, reason: "Vuelve al de Auphere" }, "op-1");
+    expect(last().method).toBe("PUT");
+    expect(last().url).toMatch(/\/admin\/tenants\/t1\/agents\/a1\/model$/);
+    expect(last().body).toEqual({ model_id: null, reason: "Vuelve al de Auphere" });
+    expect(last().headers["X-Operator-Id"]).toBe("op-1");
+  });
+});

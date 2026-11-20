@@ -105,4 +105,13 @@ export const noticesMessages = {
     es: "El precio del modelo {deployment} sube un {increase_pct} % desde el {valid_from}.",
     en: "The price of the model {deployment} goes up {increase_pct}% from {valid_from}.",
   },
+  // Spec 065 (8.2): el modelo elegido de un agente salió de la lista de la cuenta.
+  "notif.kind.agent.model_reset": {
+    es: "{client}: un agente responde ahora con {to_model}: {from_model} ya no está en tu cuenta.",
+    en: "{client}: an agent now answers with {to_model}: {from_model} is no longer in your account.",
+  },
+  "notif.kind.agent.model_reset.agent": {
+    es: "{agent} ({client}) responde ahora con {to_model}: {from_model} ya no está en tu cuenta.",
+    en: "{agent} ({client}) now answers with {to_model}: {from_model} is no longer in your account.",
+  },
 } as const;

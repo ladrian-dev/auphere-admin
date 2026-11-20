@@ -58,7 +58,8 @@ export type DeploymentContract = {
   quota: { tpm: number | null; rpm: number | null; verified_at: string | null };
   capabilities: Record<string, unknown>;
   prices: PriceContract[];
-  meter_weights: { w_in: number | null; w_cache: number | null; w_out: number | null };
+  /** Spec 065: `w_cache_write`, the cache-write lane (0 without a write tariff). */
+  meter_weights: { w_in: number | null; w_cache: number | null; w_out: number | null; w_cache_write?: number | null };
 };
 
 /** Why the API could not check the worker's models (research D2). */
@@ -73,7 +74,8 @@ export type ModelUses = {
   problem: ModelUsesProblem | null;
 };
 
-export type SaleLaneKey = "input" | "cache_read" | "output";
+/** Spec 065: `cache_write`, the fourth lane. Only a model with a write tariff weighs it. */
+export type SaleLaneKey = "input" | "cache_read" | "output" | "cache_write";
 
 /** One lane, per million tokens: cost, weight, sale (`weight × sell`) and `sale ÷ cost`. */
 export type SaleLane = {
@@ -97,8 +99,11 @@ export type SaleState =
 export type SaleInfo = {
   state: SaleState;
   lanes: Partial<Record<SaleLaneKey, SaleLane>> | null;
-  proposed: Record<SaleLaneKey, string> | null;
+  proposed: WeightValues | null;
 };
+
+/** The weights of a model: the three lanes, and the fourth when it bills cache writes. */
+export type WeightValues = Record<Exclude<SaleLaneKey, "cache_write">, string> & { cache_write?: string };
 
 /** §1 and §7: `multiplier` is `null` when the setting cannot be read (4.7). */
 export type SalePolicy = {
@@ -119,6 +124,17 @@ export type DeploymentRow = {
   sale: SaleInfo;
   /** The agents still answering with a model whose retirement day came (1.8). */
   retirement_blocked_agents: number | null;
+  /**
+   * Spec 065 (`contracts/api.md` § Panel de operador): whether the model can answer
+   * the agents in this environment, since when, who and with which battery pass.
+   * `undefined` is an API that does not say it yet (the panel claims nothing);
+   * `respond_enabled_at: null`, a model not enabled.
+   */
+  respond_enabled_at?: string | null;
+  respond_enabled_by?: string | null;
+  respond_enabled_note?: string | null;
+  /** Without a call profile the model cannot be enabled to answer (`409 no_respond_profile`). */
+  has_respond_profile?: boolean;
 };
 
 export type DeploymentList = { items: DeploymentRow[]; statuses: DeploymentStatus[]; sale_policy: SalePolicy };
@@ -148,8 +164,12 @@ export function normalizeList(list: DeploymentList): DeploymentList {
   };
 }
 
-/** §6: the three weights, or none; decimals greater than zero. */
-export type WeightsIn = { input: string; cache_read: string; output: string; reason: string };
+/**
+ * §6: the three weights, or none; decimals greater than zero. Spec 065: and the
+ * cache-write weight on a model with a write tariff; without it the API keeps the
+ * stored one.
+ */
+export type WeightsIn = WeightValues & { reason: string };
 
 /** §7. */
 export type SalePolicyIn = { multiplier: string; apply_to_all: boolean; reason: string };
@@ -293,7 +313,71 @@ export type Battery = {
   coverage_gaps: string[];
 };
 
+// ── Spec 065: the model of each agent and Auphere's default ────────────────
+
+/** `agent`: the partner chose it · `agent_operator`: Auphere · `version`: the version's setting · `platform`: Auphere's default. */
+export type AgentModelSource = "agent" | "agent_operator" | "version" | "platform";
+
+export type AgentModelChoice = {
+  model_id: string;
+  display_name: string;
+  set_by: "partner" | "operator";
+  set_at: string | null;
+};
+
+/** `GET /admin/tenants/{tenant_id}/agents/models`: each active agent of the client. */
+export type AdminAgentModelRow = {
+  agent_id: string;
+  name: string;
+  lifecycle: string;
+  /** `null`: the agent follows Auphere's default. */
+  choice: AgentModelChoice | null;
+  effective: { model_id: string; display_name: string; source: AgentModelSource };
+};
+
+/** The body of `PUT …/agents/{agent_id}/model`: `null` goes back to Auphere's default. */
+export type AgentModelIn = { model_id: string | null; reason: string };
+
+/** What the `PUT` answers: the console's shape (`AgentModelOut`). The panel only reads `effective`. */
+export type AgentModelView = {
+  agent_id: string;
+  choice: AgentModelChoice | null;
+  effective: { model_id: string; display_name: string; source: AgentModelSource };
+};
+
+export type RespondOption = { model_id: string; display_name: string };
+
+/** `GET /admin/platform/agent-respond-default`: the default and the models enabled to answer. */
+export type RespondDefault = {
+  model_id: string;
+  display_name: string;
+  /** `operator:<email>`; `null` while nobody changed it from the panel. */
+  set_by: string | null;
+  set_at: string | null;
+  options: RespondOption[];
+};
+
+/** An agent without a chosen model, which would change with the default. */
+export type RespondDefaultAffected = {
+  tenant_id: string;
+  external_client_ref: string | null;
+  agent_id: string;
+  agent_name: string;
+  current_model: string;
+};
+
+export type RespondDefaultIn = { model_id: string; reason: string; confirm: boolean };
+
 const op = (operatorId: string) => ({ "X-Operator-Id": operatorId });
+
+/**
+ * Spec 065: the contract writes the catalog rows as `/admin/models/{id}`, the
+ * shorthand it also uses for `retire` and `unavailable`, which live under
+ * `/admin/models/deployments/{uuid}`. The two new verbs go next to them, in one
+ * place in case the API settles on another path.
+ */
+const respondPath = (uuid: string, verb: "respond-enable" | "respond-disable") =>
+  `/admin/models/deployments/${uuid}/${verb}`;
 
 function query(params: Record<string, string | undefined>): string {
   const q = new URLSearchParams(
@@ -366,6 +450,39 @@ export const modelsBackend = {
       body,
       headers: op(operatorId),
     }),
+
+  /** Spec 065: the model can answer the agents in this environment; `note` is the battery pass. */
+  respondEnable: (uuid: string, note: string, operatorId: string) =>
+    call<DeploymentRow>(respondPath(uuid, "respond-enable"), {
+      method: "POST",
+      body: { note },
+      headers: op(operatorId),
+    }),
+  /** Spec 065: it stops being choosable; the partners' choices of it go to the default (1.4). */
+  respondDisable: (uuid: string, reason: string, operatorId: string) =>
+    call<DeploymentRow>(respondPath(uuid, "respond-disable"), {
+      method: "POST",
+      body: { reason },
+      headers: op(operatorId),
+    }),
+  /** Spec 065 (13.1): Auphere's default model for the agents without a choice. */
+  getRespondDefault: () => call<RespondDefault>("/admin/platform/agent-respond-default"),
+  /** Without `confirm` the API answers `409 confirm_required` with the affected agents. */
+  putRespondDefault: (body: RespondDefaultIn, operatorId: string) =>
+    call<RespondDefault>("/admin/platform/agent-respond-default", {
+      method: "PUT",
+      body,
+      headers: op(operatorId),
+    }),
+  /** Spec 065 (7.1): each active agent of the client, its choice and what it answers with. */
+  listAgentModels: (tenantId: string) =>
+    call<AdminAgentModelRow[]>(`/admin/tenants/${encodeURIComponent(tenantId)}/agents/models`),
+  /** Spec 065 (7.2): any model enabled to answer, in the partner's list or not. */
+  setAgentModel: (tenantId: string, agentId: string, body: AgentModelIn, operatorId: string) =>
+    call<AgentModelView>(
+      `/admin/tenants/${encodeURIComponent(tenantId)}/agents/${encodeURIComponent(agentId)}/model`,
+      { method: "PUT", body, headers: op(operatorId) },
+    ),
 
   taxonomy: () => call<{ version: number; tasks: RouterTask[] }>("/admin/router/taxonomy"),
   profiles: () =>

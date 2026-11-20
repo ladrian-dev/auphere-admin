@@ -246,7 +246,7 @@ export function AgentModelSelect({
 
   return (
     <section aria-labelledby={headingId} className="grid min-w-0 gap-4" data-slot="agent-model">
-      <h3 id={headingId} className="text-sm font-semibold">
+      <h3 id={headingId} className="text-sm font-semibold text-balance">
         {t("agentModel.title")}
       </h3>
       {body}

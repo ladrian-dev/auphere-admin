@@ -15,6 +15,7 @@ import {
 import { useLocale, useT } from "@/i18n/client";
 import type { PlaygroundReply, PlaygroundSession, PlaygroundTurn, SimBooking } from "@/lib/backend/agent-quality-types";
 
+import { AnsweredBy } from "./answered-by";
 import type { Result } from "./builder-model";
 import { simTimeLabel, simTimeShort, wallTime } from "./quality-model";
 
@@ -53,6 +54,9 @@ const MAX_TEXT = 1000;
  * caja, para repetirlo sin volver a escribirlo.
  *
  * Quien solo lee ve la última conversación de prueba sin poder escribir (20.5).
+ *
+ * Spec 065 (T062): bajo la respuesta del agente, con qué modelo respondió y, si fue
+ * la reserva, que lo fue (`AnsweredBy`).
  */
 export function AgentPlayground({
   refId,
@@ -309,6 +313,7 @@ function Turn({ turn, onWhy, canRetry = false }: { turn: PlaygroundTurn; onWhy?:
           {bubble}
         </p>
       ))}
+      {!mine && !turn.failure ? <AnsweredBy model={turn.model} name={turn.model_name} fellBack={turn.fell_back} /> : null}
       {!mine && turn.several_bubbles ? (
         <span className="text-xs text-muted-foreground" data-slot="playground-several">
           {t("builder.pg.several", { n: turn.bubbles.length })}

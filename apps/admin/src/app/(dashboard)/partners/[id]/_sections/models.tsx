@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow } from "@nexus/ui";
 import { BackendError, backend } from "@/lib/backend";
+import { modelsBackend } from "@/lib/backend-models";
 
 import { BlockLlmForm } from "./block-form";
 import { AllowlistForm } from "./models-form";
@@ -9,6 +10,9 @@ import { AllowlistForm } from "./models-form";
 /**
  * Modelos del partner — allowlist del catálogo cerrado + block LiteLLM.
  * Sin UI LiteLLM. Sin keys.
+ *
+ * Spec 065 (T075): la lista trae los seis modelos que se pueden ofrecer; los que
+ * aún no responden en este entorno lo dicen.
  */
 export default async function PartnerModelsPage({
   params,
@@ -21,6 +25,11 @@ export default async function PartnerModelsPage({
 
   const models = await backend.getPartnerModels(id);
   if (!models) notFound();
+  // Spec 065: the models enabled to answer here; if the read fails, the list says nothing about it.
+  const respond = await Promise.resolve()
+    .then(() => modelsBackend.getRespondDefault())
+    .catch(() => null);
+  const enabled = respond ? respond.options.map((o) => o.model_id) : null;
 
   let llm: { blocked: boolean } | null = null;
   let llmUnavailable = false;
@@ -40,14 +49,15 @@ export default async function PartnerModelsPage({
         <CardHeader>
           <Eyebrow>Modelos</Eyebrow>
           <CardTitle>Allowlist del partner</CardTitle>
-          <CardDescription>
-            Qué ids del catálogo cerrado ve el partner en la consola. Apagar
-            Terra quita Terra del picker. No reescribe el binding de un
-            cliente ya elegido.
+          <CardDescription className="text-pretty">
+            Qué modelos ve el partner en el selector de cada agente. Quitar uno
+            pasa al modelo por defecto de Auphere los agentes que el partner
+            tenía con él, desde su próximo mensaje, y le avisa con el nombre de
+            cada agente. No toca los que fijó Auphere.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AllowlistForm partnerId={partner.id} items={models.items} />
+          <AllowlistForm partnerId={partner.id} items={models.items} enabled={enabled} />
         </CardContent>
       </Card>
 

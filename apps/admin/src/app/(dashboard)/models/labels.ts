@@ -20,6 +20,7 @@ import type {
   SalePolicy,
   SalePolicyIn,
   WeightsIn,
+  WeightValues,
 } from "@/lib/backend-models";
 
 export const STATUS_LABEL: Record<DeploymentStatus, string> = {
@@ -78,6 +79,13 @@ export const ERRORS: Record<string, string> = {
   not_unavailable: "El modelo ya no está «No disponible».",
   per_minute: "Este modelo se cobra por minuto: no tiene pesos por carril.",
   below_floor: "Algún carril queda por debajo del suelo.",
+  // Spec 065: el cuarto carril.
+  no_write_tariff: "Este modelo no cobra la escritura en caché: su peso va a 0.",
+  // Spec 065: habilitar para responder y el modelo por defecto de los agentes.
+  no_respond_profile: "Este modelo no tiene perfil de llamada: no se puede habilitar para responder.",
+  not_active: "Solo se puede habilitar para responder un modelo activo.",
+  note_required: "Hace falta la pasada de la batería.",
+  unknown_model: "Ese modelo no está habilitado para responder en este entorno. Recarga la página y elige otro.",
 };
 
 /** The same codes, said of a cost (contrato §3): `in_the_past` is its date, not a retirement's. */
@@ -93,12 +101,16 @@ export const POLICY_ERRORS: Record<string, string> = {
 };
 
 /** The lanes of a model priced by tokens, in the order the partner reads a price. */
-export const LANES: readonly SaleLaneKey[] = ["input", "cache_read", "output"];
+export const LANES: readonly SaleLaneKey[] = ["input", "cache_read", "output", "cache_write"];
+
+/** The three every model priced by tokens weighs (spec 007). */
+const REQUIRED_LANES: readonly SaleLaneKey[] = ["input", "cache_read", "output"];
 
 export const LANE_LABEL: Record<SaleLaneKey, string> = {
   input: "Entrada",
   cache_read: "Caché",
   output: "Salida",
+  cache_write: "Escritura en caché",
 };
 
 /**
@@ -135,6 +147,10 @@ export const DEFAULT_USE_LABEL: Record<string, string> = {
   customer_sim: "simular clientes",
   judge: "juzgar las pruebas",
   degraded: "turnos degradados",
+  // Spec 065: el modelo por defecto de Auphere y la reserva de cada familia.
+  agent_default: "los agentes sin modelo elegido",
+  respond_fallback_openai: "reserva de los modelos de OpenAI",
+  respond_fallback_anthropic: "reserva de los modelos de Anthropic",
 };
 
 export function useLabel(code: string): string {
@@ -208,7 +224,8 @@ const strings = (value: unknown): string[] =>
  */
 export function refusalWords(detail: { code: string } & Record<string, unknown>): string | null {
   if (detail.code === "model_in_use") {
-    const defaults = strings(detail.defaults);
+    // Spec 065: «Deshabilitar para responder» dice los suyos en `uses`.
+    const defaults = strings(detail.defaults ?? detail.uses);
     const agents = typeof detail.agents === "number" ? detail.agents : 0;
     const clients = strings(detail.clients);
     const parts = [
@@ -242,11 +259,35 @@ export type RowMenu = {
   restore: boolean;
   retire: boolean;
   unavailable: boolean;
+  /** Spec 065: «Habilitar para responder» and «Deshabilitar para responder». */
+  respondEnable: boolean;
+  respondDisable: boolean;
 };
+
+/**
+ * Spec 065: whether the model can answer the agents in this environment.
+ * `unknown` is an API that does not say it yet (no field): the panel claims
+ * nothing and offers nothing. Without a call profile it cannot be enabled.
+ */
+export type RespondState = "unknown" | "no_profile" | "disabled" | "enabled";
+
+export function respondState(row: DeploymentRow): RespondState {
+  if (row.respond_enabled_at === undefined) return "unknown";
+  if (row.respond_enabled_at !== null) return "enabled";
+  return row.has_respond_profile ? "disabled" : "no_profile";
+}
+
+/**
+ * Spec 065 (1.4): the uses that keep a model enabled — Auphere's default for the
+ * agents and the reserve of each family. «Deshabilitar» is not offered on them;
+ * the API refuses it anyway (`409 model_in_use`).
+ */
+const RESPOND_USES: ReadonlySet<string> = new Set(["agent_default", "respond_fallback_openai", "respond_fallback_anthropic"]);
 
 export function rowMenu(row: DeploymentRow, routerVisible: boolean): RowMenu {
   const status = row.deployment.status;
   const free = !isInUse(row.uses);
+  const respond = respondState(row);
   return {
     weights: row.sale.state !== "per_minute" && status !== "retired",
     activate: routerVisible && status !== "active" && status !== "retired" && status !== "retiring",
@@ -254,6 +295,9 @@ export function rowMenu(row: DeploymentRow, routerVisible: boolean): RowMenu {
     restore: status === "unavailable",
     retire: free && status === "active",
     unavailable: free && status !== "unavailable" && status !== "retired",
+    // The API only enables an active model (`422` otherwise).
+    respondEnable: respond === "disabled" && status === "active",
+    respondDisable: respond === "enabled" && !row.uses.defaults.some((use) => RESPOND_USES.has(use)),
   };
 }
 
@@ -473,6 +517,27 @@ export function belowFloor(
 
 export type LaneValues = Partial<Record<SaleLaneKey, string | number | null>>;
 
+/** Spec 065: does the model bill cache writes? Then its sale has a fourth lane. */
+export function billsWrites(costs: LaneValues): boolean {
+  const c = asNumber(costs.cache_write);
+  return c !== null && c > 0;
+}
+
+/**
+ * The lanes a model weighs: the three, and the cache write when it has a tariff
+ * (spec 065). Without one, the meter keeps the write inside the input, as before,
+ * and the panel does not show a lane that charges nothing.
+ */
+export function lanesFor(costs: LaneValues): SaleLaneKey[] {
+  return billsWrites(costs) ? [...LANES] : [...REQUIRED_LANES];
+}
+
+/** The lanes worth naming in a line of weights: the write only when it weighs something. */
+export function weightLanes(weights: LaneValues): SaleLaneKey[] {
+  const w = asNumber(weights.cache_write);
+  return w !== null && w > 0 ? [...LANES] : [...REQUIRED_LANES];
+}
+
 /**
  * The weights of a multiplier over a cost: `round(m × cost ÷ sell, 6)`, as the
  * API proposes them (research D8). `null` without the multiplier or a lane's cost.
@@ -481,25 +546,29 @@ export function proposalFor(
   costs: LaneValues,
   multiplier: string | number | null | undefined,
   sell: string | number,
-): Record<SaleLaneKey, string> | null {
+): WeightValues | null {
   const m = toMicros(multiplier);
   const s = toMicros(sell);
   if (m === null || s === null || s === ZERO) return null;
   const out: Partial<Record<SaleLaneKey, string>> = {};
-  for (const lane of LANES) {
+  for (const lane of lanesFor(costs)) {
     const c = toMicros(costs[lane]);
     if (c === null) return null;
     out[lane] = fromMicros((m * c + s / TWO) / s);
   }
-  return out as Record<SaleLaneKey, string>;
+  return out as WeightValues;
 }
 
-/** The same decimals, whatever their trailing zeros. */
+/**
+ * The same decimals, whatever their trailing zeros. A missing cache-write weight
+ * reads as 0, as the meter charges it on a model without a write tariff.
+ */
 export function sameWeights(a: LaneValues | null, b: LaneValues | null): boolean {
   if (!a || !b) return false;
   return LANES.every((lane) => {
-    const x = toMicros(a[lane]);
-    return x !== null && x === toMicros(b[lane]);
+    const pick = (v: LaneValues) => (lane === "cache_write" ? (v[lane] ?? 0) : v[lane]);
+    const x = toMicros(pick(a));
+    return x !== null && x === toMicros(pick(b));
   });
 }
 
@@ -514,7 +583,12 @@ export function laneCosts(row: DeploymentRow): LaneValues {
 /** The weights of each lane today: the API's lanes, else the meter's. */
 export function currentWeights(row: DeploymentRow): LaneValues {
   const meter = row.deployment.meter_weights;
-  const fallback: LaneValues = { input: meter.w_in, cache_read: meter.w_cache, output: meter.w_out };
+  const fallback: LaneValues = {
+    input: meter.w_in,
+    cache_read: meter.w_cache,
+    output: meter.w_out,
+    cache_write: meter.w_cache_write ?? null,
+  };
   const out: LaneValues = {};
   for (const lane of LANES) out[lane] = row.sale.lanes?.[lane]?.weight ?? fallback[lane] ?? null;
   return out;
@@ -557,18 +631,22 @@ export function priceFormFrom(row: DeploymentRow, today: string): PriceForm {
   };
 }
 
-export type WeightsForm = Record<SaleLaneKey, string> & { reason: string };
+export type WeightsForm = Record<Exclude<SaleLaneKey, "cache_write">, string> & {
+  cache_write?: string;
+  reason: string;
+};
 
 /**
  * The weights as the API takes them (contrato §6): the three, greater than
  * zero, none of them under the floor of its lane (3.4, 3.5), with a reason.
- * The API checks it all again.
+ * Spec 065: and the cache write on a model that bills it. The API checks it all
+ * again.
  */
 export function checkWeights(form: WeightsForm, costs: LaneValues, policy: SalePolicy): Checked<WeightsIn> {
   const errors: Record<string, string> = {};
   const body: Partial<WeightsIn> = { reason: form.reason.trim() };
-  for (const lane of LANES) {
-    const raw = form[lane].trim();
+  for (const lane of lanesFor(costs)) {
+    const raw = (form[lane] ?? "").trim();
     const micros = toMicros(raw);
     if (!raw) errors[lane] = "Van los tres pesos o ninguno.";
     else if (micros === null || micros === ZERO) errors[lane] = "Un número mayor que cero, con hasta seis decimales.";

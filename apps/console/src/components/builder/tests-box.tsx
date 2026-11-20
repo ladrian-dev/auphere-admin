@@ -164,6 +164,7 @@ export function TestsBox({
   onEdit,
   onConnect,
   notOffered,
+  modelNames,
   onAll,
 }: {
   refId: string;
@@ -183,6 +184,8 @@ export function TestsBox({
   onConnect?: (integration: string) => void;
   /** Spec 047 (65.3): lo que la API dice que no ofrecemos; nunca lleva «Conectar {X}». */
   notOffered?: ReadonlySet<string>;
+  /** Spec 065 (T062): id → nombre de los modelos, para decir quién respondió en la prueba. */
+  modelNames?: Record<string, string>;
   /** «Ver las N pruebas»: la lista completa, en «Más ajustes». */
   onAll: () => void;
 }) {
@@ -276,7 +279,7 @@ export function TestsBox({
             <details className="min-w-0" data-slot="tests-fail-conversation">
               <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{t("builder.suite.conversation.show")}</summary>
               <div className="mt-2 min-w-0">
-                <TestConversation transcript={conversation.transcript} stop={conversation.stop} />
+                <TestConversation transcript={conversation.transcript} stop={conversation.stop} modelNames={modelNames} />
               </div>
             </details>
           ) : null}

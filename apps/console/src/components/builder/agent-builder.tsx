@@ -54,6 +54,7 @@ import { receptionOf, type Reception } from "./improve-model";
 import { visibleText, visibleTone } from "./life-model";
 import { MissingCapabilities, type MissingState } from "./missing-capabilities";
 import { missingCapabilities, notOfferedKeys, specProblemText } from "./missing-model";
+import { modelNamesOf } from "./quality-model";
 import { ProposalList, type DecideProposal } from "./proposals";
 import { PublishBar, type PublishActions } from "./publish-bar";
 import { ReceptionBadge, ReceptionSection } from "./reception-section";
@@ -307,6 +308,8 @@ export function AgentBuilder({
   const missing = React.useMemo(() => missingCapabilities(draft.missing_capabilities), [draft.missing_capabilities]);
   // Nada de lo que la API dice que no ofrecemos lleva «Conectar {X}» (65.3).
   const notOffered = React.useMemo(() => notOfferedKeys(missing), [missing]);
+  // Spec 065 (T062): el nombre de los modelos que respondieron en las pruebas.
+  const modelNames = React.useMemo(() => modelNamesOf(model), [model]);
 
   // Spec 047 (63.2; H9): Rendimiento solo existe con una versión guardada.
   const hasPerf = draft.active_number != null && Boolean(performance || improvements);
@@ -853,6 +856,7 @@ export function AgentBuilder({
                         onFix={() => openAt("instructions")}
                         onWhy={(test) => askWhy({ test_id: test.id }, t("builder.copilot.about.test", { name: test.name }))}
                         onChanged={() => void refreshAll()}
+                        modelNames={modelNames}
                         actions={qualityActions.tests}
                         wait={qualityActions.wait}
                       />
@@ -986,6 +990,7 @@ export function AgentBuilder({
                   onEdit={(pointer) => openAt(pointer ? blockOfPointer(pointer) : null)}
                   onConnect={connectTo}
                   notOffered={notOffered}
+                  modelNames={modelNames}
                   onAll={() => {
                     setMoreOpen(true);
                     go("agente-pruebas");

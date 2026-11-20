@@ -1,5 +1,9 @@
+import { Suspense } from "react";
+
 import { backend, type AgentConfig, type ToolWithInstallStatus } from "@/lib/backend";
 
+import { AgentModelsSkeleton } from "./agent-models";
+import { AgentModelsSection } from "./agent-models-section";
 import { AgentPicker } from "./agent-picker";
 import { stageAgentConfigAction, updateRuntimeCapabilitiesAction } from "./actions";
 import { AgentVersions } from "./agent-versions";
@@ -11,6 +15,9 @@ import { RuntimeCapabilities } from "./runtime-capabilities";
  * Spec 037: the agent, as on the partner console's client page — its
  * versions with «Nuevo borrador», then its runtime and its evaluations. The
  * tools left this page for Habilidades.
+ *
+ * Spec 065 (T075): «Modelo de cada agente», under the picker — what each agent
+ * answers with, where it comes from, and the change with its reason.
  */
 export default async function AgentPage({
   params,
@@ -103,6 +110,11 @@ export default async function AgentPage({
           agentId={agentId}
         />
       </div>
+      {/* Spec 065 (T075): the model of each agent, read apart so a failure stays in its block. */}
+      <Suspense fallback={<AgentModelsSkeleton />}>
+        <AgentModelsSection tenantId={tenant.id} principalId={agents.find((a) => a.is_principal)?.id ?? null} />
+      </Suspense>
+
       <p className="max-w-prose text-sm text-pretty text-muted-foreground">
         Versiones del prompt{agents.length > 1 && onScreen ? ` de ${onScreen.name}` : ""}. Publicar crea una versión
         activa, revertir vuelve a cualquier anterior. Las habilidades se encienden en su pestaña y van al mismo borrador.

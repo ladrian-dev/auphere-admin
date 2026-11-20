@@ -228,3 +228,76 @@ describe("el probador (20.2, 20.3, 20.4)", () => {
     expect(screen.getByText(/Aún no hay conversaciones de prueba/)).toBeVisible();
   });
 });
+
+/**
+ * Spec 065 (T062; requisitos 5.3 y 6.1) — bajo la respuesta del agente se dice,
+ * sin ruido, qué modelo respondió, con su nombre. Si respondió la reserva, se
+ * dice también. Las conversaciones de antes no traen modelo: no se dice nada.
+ */
+describe("el modelo que respondió (spec 065)", () => {
+  const agentTurn = (over: Record<string, unknown>) => ({
+    role: "agent" as const,
+    bubbles: ["Sí, el viernes a las 17:00 tengo hueco."],
+    several_bubbles: false,
+    actions: [],
+    ...over,
+  });
+  const customerTurn = { role: "customer" as const, bubbles: ["¿Tenéis hueco el viernes?"], several_bubbles: false, actions: [] };
+  const turnOf = (slot: HTMLElement) => slot.closest<HTMLElement>("[data-slot=playground-turn]")!;
+
+  it("dice con qué modelo respondió, una vez por turno y con su nombre", async () => {
+    const user = userEvent.setup();
+    const reply = { ...REPLY, turn: { ...REPLY.turn, model: "openai/gpt-5.6-terra", model_name: "Terra", fell_back: false } };
+    const { container } = screenWith({}, { send: vi.fn(async () => ok(reply)) });
+    await user.type(screen.getByRole("textbox", { name: "Mensaje del cliente" }), "¿hay hueco mañana?");
+    await user.click(screen.getByRole("button", { name: "Enviar" }));
+    const note = await screen.findByText("Respondió Terra");
+    expect(note).toBeVisible();
+    expect(note.className).toMatch(/text-muted-foreground/);
+    expect(note.className).toMatch(/text-pretty/);
+    // Uno por turno, aunque el agente mandara dos burbujas; y sin `role`: la lista ya es viva.
+    expect(screen.getAllByText("Respondió Terra")).toHaveLength(1);
+    expect(note).not.toHaveAttribute("role");
+    expect(turnOf(note).dataset.role).toBe("agent");
+    expect(screen.queryByText(/modelo de reserva/)).toBeNull();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("si respondió la reserva, lo dice", () => {
+    screenWith({
+      sessions: [
+        session({
+          transcript: [customerTurn, agentTurn({ model: "anthropic/claude-sonnet-5-5", model_name: "Claude Sonnet 5.5", fell_back: true })],
+        }),
+      ],
+    });
+    expect(screen.getByText("Respondió Claude Sonnet 5.5, el modelo de reserva, porque el del agente no contestó.")).toBeVisible();
+  });
+
+  it("sin nombre, el id; y una conversación de antes no dice nada", () => {
+    screenWith({
+      sessions: [
+        session({
+          transcript: [customerTurn, agentTurn({ model: "openai/gpt-5.6-luna", model_name: null }), customerTurn, agentTurn({})],
+        }),
+      ],
+    });
+    expect(screen.getAllByText(/^Respondió /)).toHaveLength(1);
+    expect(screen.getByText("Respondió openai/gpt-5.6-luna")).toBeVisible();
+  });
+
+  it("si el modelo no respondió, no dice cuál respondió", () => {
+    screenWith({
+      sessions: [session({ transcript: [customerTurn, agentTurn({ model: "openai/gpt-5.6-terra", model_name: "Terra", failure: { reason: "llm_failed" } })] })],
+    });
+    expect(screen.queryByText(/^Respondió /)).toBeNull();
+  });
+
+  it("un nombre larguísimo se parte sin desbordar", () => {
+    const long = "Donaudampfschifffahrtsgesellschaftskapitänsmodell-Großversion-5.5";
+    screenWith({ sessions: [session({ transcript: [customerTurn, agentTurn({ model: "x/long", model_name: long })] })] });
+    const note = screen.getByText(`Respondió ${long}`);
+    expect(note.className).toMatch(/min-w-0/);
+    expect(note.className).toMatch(/wrap-anywhere|break-words/);
+  });
+});

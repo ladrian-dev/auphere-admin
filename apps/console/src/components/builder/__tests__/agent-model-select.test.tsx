@@ -386,4 +386,9 @@ describe("Agente › Avanzado › Modelo · textos largos (alemán, +30 %)", () 
     expect(screen.getByText("Para preguntas frecuentes y respuestas cortas").className).toMatch(/text-pretty/);
     expect(screen.getByText("Vale desde el próximo mensaje. No hace falta publicar.").className).toMatch(/min-w-0/);
   });
+
+  it("el título de la sección se equilibra, como todos los títulos (T092, regla 2 del workspace)", () => {
+    view();
+    expect(screen.getByRole("heading", { name: "Modelo" }).className).toMatch(/text-balance/);
+  });
 });

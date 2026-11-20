@@ -70,6 +70,14 @@ export const builderModelMessages = {
     en: "While it has them, it answers with {fallback}. Choose one of these or remove the Skills.",
   },
 
+  // ── Quién respondió, en el chat de prueba y en las pruebas (T062; 5.3 y 6.1) ──
+  // La API dice el modelo y si fue la reserva, no por qué ni cuál falló: no se nombra.
+  "agentModel.answered": { es: "Respondió {model}", en: "Answered by {model}" },
+  "agentModel.answeredReserve": {
+    es: "Respondió {model}, el modelo de reserva, porque el del agente no contestó.",
+    en: "Answered by {model}, the backup model, because the agent’s model didn’t reply.",
+  },
+
   "agentModel.error.unavailable": {
     es: "No se pudo cambiar el modelo: ya no está disponible en tu cuenta. Recarga la página y elige otro.",
     en: "Couldn’t change the model: it’s no longer available in your account. Reload the page and choose another one.",

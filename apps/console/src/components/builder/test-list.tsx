@@ -78,6 +78,7 @@ export function TestList({
   onFix,
   onWhy,
   onChanged,
+  modelNames,
   actions = SERVER_ACTIONS,
   wait = sleep,
 }: {
@@ -98,6 +99,8 @@ export function TestList({
   onWhy?: (test: AgentTest) => void;
   /** Una pasada terminó o una prueba cambió: la cabecera cuenta otra cosa. */
   onChanged?: () => void;
+  /** Spec 065 (T062): id → nombre de los modelos, para decir quién respondió en cada prueba. */
+  modelNames?: Record<string, string>;
   actions?: TestListActions;
   wait?: (ms: number) => Promise<void>;
 }) {
@@ -191,6 +194,7 @@ export function TestList({
     <TestRow
       key={test.id}
       test={test}
+      modelNames={modelNames}
       canEdit={can("edit")}
       canRun={can("run") && running === null}
       canRetry={can("run")}
@@ -324,6 +328,7 @@ export function TestList({
 
 function TestRow({
   test,
+  modelNames,
   canEdit,
   canRun,
   canRetry,
@@ -333,6 +338,7 @@ function TestRow({
   onNotApplicable,
 }: {
   test: AgentTest;
+  modelNames?: Record<string, string>;
   canEdit: boolean;
   canRun: boolean;
   /** Puede repetirla, aunque ahora corra otra pasada: decide lo que se le pide. */
@@ -401,7 +407,7 @@ function TestRow({
           <summary className="min-h-6 w-fit cursor-pointer rounded-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">{t(undecided ? "builder.suite.why.undecided" : "builder.suite.why")}</summary>
           <div className="mt-1 grid min-w-0 gap-2">
             <p className="text-pretty break-words whitespace-pre-line text-muted-foreground">{test.why_failed || t(undecided ? "builder.suite.why.undecided.none" : "builder.suite.why.none")}</p>
-            {conversation ? <TestConversation transcript={conversation.transcript} stop={conversation.stop} /> : null}
+            {conversation ? <TestConversation transcript={conversation.transcript} stop={conversation.stop} modelNames={modelNames} /> : null}
           </div>
         </details>
       ) : null}

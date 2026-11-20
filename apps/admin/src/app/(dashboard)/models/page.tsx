@@ -5,6 +5,7 @@ import { ReadError } from "@/components/states/read-error";
 import { modelsBackend, type SalePolicy } from "@/lib/backend-models";
 import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 
+import { AgentDefaultCard } from "./agent-default";
 import { MultiplierDialog, NewDeploymentDialog } from "./deployment-dialogs";
 import { DeploymentsTable } from "./deployments-table";
 import { STATUS_FILTERS, formatMultiplier, problemWords } from "./labels";
@@ -19,13 +20,21 @@ export const dynamic = "force-dynamic";
  * the operator's writes. A model in use offers neither «Retirar» nor «No
  * disponible»; the API refuses them anyway. With the router parked
  * (`lib/router-panel.ts`) there is no «Nuevo despliegue».
+ *
+ * Spec 065: above the catalog, Auphere's default model for the agents without a
+ * chosen one (T078); each row says whether it can answer the agents here, and
+ * «⋯» enables or disables it (T075).
  */
 export default async function ModelsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
   const status = (await searchParams).status;
   const valid = STATUS_FILTERS.some((f) => f.key === status) ? status : undefined;
-  const data = await modelsBackend
-    .listDeployments(valid && valid !== "all" ? { status: valid } : {})
-    .catch(() => null);
+  // Spec 065 (T078): Auphere's default for the agents, read apart: a failure stays in its card.
+  const [data, respondDefault] = await Promise.all([
+    modelsBackend.listDeployments(valid && valid !== "all" ? { status: valid } : {}).catch(() => null),
+    Promise.resolve()
+      .then(() => modelsBackend.getRespondDefault())
+      .catch(() => null),
+  ]);
   const policy = data?.sale_policy ?? null;
   const unpriced = data?.items.filter((r) => r.current_price === null && r.deployment.status === "active") ?? [];
   const unverified = data?.items.find((r) => !r.uses.verified) ?? null;
@@ -62,6 +71,7 @@ export default async function ModelsPage({ searchParams }: { searchParams: Promi
           );
         })}
       </nav>
+      <AgentDefaultCard data={respondDefault} />
       {data === null ? (
         <ReadError title="No se pudo leer el catálogo" description="La API no respondió. Vuelve a intentarlo en un momento." />
       ) : (
