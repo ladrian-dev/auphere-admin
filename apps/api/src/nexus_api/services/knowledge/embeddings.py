@@ -41,7 +41,9 @@ def reset_embedder() -> None:
 
 
 async def _litellm(texts: Sequence[str]) -> list[list[float]]:
-    import litellm
+    from nexus_api.core.litellm_map import litellm_module
+
+    litellm = litellm_module()
 
     model = get_settings().knowledge_embedding_model
     assert model is not None

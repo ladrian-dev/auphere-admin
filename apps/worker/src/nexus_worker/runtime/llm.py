@@ -67,6 +67,7 @@ from nexus_api.core.metrics import (
 )
 from nexus_api.core.otel_metrics import record_llm_call
 from nexus_api.core.respond_catalog import require_hop_model
+from nexus_api.core.respond_profiles import profile_for
 from nexus_api.metering.pricing_policy import QUOTA_TARGET_MULTIPLIER
 from nexus_api.services.router_catalog import (
     Deployment,
@@ -618,7 +619,14 @@ def apply_capabilities(kwargs: dict[str, Any], hop: RouteHop) -> dict[str, Any]:
         elif caps.structured_outputs:
             kwargs["response_format"] = {"type": "json_object"}
 
-    if caps.reasoning_control == "effort":
+    profile = profile_for(deployment.model) or profile_for(deployment.key)
+    if profile is not None:
+        # Spec 065 (T007): el razonamiento de un modelo con perfil lo fija su perfil, no la
+        # tarea. Claude 5.5 rechaza ``budget_tokens`` y GPT-5.6 con herramientas exige el
+        # razonamiento apagado (research.md §D3, §D12).
+        for key, value in profile.request.items():
+            kwargs[key] = dict(value) if isinstance(value, Mapping) else value
+    elif caps.reasoning_control == "effort":
         kwargs["reasoning_effort"] = hop.reasoning
     elif caps.reasoning_control == "budget" and hop.reasoning in REASONING_BUDGET_TOKENS:
         budget = REASONING_BUDGET_TOKENS[hop.reasoning]
@@ -1013,7 +1021,9 @@ def _finish_tool_call(slot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-_ANTHROPIC_ONLY_ON_OPENAI = ("thinking", "context_management")
+#: Spec 065 (T009): ``output_config`` (el esfuerzo del Companion) también es solo de
+#: Anthropic. Con Sol como modelo del Companion salía en el cuerpo hacia OpenAI.
+_ANTHROPIC_ONLY_ON_OPENAI = ("thinking", "context_management", "output_config")
 
 
 def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -1249,7 +1259,9 @@ def supports_json_object(model: str) -> bool:
     """¿Admite el modelo ``response_format={"type": "json_object"}``? Lo dice el mapa
     de LiteLLM; un modelo que no conoce, o un error al preguntar, es que no."""
     try:
-        import litellm
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm = litellm_module()
 
         params = litellm.get_supported_openai_params(model=model)
     except Exception:
@@ -1333,7 +1345,9 @@ class LiteLLMProvider:
         # Pre-import litellm so the first acomplete() doesn't pay the
         # synchronous ``sys.path.append(os.getcwd())`` at import time
         # during a request. Cached in module-level state thereafter.
-        import litellm  # noqa: F401
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm_module()
 
     async def acomplete(
         self,
@@ -1432,7 +1446,9 @@ class LiteLLMProvider:
         tools: list[dict[str, Any]] | None,
         extra: dict[str, Any] | None = None,
     ) -> Any:
-        import litellm  # local import — heavy dep
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm = litellm_module()
 
         task = self._task_or_refuse(tenant_id=tenant_id, role=role, model=model, tools=tools)
         kwargs: dict[str, Any] = {
@@ -1548,7 +1564,9 @@ class LiteLLMProvider:
         and a second streaming path with its own copy would silently stop
         billing the Companion the first time one of the two drifted.
         """
-        import litellm  # local import — heavy dep
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm = litellm_module()
 
         task = self._task_or_refuse(tenant_id=tenant_id, role=role, model=model, tools=None)
         kwargs: dict[str, Any] = {
@@ -1639,7 +1657,9 @@ class LiteLLMProvider:
           un detalle estético;
         - ``usage`` — el recuento final del proveedor.
         """
-        import litellm  # local import — heavy dep
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm = litellm_module()
 
         task = self._task_or_refuse(tenant_id=tenant_id, role=role, model=model, tools=tools)
         kwargs: dict[str, Any] = {

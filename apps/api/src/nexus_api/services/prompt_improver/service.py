@@ -144,7 +144,9 @@ class LiteLLMPromptImproverProvider:
         max_output_tokens: int,
         timeout_s: float,
     ) -> _LLMReply:
-        import litellm  # local import — heavy dep
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm = litellm_module()
 
         kwargs = apply_litellm_proxy_kwargs(
             {

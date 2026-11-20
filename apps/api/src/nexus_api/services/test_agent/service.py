@@ -137,7 +137,9 @@ class LiteLLMTestAgentProvider:
     ) -> _LLMReply:
         import json
 
-        import litellm  # local import — heavy dep
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm = litellm_module()
 
         kwargs: dict[str, Any] = {
             "model": model,

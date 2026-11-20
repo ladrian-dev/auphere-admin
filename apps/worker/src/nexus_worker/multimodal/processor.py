@@ -172,7 +172,9 @@ class LiveMediaProcessor(MediaProcessor):
     async def _transcribe(self, content: bytes, mime_type: str | None) -> str:
         settings = get_settings()
         try:
-            import litellm
+            from nexus_api.core.litellm_map import litellm_module
+
+            litellm = litellm_module()
         except ImportError as exc:
             raise MediaProcessorError("litellm not installed") from exc
         # Wrap bytes in a file-like with a hint filename so OpenAI's
@@ -247,7 +249,9 @@ class LiveMediaProcessor(MediaProcessor):
     async def _vision(self, content: bytes, mime_type: str | None) -> str:
         settings = get_settings()
         try:
-            import litellm
+            from nexus_api.core.litellm_map import litellm_module
+
+            litellm = litellm_module()
         except ImportError as exc:
             raise MediaProcessorError("litellm not installed") from exc
         encoded = base64.b64encode(content).decode("ascii")

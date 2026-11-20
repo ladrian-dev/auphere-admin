@@ -138,7 +138,9 @@ class LiteLLMJudgeProvider:
         tool_calls: list[dict[str, Any]],
         timeout_s: float,
     ) -> JudgeReply:
-        import litellm  # local import — heavy dep
+        from nexus_api.core.litellm_map import litellm_module
+
+        litellm = litellm_module()
 
         user_block = (
             f"<question>{question}</question>\n"

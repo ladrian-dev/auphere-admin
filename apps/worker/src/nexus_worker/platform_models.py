@@ -76,6 +76,11 @@ EXCLUDED_SOURCES: Final[dict[str, str]] = {
     "nexus_api/core/litellm_smoke.py": (
         "la prueba de humo manual de LiteLLM (python -m): no corre en ningún servicio"
     ),
+    "nexus_api/core/respond_profiles.py": (
+        "spec 065: cómo se llama a cada modelo que puede responder (parámetros, plazo, "
+        "reserva). No elige modelo para ninguna tarea; las reservas habilitadas entran en "
+        "el registro como usos (T056)"
+    ),
 }
 
 
