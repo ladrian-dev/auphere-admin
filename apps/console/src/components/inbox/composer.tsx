@@ -3,11 +3,11 @@ import * as React from "react";
 
 import { Button } from "@nexus/ui";
 
-import { useT } from "@/i18n/client";
+import { useLocale, useT } from "@/i18n/client";
 import type { SavedReply } from "@/lib/backend/inbox";
 
 import { waitingText } from "./event-text";
-import { ATTACH_ACCEPT, checkAttachment, type ComposerMode, type SendError } from "./inbox-model";
+import { ATTACH_ACCEPT, checkAttachment, untilLabel, type ComposerMode, type SendError } from "./inbox-model";
 import { SavedReplies, type RepliesApi } from "./saved-replies";
 
 /**
@@ -48,6 +48,7 @@ export function Composer({
   onAttach: (file: File) => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const [draft, setDraft] = React.useState("");
   const [fileError, setFileError] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -96,7 +97,9 @@ export function Composer({
           <Bot className="size-5 shrink-0 text-primary-text" aria-hidden="true" />
           <p className="min-w-48 flex-1 text-sm text-muted-foreground text-pretty">
             {mode.kind === "agent"
-              ? t(mode.windowClosed ? "inbox.composer.agent_window_closed" : "inbox.composer.agent")
+              ? mode.personUntil
+                ? t("inbox.composer.agent_person_only", { until: untilLabel(mode.personUntil, locale) })
+                : t(mode.windowClosed ? "inbox.composer.agent_window_closed" : "inbox.composer.agent")
               : t("inbox.composer.other", { name: mode.name ?? t("inbox.who.someone") })}
           </p>
           <Button type="button" variant="outline" disabled={busy} onClick={onTakeOver}>

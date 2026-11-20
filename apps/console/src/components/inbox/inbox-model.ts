@@ -15,7 +15,7 @@ export type ComposerMode =
   /** The agent asked for help and nobody took it yet. `code`: the column's (spec 056, 7.1). */
   | { kind: "waiting"; reason: string | null; code?: string | null }
   /** The agent answers; the person may take over. `windowClosed`: it no longer can (m-24h). */
-  | { kind: "agent"; windowClosed?: true }
+  | { kind: "agent"; windowClosed?: true; personUntil?: string }
   /** Another person of the business answers. */
   | { kind: "other"; name: string | null }
   /** This person answers; `blocked` says why WhatsApp would refuse a send. */
@@ -26,7 +26,13 @@ export function composerMode(
 ): ComposerMode {
   if (detail.state === "resolved") return { kind: "resolved" };
   if (detail.state === "waiting" && !detail.assignee) return { kind: "waiting", reason: detail.waiting_reason, code: detail.waiting_code ?? null };
-  if (detail.state === "agent") return detail.window.open ? { kind: "agent" } : { kind: "agent", windowClosed: true };
+  if (detail.state === "agent") {
+    if (!detail.window.open) return { kind: "agent", windowClosed: true };
+    // Spec 049 (7.3): Instagram / Messenger with Human Agent — past 24 h the
+    // agent cannot answer, a person can until the window closes.
+    if (detail.window.agent_open === false && detail.window.closes_at) return { kind: "agent", personUntil: detail.window.closes_at };
+    return { kind: "agent" };
+  }
   if (detail.assignee && !detail.assignee.is_me) return { kind: "other", name: detail.assignee.name };
   if (!detail.channel.connected) return { kind: "mine", blocked: "channel_disconnected" };
   if (!detail.window.open) return { kind: "mine", blocked: "window_closed" };
@@ -91,6 +97,11 @@ export function listTime(at: string, now: Date, locale: string): DayLabel | { ki
   const d = new Date(at);
   if (sameDay(d, now)) return { kind: "time", text: clock(at, locale) };
   return dayLabel(at, now, locale);
+}
+
+/** Spec 049 (7.3): «sábado, 27 de noviembre, 11:00» — until when a person can still answer. */
+export function untilLabel(at: string, locale: string): string {
+  return new Date(at).toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 }
 
 export function clock(at: string, locale: string): string {

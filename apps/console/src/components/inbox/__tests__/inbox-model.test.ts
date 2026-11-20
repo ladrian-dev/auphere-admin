@@ -31,6 +31,16 @@ describe("composerMode", () => {
     });
   });
 
+  it("Instagram or Messenger with Human Agent: after 24 h the agent cannot, a person can until the end (049, 7.3)", () => {
+    const until = "2026-11-27T10:00:00Z";
+    expect(
+      composerMode(detail({ state: "agent", channel: { kind: "instagram", connected: true }, window: { open: true, closes_at: until, agent_open: false } })),
+    ).toEqual({ kind: "agent", personUntil: until });
+    expect(
+      composerMode(detail({ state: "agent", channel: { kind: "instagram", connected: true }, window: { open: true, closes_at: until, agent_open: true } })),
+    ).toEqual({ kind: "agent" });
+  });
+
   it("says why WhatsApp would refuse a send", () => {
     expect(composerMode(detail({ state: "person", assignee: ME, window: { open: false, closes_at: null } }))).toEqual({
       kind: "mine",

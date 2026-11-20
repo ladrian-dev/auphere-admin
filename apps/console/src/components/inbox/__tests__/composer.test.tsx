@@ -46,6 +46,16 @@ describe("Composer", () => {
     expect(screen.queryByText(/El agente está respondiendo\./)).toBeNull();
   });
 
+  it("past 24 h on Instagram or Messenger, a person can still answer until the date (049, 7.3)", async () => {
+    const props = view({ kind: "agent", personUntil: "2026-11-27T10:00:00Z" });
+    const text = screen.getByText(/El agente ya no puede responder/);
+    expect(text.textContent).toMatch(/pasaron 24 horas desde el último mensaje del contacto/);
+    expect(text.textContent).toMatch(/Tú sí puedes hasta el .*27.*noviembre/);
+    expect(screen.queryByText(/El agente está respondiendo\./)).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Tomar el control" }));
+    expect(props.onTakeOver).toHaveBeenCalled();
+  });
+
   it("another person answering is said with their name", () => {
     view({ kind: "other", name: "Luis" });
     expect(screen.getByText("Luis está atendiendo esta conversación.")).toBeInTheDocument();
