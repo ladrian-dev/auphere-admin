@@ -279,10 +279,14 @@ async def test_the_first_confirm_resolves_and_everyone_hears(console_world, db_s
     assert out.resolved and out.status == "confirmed"
     await db_session.refresh(review)
     assert review.resolved_by_name == "Daniela" and review.customer_notified is True
-    assert (await _outbound_to(db_session, DANIELA.phone))[-1].content.startswith("Confirmado.")
-    assert (await _outbound_to(db_session, PEDRO.phone))[-1].content == (
-        "Daniela confirmó el pago de Camila."
-    )
+    # Como en ``test_a_late_tap_changes_nothing_and_says_who``: los mensajes a cada revisor
+    # (la revisión y la respuesta) nacen en la misma transacción con el mismo ``created_at``,
+    # así que ``[-1]`` no fija cuál sale último y fallaba a ratos (develop, 2026-11-20).
+    to_daniela = [m.content for m in await _outbound_to(db_session, DANIELA.phone)]
+    assert any(c.startswith("Confirmado.") for c in to_daniela), to_daniela
+    assert "Daniela confirmó el pago de Camila." in [
+        m.content for m in await _outbound_to(db_session, PEDRO.phone)
+    ]
     assert (
         "Tu pago está verificado. Tu pedido queda en preparación para el "
         "viernes 3 de octubre, 13:00 a 17:00."
