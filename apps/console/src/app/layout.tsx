@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import localFont from "next/font/local";
 import { headers } from "next/headers";
 
 import { ThemeProvider, Toaster, UiCopyProvider } from "@nexus/ui";
@@ -12,11 +12,19 @@ import { resolvePrincipal } from "@/lib/principal";
 
 import "./globals.css";
 
-// Inter es la familia del producto (owner, 2026-09-26). Libre y diseñada para
-// interfaz: da el aire de la letra de sistema de Apple sin tocar sus archivos,
-// y se ve igual en todas las máquinas. Next la auto-aloja en el build, así que
-// se sirve desde nuestro origen y no desde Google.
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// Spec 068: la consola de partners habla con la letra de la marca, Helvena
+// (owner, 2026-11-20: «solo Helvena, nunca Inter», de 400 a 600). Es el archivo
+// variable que ya viajaba en `public/fonts`; `next/font/local` lo precarga y
+// ajusta la letra de reserva para que nada salte al llegar. El Super Admin
+// sigue en Inter: esto es solo de la consola.
+const helvena = localFont({
+  src: "../../public/fonts/Helvena-Variable.woff2",
+  variable: "--font-helvena",
+  weight: "400 600",
+  display: "swap",
+  adjustFontFallback: "Arial",
+  fallback: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "system-ui", "sans-serif"],
+});
 
 export const metadata: Metadata = {
   title: { default: "Consola · Auphere", template: "%s · Consola Auphere" },
@@ -74,7 +82,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html
       lang={locale}
-      className={`${inter.variable} h-full antialiased`}
+      className={`${helvena.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="min-h-full">
