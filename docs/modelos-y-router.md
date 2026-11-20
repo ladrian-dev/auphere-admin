@@ -73,9 +73,9 @@ todo de una vez (`ActivationRejected.missing`, con el texto de
 - el proveedor dado de alta como subprocesador;
 - una licencia leída entera (enlace y fecha) y no excluida: Llama 4,
   Qwen3.8-Flash-Next y cualquier AGPL;
-- los tres pesos del medidor (el cuarto, la escritura en caché, no lo pide la
-  activación, pero sin él un modelo con tarifa de escritura no se cobra: spec 065,
-  [billing.md](billing.md));
+- los tres pesos del medidor y, si su precio vigente factura la escritura en
+  caché, también el cuarto (`unweighted_cache_write`): sin él sus turnos se
+  medirían sin cobrarse (spec 065, requisito 5.10, [billing.md](billing.md));
 - certificación por clase en alguna tarea.
 
 ## Los perfiles

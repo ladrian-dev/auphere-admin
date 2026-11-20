@@ -270,6 +270,9 @@ def _apply_costs(
     por llamada como en los dos pasos de arriba. No sirve ``billable_qty``: desde
     la spec 007 lleva el peso de la cuota, y esto son dólares. ``quantity`` no se
     toca: es lo medido, y de ahí sale el cobro (``_turn_quota``).
+
+    Spec 065 (5.9): cada fila se valora con el prompt bruto de SU llamada, para que una
+    llamada por encima del tramo del modelo cueste lo que factura el proveedor.
     """
     tokens: dict[str, dict[str, int]] = {}
     for row in rows:
@@ -278,17 +281,20 @@ def _apply_costs(
             tokens.setdefault(_llm_call_key(row), {})[meter] = int(row["quantity"] or 0)
     for row in rows:
         valued = row
-        if row["meter"] == "llm.input_tokens":
+        prompt: int | None = None
+        if str(row.get("meter") or "").startswith("llm."):
             call = tokens[_llm_call_key(row)]
-            valued = {
-                **row,
-                "quantity": priced_input_tokens(
-                    call["llm.input_tokens"],
-                    call.get("llm.cache_read", 0),
-                    call.get("llm.cache_write", 0),
-                ),
-            }
-        row["cost_usd"] = price_row(valued, catalog, unit_prices)
+            prompt = call.get("llm.input_tokens", 0)
+            if row["meter"] == "llm.input_tokens":
+                valued = {
+                    **row,
+                    "quantity": priced_input_tokens(
+                        call["llm.input_tokens"],
+                        call.get("llm.cache_read", 0),
+                        call.get("llm.cache_write", 0),
+                    ),
+                }
+        row["cost_usd"] = price_row(valued, catalog, unit_prices, prompt_tokens=prompt)
 
 
 _INSERT_SQL = sa.text(

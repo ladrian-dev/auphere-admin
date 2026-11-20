@@ -241,6 +241,8 @@ Luis decidió que el modelo por defecto de Auphere sea Claude Haiku 5.5. Cuando 
 6. WHEN una llamada pasa el umbral de un tramo de precio de su modelo (Haiku 5.5, más de 100.000 tokens de prompt) THEN el sistema DEBE cobrarla con los pesos de ese tramo.
 7. Los pesos nuevos DEBEN seguir las reglas de la spec 059: editables en el panel, recalculados al cambiar el multiplicador y obligatorios para cobrar, también en el camino del copiloto.
 8. El sistema DEBE registrar lo que GPT-5.6 escribe en caché, que el proveedor informa aparte de lo leído, y cobrarlo por el carril de escritura con la tarifa que publica OpenAI (1,25× la entrada).
+9. WHEN una llamada pasa el umbral de un tramo de precio de su modelo THEN el sistema DEBE registrar su coste para Auphere con el recargo de ese tramo, llamada a llamada, como lo factura el proveedor. *(Enmienda del 2026-11-20, pedida por Luis: hasta entonces el coste salía sin recargo y quedaba por debajo de la factura.)*
+10. IF un despliegue tiene tarifa de escritura en caché y no tiene el peso de ese carril THEN el sistema NO DEBE activarlo, y DEBE decir que falta ese peso junto con todo lo demás que falte. *(Enmienda del 2026-11-20, pedida por Luis: sin esa guarda, sus turnos se medirían sin cobrarse.)*
 
 ### Requisito 6 — Pruebas y Playground
 

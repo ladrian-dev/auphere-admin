@@ -495,6 +495,10 @@ ACTIVATION_MESSAGES: dict[str, str] = {
         "Qwen3.8-Flash-Next y AGPL están excluidas)."
     ),
     "unweighted": "Faltan los pesos del medidor por carril: sin ellos el medidor rechaza el turno.",
+    "unweighted_cache_write": (
+        "Falta el peso de la escritura en caché: el modelo la factura y, sin ese peso, "
+        "sus turnos se miden pero no se cobran."
+    ),
     "no_class_certification": "No tiene certificación por clase en ninguna tarea.",
 }
 
@@ -504,6 +508,18 @@ def license_excluded(license_id: str | None) -> bool:
         return False
     normalized = license_id.strip().lower().replace(" ", "-")
     return any(fnmatch.fnmatch(normalized, p) for p in EXCLUDED_LICENSE_PATTERNS)
+
+
+def _bills_cache_writes(deployment: Deployment) -> bool:
+    """¿Su precio vigente factura la escritura en caché? El criterio de la edición de pesos
+    del panel (``sale_policy.has_write_tariff``).
+
+    El medidor mira ``model_profiles.price_cache_write_per_mtok``, que se llena desde este
+    precio cuando entra en vigor (``model_lifecycle._apply_due_prices``). Un modelo de antes
+    de la 0180 con la tarifa solo en esa columna no se vería aquí; la 0239 les puso a todos
+    su peso de escritura."""
+    price = deployment.current_price()
+    return price is not None and price.cache_write is not None and price.cache_write > 0
 
 
 def activation_problems(
@@ -522,6 +538,9 @@ def activation_problems(
             problems.append("license_unread")
     if not deployment.weighted:
         problems.append("unweighted")
+    if deployment.w_cache_write is None and _bills_cache_writes(deployment):
+        # Spec 065, 5.10: el medidor rechazaría sus turnos (``pricing._write_weight``).
+        problems.append("unweighted_cache_write")
     if not any(True for _ in class_certified_tasks):
         problems.append("no_class_certification")
     return tuple(problems)

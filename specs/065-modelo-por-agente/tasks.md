@@ -288,7 +288,7 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
   Deja en verde T044.
 
-  Hecho, también el campo de `apps/admin` (solo en los modelos con tarifa de escritura). Quedan fuera, escritos en `docs/billing.md`: `cost_usd` no aplica el recargo del tramo, el copiloto no aplica tramos (debita con totales de turno) y la activación no exige el cuarto peso.
+  Hecho, también el campo de `apps/admin` (solo en los modelos con tarifa de escritura). Quedan fuera, escritos en `docs/billing.md`: `cost_usd` no aplica el recargo del tramo, el copiloto no aplica tramos (debita con totales de turno) y la activación no exige el cuarto peso. El primero y el tercero se cerraron el 2026-11-20 (T097 y T098).
 
   _Requisitos: 5.5, 5.6, 5.7_
 - [X] T047 [P] [US3] Actualizar las pruebas de la spec 007 y de la 059 que fijaban tres carriles (`test_metering_end_to_end`, `test_sale_api` y las de `pricing_policy`), con el importe nuevo calculado a mano en el test, no copiado del resultado.
@@ -553,6 +553,28 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   _Hecho el 2026-11-20: siete commits, un parche por unidad (`.claude/commits/065/*.patch`, fotos en `refs/snapshots/065/*`), comprobados en seco; nota de KB con lo hecho, lo decidido sin Luis y lo que queda._
 
   _Requisitos: —_
+
+---
+
+## Fase 10: Dos huecos del cobro (enmienda del 2026-11-20)
+
+Luis pidió cerrarlos antes de pasar a Haiku 5.5 por defecto (T079). Quedaban fuera de T046. El tercero, que el copiloto no aplique tramos, sigue fuera: el copiloto corre en Sol, que no tiene tramo.
+
+- [X] T097 [US3] `cost_usd` con el recargo del tramo, llamada a llamada.
+  - Prueba primero, en rojo: `apps/worker/tests/unit/test_cost_usd_tier.py`, sobre `consumer._apply_costs`, con importes calculados a mano. Casos: Haiku 5.5 con 150.000 de prompt (con lectura y escritura) sale a x5 en los cuatro carriles; con 100.000 justos, sin recargo; dos llamadas de 60.000 en un turno, sin recargo; un modelo sin tramo, igual que antes.
+  - Después: `price_row` (`worker/metering/pricing.py`) recibe el prompt bruto de la llamada y aplica el tramo solo en los carriles por millón. `_apply_costs` se lo pasa.
+  - Las reprecificaciones con SQL (0072, 0076, 0114 y `reprice_cached_input_inc70.py`) no cambian: son de antes de que hubiera tramos.
+
+  _Hecho el 2026-11-20: en rojo solo el caso por encima del umbral (salía a x1) y en verde tras el cambio (`pricing.tier_factor`)._
+
+  _Requisitos: 5.9_
+- [X] T098 [US3] La activación exige el cuarto peso.
+  - Prueba primero, en rojo: `apps/api/tests/unit/test_model_catalog.py`. Un despliegue con tarifa de escritura en su precio vigente y sin `quota_weight_cache_write` no se activa (`unweighted_cache_write`, con sus palabras). Con el peso, o sin tarifa de escritura, se activa. El motivo sale junto con los demás.
+  - Después: `activation_problems` (`services/router_catalog.py`), con el mismo criterio que la edición de pesos del panel (tarifa de escritura = precio vigente con `cache_write` mayor que cero). El panel ya enseña los motivos que manda la API, así que no lleva texto nuevo en `apps/admin`.
+
+  _Hecho el 2026-11-20: en rojo los tres casos nuevos y en verde tras el cambio; `tests/integration/models/` en verde. En una base recién migrada (`nexus_test_065`) no bloquea ningún modelo: los que no tienen peso de escritura tampoco tienen tarifa, ni en el precio vigente ni en `model_profiles`. Staging y prod no se han mirado. Queda un caso que la puerta no ve: un modelo de antes de la 0180 con la tarifa solo en `model_profiles.price_cache_write_per_mtok`. Hoy no hay ninguno sin su peso, porque la 0239 se lo puso a todos._
+
+  _Requisitos: 5.10, 5.7_
 
 ## Dependencias
 

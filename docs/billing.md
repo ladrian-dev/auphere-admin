@@ -290,11 +290,20 @@ del multiplicador (Sonnet 4.6: 0,66 x 10 / 3,75 = 1,76x). Ahora:
 `model_prices.surcharge` del precio vigente (Haiku 5.5: x5 por encima de 100.000
 tokens, la petición entera) se cobra con los cuatro pesos multiplicados por el
 factor del tramo. Se decide **por llamada** y estrictamente por encima del umbral
-(`LaneWeights.for_prompt`, en el consumidor). Dos límites conocidos: el copiloto
-debita con los totales del turno y no aplica tramos (sobre un total cobraría x5 a
-varias llamadas cortas; hoy no corre en un modelo con tramo), y `cost_usd` tampoco
-aplica el recargo, así que el coste de una llamada de Haiku 5.5 por encima del umbral
-sale por debajo de lo que factura Anthropic.
+(`LaneWeights.for_prompt`, en el consumidor). `cost_usd`, lo que creemos que nos
+factura el proveedor, aplica el mismo recargo con el mismo criterio
+(`pricing.tier_factor`, desde `consumer._apply_costs`; enmienda del 2026-11-20,
+requisito 5.9), así que el margen de una llamada larga cuadra con la factura. Un límite
+conocido: el copiloto debita y valora con los totales del turno y no aplica tramos
+(sobre un total cobraría x5 a varias llamadas cortas). Hoy no importa, porque corre en
+Sol, que no tiene tramo; habría que resolverlo antes de pasarlo a Haiku 5.5. Las
+reprecificaciones con SQL (0072, 0076, 0114 y `reprice_cached_input_inc70.py`) son de
+antes de los tramos y no lo aplican.
+
+**Activar un despliegue exige el cuarto peso** si su precio vigente factura la
+escritura en caché (`unweighted_cache_write`, en `router_catalog.activation_problems`;
+requisito 5.10). Sin esa guarda, sus turnos se medirían sin cobrarse. El panel lo
+enseña en la fila con los demás motivos que faltan.
 
 **Si alguien cambia una tarifa y olvida el peso**, `weight_drift` lo detecta al
 cargar el catálogo, contra el objetivo vigente, y lo registra con el modelo y el

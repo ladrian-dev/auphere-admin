@@ -458,10 +458,24 @@ async def cheapest_model(
     return min(priced, key=lambda p: (p.input_per_mtok, p.model_id)).model_id
 
 
+def tier_factor(price: ModelPrice, prompt_tokens: int | None) -> Decimal:
+    """El factor del tramo para una llamada con ``prompt_tokens`` de prompt bruto (spec 065, 5.9).
+
+    El mismo criterio que el cobro (``LaneWeights.for_prompt``): estrictamente por encima del
+    umbral y sobre la llamada, nunca sobre el total de un turno. Sin prompt conocido, 1.
+    """
+    above, multiplier = price.tier_above_tokens, price.tier_multiplier
+    if prompt_tokens is None or above is None or multiplier is None or prompt_tokens <= above:
+        return Decimal(1)
+    return multiplier
+
+
 def price_row(
     row: dict[str, Any],
     catalog: dict[str, ModelPrice],
     unit_prices: dict[str, Decimal] | None = None,
+    *,
+    prompt_tokens: int | None = None,
 ) -> Decimal | None:
     """Coste en USD de una fila de consumo, o None si no se puede valorar.
 
@@ -477,6 +491,10 @@ def price_row(
     bruto, con la caché dentro: quien valore filas reales pasa por
     ``consumer._apply_costs``, y quien reprecie con SQL (el ``_PRICE_EXPR`` de la
     0072, la 0076 y la 0114) tiene que restar lo mismo (INC-70).
+
+    ``prompt_tokens`` es el prompt bruto de la llamada de la fila: con él, una llamada que
+    pasa el tramo del modelo se valora con su recargo (:func:`tier_factor`), solo en los
+    carriles por millón de tokens.
     """
     meter = row["meter"]
     if meter not in _METER_PRICING and unit_prices is not None and meter in unit_prices:
@@ -506,5 +524,5 @@ def price_row(
 
     cost = quantity * rate
     if unit == "mtok":
-        cost = cost / _MTOK
+        cost = cost / _MTOK * tier_factor(price, prompt_tokens)
     return cost.quantize(_COST_SCALE)

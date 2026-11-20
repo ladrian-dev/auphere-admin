@@ -296,6 +296,61 @@ def test_every_missing_piece_is_reported_at_once() -> None:
     }
 
 
+def _billing_writes(**over: Any) -> Deployment:
+    """Un despliegue cuyo precio vigente factura la escritura en caché (Haiku 5.5: 0,125)."""
+    price = Price(
+        valid_from=date(2026, 1, 1),
+        input=Decimal("0.10"),
+        cache_read=Decimal("0.01"),
+        cache_write=Decimal("0.125"),
+        output=Decimal("0.50"),
+    )
+    return deployment_from_row(_row(**over), prices=[price])
+
+
+def test_a_write_tariff_without_its_weight_is_not_activated() -> None:
+    """Spec 065, 5.10: sin el cuarto peso, el medidor rechazaría sus turnos
+    (``metering.unweighted_model``) y se medirían sin cobrarse."""
+    deployment = _billing_writes()
+    assert activation_problems(deployment, class_certified_tasks={"tool_turn"}) == (
+        "unweighted_cache_write",
+    )
+    with pytest.raises(ActivationRejected) as err:
+        require_activatable(deployment, class_certified_tasks={"tool_turn"})
+    assert ACTIVATION_MESSAGES["unweighted_cache_write"] in str(err.value)
+
+
+def test_with_its_write_weight_it_activates() -> None:
+    deployment = _billing_writes(quota_weight_cache_write=Decimal("0.0275"))
+    assert activation_problems(deployment, class_certified_tasks={"tool_turn"}) == ()
+
+
+def test_without_a_write_tariff_the_missing_weight_is_not_a_problem() -> None:
+    """Sin tarifa de escritura el peso nulo vale 0 (``pricing._write_weight``): nada que cobrar."""
+    price = Price(
+        valid_from=date(2026, 1, 1),
+        input=Decimal("2.50"),
+        cache_read=Decimal("1.25"),
+        output=Decimal("10.00"),
+    )
+    deployment = deployment_from_row(_row(), prices=[price])
+    assert activation_problems(deployment, class_certified_tasks={"tool_turn"}) == ()
+
+
+def test_the_write_weight_is_reported_with_everything_else() -> None:
+    broken = _billing_writes(
+        subprocessor_listed=False,
+        quota_weight_input=None,
+        quota_weight_cache_read=None,
+        quota_weight_output=None,
+    )
+    assert set(activation_problems(broken, class_certified_tasks={"tool_turn"})) == {
+        "subprocessor_not_listed",
+        "unweighted",
+        "unweighted_cache_write",
+    }
+
+
 def test_every_problem_has_its_words() -> None:
     assert set(ACTIVATION_MESSAGES) == {
         "no_zero_retention",
@@ -303,6 +358,7 @@ def test_every_problem_has_its_words() -> None:
         "license_unread",
         "license_excluded",
         "unweighted",
+        "unweighted_cache_write",
         "no_class_certification",
     }
     assert all(m.strip() for m in ACTIVATION_MESSAGES.values())
