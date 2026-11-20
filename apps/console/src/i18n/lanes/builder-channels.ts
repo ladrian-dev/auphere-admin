@@ -27,14 +27,14 @@ export const builderChannelsMessages = {
   // ── La sección Canales del agente (29) ──────────────────────────────────
   "builder.screen.channels": { es: "Canales", en: "Channels" },
   "builder.channels.intro": {
-    es: "Los números por los que responde este agente. Cada uno tiene su propia configuración.",
-    en: "The numbers this agent answers on. Each one has its own settings.",
+    es: "Los canales por los que responde este agente. Cada uno tiene su propia configuración.",
+    en: "The channels this agent answers on. Each one has its own settings.",
   },
-  "builder.channels.list": { es: "Números de este agente", en: "This agent’s numbers" },
-  "builder.channels.empty": { es: "Este agente aún no tiene ningún número.", en: "This agent has no number yet." },
+  "builder.channels.list": { es: "Canales de este agente", en: "This agent’s channels" },
+  "builder.channels.empty": { es: "Este agente aún no tiene ningún canal.", en: "This agent has no channel yet." },
   "builder.channels.error": {
-    es: "No pudimos cargar los números de este agente. Inténtalo de nuevo.",
-    en: "We could not load this agent’s numbers. Try again.",
+    es: "No pudimos cargar los canales de este agente. Inténtalo de nuevo.",
+    en: "We could not load this agent’s channels. Try again.",
   },
   "builder.channels.whatsapp": { es: "WhatsApp", en: "WhatsApp" },
   "builder.channels.instagram": { es: "Instagram", en: "Instagram" },
@@ -52,13 +52,13 @@ export const builderChannelsMessages = {
   "builder.channel.error": { es: "No se pudo hacer. Inténtalo de nuevo.", en: "It could not be done. Try again." },
   "builder.channel.move.title": { es: "Pasar {number} a otro agente", en: "Move {number} to another agent" },
   "builder.channel.move.body": {
-    es: "Desde el siguiente mensaje responde el agente que elijas. El número conserva su configuración y sus conversaciones.",
-    en: "From the next message, the agent you pick answers. The number keeps its settings and its conversations.",
+    es: "Desde el siguiente mensaje responde el agente que elijas. El canal conserva su configuración y sus conversaciones.",
+    en: "From the next message, the agent you pick answers. The channel keeps its settings and its conversations.",
   },
   "builder.channel.move.field": { es: "Agente que lo atenderá", en: "Agent that will answer it" },
   "builder.channel.move.confirm": { es: "Pasar el número", en: "Move the number" },
   "builder.channel.move.done": { es: "{number} ya lo atiende {name}.", en: "{name} now answers {number}." },
-  "builder.channel.move.error.target": { es: "Ese agente ya no puede atender números. Elige otro.", en: "That agent can no longer answer numbers. Pick another one." },
+  "builder.channel.move.error.target": { es: "Ese agente ya no puede atender canales. Elige otro.", en: "That agent can no longer answer channels. Pick another one." },
   "builder.channel.paused": {
     es: "{number} está en pausa. Los mensajes se guardan y esperan a una persona.",
     en: "{number} is paused. Messages are kept and wait for a person.",
@@ -68,6 +68,13 @@ export const builderChannelsMessages = {
   "builder.channel.disconnect.body": {
     es: "El agente deja de responder por este número. Las conversaciones se conservan y puedes volver a conectarlo cuando quieras.",
     en: "The agent stops answering on this number. Conversations are kept and you can connect it again whenever you want.",
+  },
+  // Spec 049, requisito 5.3: Instagram y Messenger no conservan lo recibido.
+  // El token se borra al desconectar y los mensajes, a los 30 días; volver a
+  // conectar antes lo cancela (``connect.py`` limpia ``disconnected_at``).
+  "builder.channel.disconnect.body.social": {
+    es: "El agente deja de responder por este canal y Auphere borra su acceso ahora. Los mensajes que llegaron por él se borran a los 30 días, salvo que lo vuelvas a conectar antes.",
+    en: "The agent stops answering on this channel and Auphere removes its access now. The messages that came through it are deleted after 30 days, unless you connect it again before then.",
   },
   "builder.channel.disconnect.confirm": { es: "Desconectar", en: "Disconnect" },
   "builder.channel.disconnect.done": { es: "{number} desconectado.", en: "{number} disconnected." },
@@ -182,11 +189,21 @@ export const builderChannelsMessages = {
     es: "Este número está desconectado. Su configuración se conserva por si vuelves a conectarlo.",
     en: "This number is disconnected. Its settings are kept in case you connect it again.",
   },
+  "builder.channel.page.disconnected.social": {
+    es: "Este canal está desconectado. Los mensajes que llegaron por él se borran a los 30 días de desconectarlo, salvo que lo vuelvas a conectar antes. Su configuración se conserva.",
+    en: "This channel is disconnected. The messages that came through it are deleted 30 days after disconnecting, unless you connect it again before then. Its settings are kept.",
+  },
 
   "builder.channel.audience.title": { es: "A quién responde", en: "Who it answers" },
   "builder.channel.audience.intro": {
     es: "Prueba con tu equipo antes de abrirlo a todos. Vale solo para este número.",
     en: "Try it with your team before opening it to everyone. It applies to this number only.",
+  },
+  // Instagram y Messenger escriben con un IGSID o un PSID, no con un teléfono:
+  // «Solo mi equipo» y las excepciones no existen ahí (channel-page.tsx).
+  "builder.channel.audience.intro.social": {
+    es: "Aquí no hay modo de prueba: Instagram y Messenger no tienen teléfonos con los que limitarlo. Prueba el agente en sus pruebas y elige «A todos» cuando esté listo.",
+    en: "There is no test mode here: Instagram and Messenger have no phones to limit it to. Try the agent in its tests, and choose “Everyone” when it is ready.",
   },
   "builder.channel.mode.team_only": { es: "Solo mi equipo", en: "Only my team" },
   "builder.channel.mode.team_only.hint": {
@@ -198,10 +215,14 @@ export const builderChannelsMessages = {
     es: "Responde a todo el mundo, salvo a las excepciones.",
     en: "It answers everyone except the exceptions.",
   },
+  "builder.channel.mode.everyone.hint.social": {
+    es: "Responde a todas las personas que le escriban.",
+    en: "It answers everyone who writes.",
+  },
   "builder.channel.mode.unset": { es: "Todavía a nadie", en: "Nobody yet" },
   "builder.channel.mode.unset.hint": {
-    es: "Sin configurar: el agente aún no responde por este número.",
-    en: "Not set up: the agent does not answer on this number yet.",
+    es: "Sin configurar: el agente aún no responde por este canal.",
+    en: "Not set up: the agent does not answer on this channel yet.",
   },
   "builder.channel.adminOnly": {
     es: "«A todos» no se puede elegir: este agente viene de una plantilla solo para administradores.",
@@ -245,8 +266,8 @@ export const builderChannelsMessages = {
   },
   "builder.channel.recipients": { es: "Personas a las que avisar", en: "People to notify" },
   "builder.channel.recipients.empty": {
-    es: "Nadie recibe aviso todavía. La conversación igual queda en la Bandeja como «Espera a una persona».",
-    en: "Nobody gets notified yet. The conversation still goes to the Inbox as “Waiting for a person”.",
+    es: "Nadie recibe aviso todavía. La conversación igual queda en la Bandeja como «Necesita humano».",
+    en: "Nobody gets notified yet. The conversation still goes to the Inbox as “Needs a human”.",
   },
   "builder.channel.recipients.max": { es: "Como mucho 10 personas.", en: "At most 10 people." },
   "builder.channel.recipient.add": { es: "Añadir persona", en: "Add a person" },
@@ -277,8 +298,13 @@ export const builderChannelsMessages = {
     es: "Los avisos por WhatsApp saldrán del número de avisos de Auphere, porque este número aún no tiene aprobada la plantilla de aviso.",
     en: "WhatsApp notices will come from Auphere’s notices number, because this number does not have the notice template approved yet.",
   },
+  // Instagram y Messenger no tienen plantillas: los avisos siempre salen de Auphere.
+  "builder.channel.notify.auphere.social": {
+    es: "Los avisos por WhatsApp saldrán del número de avisos de Auphere.",
+    en: "WhatsApp notices will come from Auphere’s notices number.",
+  },
   "builder.channel.triggers.title": { es: "Cuándo pasa a una persona", en: "When it hands over to a person" },
-  "builder.channel.triggers.intro": { es: "Lo decide el agente, no el número.", en: "The agent decides it, not the number." },
+  "builder.channel.triggers.intro": { es: "Lo decide el agente, no el canal.", en: "The agent decides it, not the channel." },
   "builder.channel.triggers.none": { es: "El agente nunca pasa a una persona por su cuenta.", en: "The agent never hands over to a person on its own." },
   "builder.channel.triggers.edit": { es: "Cambiarlo en el agente", en: "Change it in the agent" },
 

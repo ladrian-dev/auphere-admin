@@ -27,8 +27,8 @@ export const channelsProtoMessages = {
   // ── El asistente: la rejilla (§7.1) ──
   "channels.proto.pick.title": { es: "Elige un canal", en: "Choose a channel" },
   "channels.proto.pick.intro": {
-    es: "Los de Meta van primero. Un agente puede tener varios números del mismo canal. Los marcados «Próximamente» todavía no se pueden conectar.",
-    en: "Meta’s come first. An agent can have several numbers of the same channel. The ones marked “Coming soon” cannot be connected yet.",
+    es: "Los de Meta van primero. Un agente puede tener varios números o cuentas del mismo canal. Los marcados «Próximamente» todavía no se pueden conectar.",
+    en: "Meta’s come first. An agent can have several numbers or accounts of the same channel. The ones marked “Coming soon” cannot be connected yet.",
   },
   "channels.proto.pick.list": { es: "Canales", en: "Channels" },
   "channels.proto.meta": { es: "Meta", en: "Meta" },
@@ -37,6 +37,7 @@ export const channelsProtoMessages = {
   "channels.proto.cta": { es: "Conectar", en: "Connect" },
   "channels.proto.cta.another": { es: "Conectar otro número", en: "Connect another number" },
   "channels.proto.cta.anotherAccount": { es: "Conectar otra cuenta", en: "Connect another account" },
+  "channels.proto.cta.anotherPage": { es: "Conectar otra Página", en: "Connect another Page" },
   "channels.proto.cta.aria": { es: "Conectar {name}", en: "Connect {name}" },
   "channels.proto.connected.one": { es: "1 conectado", en: "1 connected" },
   "channels.proto.connected.other": { es: "{n} conectados", en: "{n} connected" },

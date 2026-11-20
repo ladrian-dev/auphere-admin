@@ -170,6 +170,9 @@ export function ChannelConfigPage({
   const everyone = draft.audience.mode === "everyone";
   // «Solo mi equipo» y «Excepciones» son teléfonos: solo casan en WhatsApp.
   const phones = page.type === "whatsapp";
+  // Spec 049: Instagram y Messenger dicen lo que de verdad hacen (sin modo de
+  // prueba, avisos siempre de Auphere, borrado a los 30 días al desconectar).
+  const social = page.type === "instagram" || page.type === "messenger";
   const targets: FixTargets = {
     agent: agentHref(refId, owner),
     tests: `${agentHref(refId, owner)}#agente-pruebas`,
@@ -347,7 +350,7 @@ export function ChannelConfigPage({
               {t("builder.channel.wizardStep", { n: 3, total: 4, title: t("channels.proto.step.configure") })}
             </p>
           ) : null}
-          {disconnected ? <Callout tone="info">{t("builder.channel.page.disconnected")}</Callout> : null}
+          {disconnected ? <Callout tone="info">{t(social ? "builder.channel.page.disconnected.social" : "builder.channel.page.disconnected")}</Callout> : null}
           {!disconnected && page.needs_attention ? (
             <Callout tone="warning" title={t("ch.social.attention.title")}>
               {t(ATTENTION[page.needs_attention] ?? "ch.social.attention.subscribe_failed")}
@@ -396,12 +399,13 @@ export function ChannelConfigPage({
               </ul>
             </PageSection>
 
-            <PageSection id="canal-audiencia" title={t("builder.channel.audience.title")} intro={t("builder.channel.audience.intro")}>
+            <PageSection id="canal-audiencia" title={t("builder.channel.audience.title")} intro={t(social ? "builder.channel.audience.intro.social" : "builder.channel.audience.intro")}>
               <AudienceSection
                 draft={draft}
                 writable={writable}
                 adminOnly={page.admin_only_template}
                 phones={phones}
+                social={social}
                 onMode={(mode) => set((d) => ({ ...d, audience: { ...d.audience, mode } }))}
                 onTests={(list) => set((d) => ({ ...d, audience: { ...d.audience, test_numbers: list } }))}
               />
@@ -453,6 +457,7 @@ export function ChannelConfigPage({
                 draft={draft}
                 writable={writable}
                 notifyFrom={page.config.notify_from}
+                social={social}
                 onRecipients={(recipients) => set((d) => ({ ...d, escalation: { ...d.escalation, recipients } }))}
                 onSummary={(summary) => set((d) => ({ ...d, escalation: { ...d.escalation, summary } }))}
               />
@@ -689,6 +694,7 @@ function AudienceSection({
   writable,
   adminOnly,
   phones,
+  social = false,
   onMode,
   onTests,
 }: {
@@ -697,6 +703,8 @@ function AudienceSection({
   adminOnly: boolean;
   /** WhatsApp: «Solo mi equipo» con sus números de prueba. Instagram y Messenger no tienen teléfono. */
   phones: boolean;
+  /** Instagram y Messenger: «A todos» no tiene excepciones. */
+  social?: boolean;
   onMode: (mode: AudienceMode) => void;
   onTests: (list: string[]) => void;
 }) {
@@ -725,7 +733,7 @@ function AudienceSection({
               />
               <span className="grid min-w-0 gap-1">
                 <span className="font-medium">{t(`builder.channel.mode.${m}` as MessageKey)}</span>
-                <span className="text-xs text-pretty text-muted-foreground">{t(`builder.channel.mode.${m}.hint` as MessageKey)}</span>
+                <span className="text-xs text-pretty text-muted-foreground">{t(hintKey(m, social))}</span>
               </span>
             </label>
           ))}
@@ -733,7 +741,7 @@ function AudienceSection({
       ) : (
         <p className="grid min-w-0 gap-1 text-sm">
           <span className="font-medium">{t(`builder.channel.mode.${mode}` as MessageKey)}</span>
-          <span className="text-xs text-pretty text-muted-foreground">{t(`builder.channel.mode.${mode}.hint` as MessageKey)}</span>
+          <span className="text-xs text-pretty text-muted-foreground">{t(hintKey(mode, social))}</span>
         </p>
       )}
       {adminOnly ? (
@@ -755,6 +763,12 @@ function AudienceSection({
       ) : null}
     </div>
   );
+}
+
+/** La explicación de cada modo; en Instagram y Messenger «A todos» no tiene excepciones. */
+function hintKey(mode: AudienceMode, social: boolean): MessageKey {
+  if (mode === "everyone" && social) return "builder.channel.mode.everyone.hint.social";
+  return `builder.channel.mode.${mode}.hint` as MessageKey;
 }
 
 /** Una lista de números en formato internacional, sin duplicados (32.4). */
@@ -851,12 +865,15 @@ function EscalationSection({
   draft,
   writable,
   notifyFrom,
+  social = false,
   onRecipients,
   onSummary,
 }: {
   draft: ChannelConfigIn;
   writable: boolean;
   notifyFrom: string;
+  /** Instagram y Messenger no tienen plantilla de aviso: no hay «porque» que contar. */
+  social?: boolean;
   onRecipients: (list: Recipient[]) => void;
   onSummary: (summary: boolean) => void;
 }) {
@@ -868,7 +885,9 @@ function EscalationSection({
   return (
     <div className="grid min-w-0 gap-4">
       <p className="text-sm text-pretty" data-slot="notify-from">
-        {notifyFrom === "channel" ? t("builder.channel.notify.channel") : t("builder.channel.notify.auphere")}
+        {notifyFrom === "channel"
+          ? t("builder.channel.notify.channel")
+          : t(social ? "builder.channel.notify.auphere.social" : "builder.channel.notify.auphere")}
       </p>
       {recipients.length ? (
         writable ? (

@@ -98,7 +98,7 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
   test("Canales: el estado de cada número, su ⋯, pausar, pasar a otro agente y desconectar con «Reintentar»", async ({ page, request }) => {
     await go(page, agentPage, "Recepción");
     const section = channels(page);
-    const list = section.getByRole("list", { name: "Números de este agente" });
+    const list = section.getByRole("list", { name: "Canales de este agente" });
     await expect(list.getByRole("listitem").filter({ hasText: "+34 611 20 48 93" }).getByText("Solo mi equipo")).toBeVisible();
     await expect(list.getByRole("listitem").filter({ hasText: "+34 611 20 48 94" }).getByText("Con problemas · la app lleva días sin abrirse")).toBeVisible();
     await expect(list.getByRole("link", { name: "Configurar +34 611 20 48 93" })).toHaveAttribute("href", channelPage);
@@ -124,7 +124,7 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     await expect(move.getByRole("radio", { name: "Ventas" })).toBeChecked();
     await expectNoSeriousAxe(page);
     await move.getByRole("button", { name: "Pasar el número" }).click();
-    await expect(section.getByText("Este agente aún no tiene ningún número.")).toBeVisible();
+    await expect(section.getByText("Este agente aún no tiene ningún canal.")).toBeVisible();
     const sent = await (await request.get(`${API}/__test/state`)).json();
     expect(sent.moves).toEqual([{ channel: CH1, to: VENTAS }]);
     expect(sent.disconnects).toEqual(["00000000-0000-4000-8000-0000000000c2", "00000000-0000-4000-8000-0000000000c2"]);
@@ -221,7 +221,7 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
   test("a 390 px nada se desborda: la pantalla del agente, el modal de pasar y la página del canal", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await go(page, agentPage, "Recepción");
-    await expect(channels(page).getByRole("list", { name: "Números de este agente" })).toBeVisible();
+    await expect(channels(page).getByRole("list", { name: "Canales de este agente" })).toBeVisible();
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px la pantalla del agente se desborda").toEqual([]);
     await knowledge(page).getByRole("button", { name: "Enseñar" }).click();

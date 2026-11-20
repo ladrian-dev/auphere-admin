@@ -1,7 +1,8 @@
 # Canales: alta, coexistencia, página del canal y enlace del dueño
 
-Spec 047 (requisitos 28 a 34). Un **canal** es un número (WhatsApp hoy) que
-atiende **un agente** (`channels.agent_id`). Este documento cuenta cómo se
+Spec 047 (requisitos 28 a 34). Un **canal** es un número de WhatsApp, una cuenta
+de Instagram o una Página de Facebook (Messenger, spec 049) que atiende **un
+agente** (`channels.agent_id`). Este documento cuenta cómo se
 conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
 
 ## 1. Conectar un número
@@ -73,6 +74,20 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
 - Los checks de la página dicen qué falta para «A todos» y qué bloquea, y
   avisan (sin bloquear) si las pruebas no están al día, si nadie recibe el
   escalado o si el aviso por WhatsApp no puede salir.
+- **Instagram y Messenger** (spec 049) usan la misma página con tres
+  diferencias, y la página las dice en vez de copiar el texto de WhatsApp
+  (`channel-page.tsx`, `social`):
+  - **Sin modo de prueba ni excepciones:** escriben con un IGSID o un PSID, no
+    con un teléfono, así que solo hay «A todos». El texto manda probar el agente
+    en sus pruebas antes de elegirlo.
+  - **Avisos siempre del número de Auphere:** no tienen plantillas.
+  - **Desconectar borra:** el token se borra al momento y lo recibido por el
+    canal se anonimiza a los 30 días (`meta_social_retention`, requisito 5.3).
+    Volver a conectarlo antes lo cancela. El diálogo de «Desconectar» y el
+    aviso de canal desconectado lo dicen.
+  - **Comentarios** (Instagram y Messenger): responder sí o no y la respuesta
+    pública bajo el comentario (`_COMMENT_CHANNELS` en
+    `api/console/channel_config.py`).
 
 ## 3. Coexistencia
 
@@ -104,7 +119,38 @@ asignado a ese agente y empieza en prueba con el teléfono del dueño. Al conect
 se avisa al partner (`channel.connected`). Revocar el enlace lo invalida al
 momento.
 
-## 5. Dónde mirar si algo falla
+## 5. Instagram y Messenger: quién los ve y por dónde llegan
+
+Spec 049. Meta aprobó los permisos el 2026-11-19 (solicitud del 2026-11-03).
+
+- **Quién los ve:** con `NEXUS_META_SOCIAL_GENERAL_AVAILABILITY=true`, todos los
+  partners. Sin ella, solo los que tienen el canal en `partners.beta_channels`
+  (panel → Partners → Módulos → Canales en beta). La bandera vive en el entorno
+  común de `infra/terraform/20-services/taskdefs.tf` y llega con un
+  `terraform apply` por workspace: el despliegue no la cambia.
+- **Human Agent:** con `NEXUS_META_HUMAN_AGENT_APPROVED=true`, una persona del
+  equipo responde hasta 7 días después del último mensaje del contacto, con la
+  etiqueta `HUMAN_AGENT`. El agente sigue con 24 horas (`services/meta_window`).
+  La leen la API y el worker que envía.
+- **Configuraciones de Facebook Login for Business:** Instagram
+  `1157578836735566` (7 permisos) y «Auphere Messenger» `2188508105420190`
+  (7 permisos). Las dos dan un token de usuario del sistema que no caduca.
+- **Webhooks:** Meta admite **una sola URL por app** para los objetos `page` e
+  `instagram`. El entorno que recibe un evento de una cuenta que no es suya lo
+  reenvía al otro, con el cuerpo y la firma intactos (`meta_webhook_peer`). Si
+  el reenvío falla, se registra y Meta recibe igualmente su 200.
+  - Del 2026-10-30 al paso a producción apuntaron a staging, para grabar la
+    revisión (`docs/qa-canales-meta-2026-10-30/07-webhooks-a-staging.md`).
+  - En producción tienen que apuntar a `https://webhooks.auphere.com/webhook/meta`.
+    Si no, producción depende de que staging esté encendido para recibirlos.
+- **Campos suscritos:** Página, 9 (`messages`, `message_echoes`,
+  `message_reactions`, `message_reads`, `messaging_handovers`,
+  `messaging_postbacks`, `messaging_referrals`, `messaging_policy_enforcement`,
+  `feed`). Instagram, 8 (`comments`, `mentions`, `message_reactions`, `messages`,
+  `messaging_handover`, `messaging_postbacks`, `messaging_referral`,
+  `messaging_seen`).
+
+## 6. Dónde mirar si algo falla
 
 - El estado visible del canal sale de `services/agent_lifecycle.channel_visible_state`
   (`pending_link`, `disconnected`, `problem`, `paused`, `unconfigured`,

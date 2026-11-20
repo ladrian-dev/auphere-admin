@@ -48,7 +48,7 @@ export const CHANNEL_MENU_ACTIONS: ChannelMenuActions = {
 };
 
 /** Lo que el ⋯ necesita de un canal: su número, lo permitido y a quién puede pasar. */
-export type MenuChannel = Pick<ChannelPage, "id" | "identifier" | "allowed" | "move_targets">;
+export type MenuChannel = Pick<ChannelPage, "id" | "identifier" | "allowed" | "move_targets"> & Partial<Pick<ChannelPage, "type">>;
 
 /**
  * El ⋯ de cada canal (spec 047, requisito 34.1): «Configuración», «Pasar a
@@ -177,7 +177,9 @@ export function ChannelMenu({
           if (!open) setDisconnectError(null);
         }}
         title={t("builder.channel.disconnect.title", { number: channel.identifier })}
-        description={t("builder.channel.disconnect.body")}
+        description={t(
+          channel.type === "instagram" || channel.type === "messenger" ? "builder.channel.disconnect.body.social" : "builder.channel.disconnect.body",
+        )}
         confirmLabel={t("builder.channel.disconnect.confirm")}
         cancelLabel={t("builder.channel.cancel")}
         destructive

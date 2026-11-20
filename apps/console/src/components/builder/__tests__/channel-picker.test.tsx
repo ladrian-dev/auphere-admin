@@ -6,7 +6,7 @@ import { LocaleProvider } from "@/i18n/client";
 import { ChannelWizard } from "../channel-picker";
 
 describe("ChannelWizard: conectar otro", () => {
-  it("WhatsApp pide otro número; Instagram y Messenger, otra cuenta", () => {
+  it("WhatsApp pide otro número; Instagram, otra cuenta; Messenger, otra Página", () => {
     render(
       <LocaleProvider locale="es">
         <ChannelWizard
@@ -20,6 +20,6 @@ describe("ChannelWizard: conectar otro", () => {
     const card = (name: RegExp) => within(screen.getByRole("button", { name }));
     expect(card(/WhatsApp/).getByText("Conectar otro número")).toBeVisible();
     expect(card(/Instagram/).getByText("Conectar otra cuenta")).toBeVisible();
-    expect(card(/Messenger/).getByText("Conectar otra cuenta")).toBeVisible();
+    expect(card(/Messenger/).getByText("Conectar otra Página")).toBeVisible();
   });
 });
