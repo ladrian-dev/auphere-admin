@@ -101,6 +101,29 @@ async def test_usage_is_attributed_to_its_own_client(world) -> None:
     assert usage[ONLY_B].clients == (b_name,), "la asignación de B no aparece en A"
 
 
+async def test_an_agents_choice_is_read_under_its_clients_guc(world) -> None:
+    """Spec 065 (T080): la elección de un agente de B cuenta para B, no para A."""
+    chosen = "openai/gpt-5.6-terra"
+    agent_b = uuid.uuid4()
+    b = world["b"]["tenant_id"]
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, b):
+        await session.execute(
+            sa.text(
+                "INSERT INTO agents (id, tenant_id, name, respond_model_profile_id, "
+                "respond_model_set_by, respond_model_set_at) "
+                "SELECT :a, :t, 'Agente B', id, 'partner', now() FROM model_profiles "
+                "WHERE model_id = :m"
+            ),
+            {"a": agent_b, "t": b, "m": chosen},
+        )
+        await session.commit()
+    model_usage.invalidate()
+    usage = await model_usage.scan_usage()
+    assert usage[chosen].agents == 1
+    assert usage[chosen].clients == ("Client B One",)
+    assert str(agent_b) not in repr(usage)
+
+
 async def test_nothing_but_counts_and_client_names_leaves_the_scan(world) -> None:
     usage = await model_usage.scan_usage()
     fields = {f.name for f in dataclasses.fields(usage[ONLY_A])}

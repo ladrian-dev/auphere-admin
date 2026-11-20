@@ -18,8 +18,16 @@ from nexus_api.metering import sale_policy
 from nexus_api.metering.pricing_policy import weight_drift
 
 D = Decimal
-SOL_COST = {"input": D("4"), "cache_read": D("0.4"), "output": D("20")}
-SOL_WEIGHTS = {"input": D("0.88"), "cache_read": D("0.088"), "output": D("4.4")}
+#: Spec 065: cuatro carriles. La escritura de Sol, 5,00 (0239): 2,2 x 5 / 10 = 1,10.
+SOL_COST = {"input": D("4"), "cache_read": D("0.4"), "output": D("20"), "cache_write": D("5")}
+SOL_WEIGHTS = {
+    "input": D("0.88"),
+    "cache_read": D("0.088"),
+    "output": D("4.4"),
+    "cache_write": D("1.1"),
+}
+#: gpt-4o no factura la escritura: su peso propuesto es 0, no «sin propuesta».
+GPT4O_COST = {"input": D("2.5"), "cache_read": D("1.25"), "output": D("10"), "cache_write": None}
 
 
 def test_the_proposal_is_the_target_times_the_cost_over_the_credit_price() -> None:
@@ -28,11 +36,48 @@ def test_the_proposal_is_the_target_times_the_cost_over_the_credit_price() -> No
         "input": D("1.000000"),
         "cache_read": D("0.100000"),
         "output": D("5.000000"),
+        "cache_write": D("1.250000"),
     }
 
 
 def test_a_lane_without_cost_leaves_no_proposal() -> None:
     assert sale_policy.propose({**SOL_COST, "cache_read": None}, D("2.2")) is None
+
+
+def test_no_write_tariff_proposes_a_zero_write_weight() -> None:
+    """Spec 065: sin esto, «aplicar a todos» se saltaría cada modelo sin tarifa de escritura."""
+    assert sale_policy.propose(GPT4O_COST, D("2.2")) == {
+        "input": D("0.550000"),
+        "cache_read": D("0.275000"),
+        "output": D("2.200000"),
+        "cache_write": D("0"),
+    }
+
+
+def test_the_write_lane_has_a_floor_too() -> None:
+    """Spec 065: un peso de 0,66 sobre la tarifa de 5,00 vende a 0,66 x 10 / 5 = 1,32x, bajo el
+    suelo de 1,5. (Dentro de la entrada, a 0,88, la escritura de Sol se vendía a 1,76x.)"""
+    assert sale_policy.lanes_below_floor({**SOL_WEIGHTS, "cache_write": D("0.66")}, SOL_COST) == [
+        "cache_write"
+    ]
+
+
+def test_a_write_tariff_without_its_weight_is_unweighted() -> None:
+    weights = {**SOL_WEIGHTS, "cache_write": None}
+    view = sale_policy.sale_view(costs=SOL_COST, weights=weights, target=D("2.2"))
+    assert view["state"] == "unweighted"
+    no_tariff = sale_policy.sale_view(
+        costs=GPT4O_COST,
+        weights={
+            "input": D("0.55"),
+            "cache_read": D("0.275"),
+            "output": D("2.2"),
+            "cache_write": None,
+        },
+        target=D("2.2"),
+    )
+    assert no_tariff["state"] == "on_target", "sin tarifa, el peso nulo es 0"
+    assert no_tariff["lanes"]["cache_write"]["weight"] == "0.000000"
 
 
 def test_the_floor_names_each_lane_that_sinks() -> None:
@@ -73,11 +118,11 @@ def test_the_view_says_drift_and_below_floor() -> None:
 
 
 def test_the_view_of_the_odd_cases() -> None:
-    unweighted = {"input": None, "cache_read": None, "output": None}
+    unweighted = {"input": None, "cache_read": None, "output": None, "cache_write": None}
     assert sale_policy.sale_view(costs=SOL_COST, weights=unweighted, target=D("2.2"))["state"] == (
         "unweighted"
     )
-    no_cost = {"input": None, "cache_read": None, "output": None}
+    no_cost = {"input": None, "cache_read": None, "output": None, "cache_write": None}
     assert sale_policy.sale_view(costs=no_cost, weights=SOL_WEIGHTS, target=D("2.2"))["state"] == (
         "no_cost"
     )
@@ -101,7 +146,7 @@ def test_the_drift_check_uses_the_target_it_is_given() -> None:
     weights = {"m": SOL_WEIGHTS}
     assert weight_drift(prices, weights, sell_usd_per_million=D(10), target=D("2.2")) == []
     drifts = weight_drift(prices, weights, sell_usd_per_million=D(10), target=D("2.5"))
-    assert {d.lane for d in drifts} == {"input", "cache_read", "output"}
+    assert {d.lane for d in drifts} == {"input", "cache_read", "output", "cache_write"}
     assert drifts[0].expected == D("2.5") * SOL_COST[drifts[0].lane] / D(10)
 
 

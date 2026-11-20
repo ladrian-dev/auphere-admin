@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.respond_catalog import (
     OFFERABLE_MODEL_ID_SET,
+    RESPOND_MODEL_ID_SET,
     RESPOND_MODELS,
     agent_respond_default,
 )
@@ -261,6 +262,11 @@ def _estimate(
     }
 
 
+async def agent_facts(session: AsyncSession, agent_id: uuid.UUID) -> AgentFacts:
+    """Lo que la resolución necesita de un agente, con la sesión acotada a su cliente."""
+    return await _facts(session, agent_id)
+
+
 # ── la vista ───────────────────────────────────────────────────────────────
 
 
@@ -281,6 +287,7 @@ async def agent_model_view(
         facts.version_override,
         agent_respond_default(),
         agent_needs=facts.needs,
+        enabled=RESPOND_MODEL_ID_SET,
     )
     offered = [
         (model_id, label)
@@ -347,6 +354,62 @@ async def agent_model_view(
     }
 
 
+async def agent_model_rows(session: AsyncSession) -> list[dict[str, Any]]:
+    """Lo que enseña el panel por cliente: cada agente activo con su elección y con qué
+    responde (``GET /admin/tenants/{tenant_id}/agents/models``). La sesión es la del cliente
+    de la ruta: la RLS decide qué agentes se ven."""
+    agents = (
+        await session.scalars(
+            sa.select(Agent).where(Agent.status == "active").order_by(Agent.created_at, Agent.id)
+        )
+    ).all()
+    rows: list[dict[str, Any]] = []
+    facts_by_agent = [await _facts(session, agent.id) for agent in agents]
+    wanted: set[str] = set()
+    resolved_by_agent: list[Resolved] = []
+    for facts in facts_by_agent:
+        resolved = resolve(
+            facts.choice,
+            facts.version_override,
+            agent_respond_default(),
+            agent_needs=facts.needs,
+            enabled=RESPOND_MODEL_ID_SET,
+        )
+        resolved_by_agent.append(resolved)
+        wanted.add(resolved.model_id)
+        if facts.choice is not None:
+            wanted.add(facts.choice.model_id)
+    profiles = await _profiles(session, wanted)
+
+    def name(model_id: str) -> str:
+        p = profiles.get(model_id)
+        return str(p.display_name) if p is not None else model_id
+
+    for agent, facts, resolved in zip(agents, facts_by_agent, resolved_by_agent, strict=True):
+        choice = None
+        if facts.choice is not None:
+            choice = {
+                "model_id": facts.choice.model_id,
+                "display_name": name(facts.choice.model_id),
+                "set_by": facts.choice.set_by,
+                "set_at": agent.respond_model_set_at,
+            }
+        rows.append(
+            {
+                "agent_id": agent.id,
+                "name": agent.name,
+                "lifecycle": agent.status,
+                "choice": choice,
+                "effective": {
+                    "model_id": resolved.model_id,
+                    "display_name": name(resolved.model_id),
+                    "source": resolved.source,
+                },
+            }
+        )
+    return rows
+
+
 # ── el cambio ──────────────────────────────────────────────────────────────
 
 
@@ -379,8 +442,12 @@ async def set_agent_model(
             raise UnknownModel(model_id)
         row = (
             await session.execute(
+                # La base, no la caché del proceso: un modelo recién deshabilitado no se
+                # puede elegir aunque este proceso aún no se haya enterado (/cso 2026-11-20).
                 sa.select(ModelProfile.id).where(
-                    ModelProfile.model_id == model_id, ModelProfile.status == "active"
+                    ModelProfile.model_id == model_id,
+                    ModelProfile.status == "active",
+                    ModelProfile.respond_enabled_at.is_not(None),
                 )
             )
         ).scalar_one_or_none()
@@ -417,9 +484,12 @@ async def set_agent_model(
 
 __all__ = [
     "LINES",
+    "AgentFacts",
     "ModelUnavailableForAgent",
     "TokenProfile",
     "UnknownModel",
+    "agent_facts",
+    "agent_model_rows",
     "agent_model_view",
     "sale_usd",
     "set_agent_model",

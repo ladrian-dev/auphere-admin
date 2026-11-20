@@ -101,6 +101,9 @@ class NotificationKind(str, enum.Enum):
     BUILD_BUDGET_EXHAUSTED = "build.budget.exhausted"
     MODEL_RETIREMENT = "model.retirement"
     MODEL_PRICE_CHANGE = "model.price_change"
+    # Spec 065 (8.2): el modelo de un agente salió de la lista del partner y vuelve al modelo
+    # por defecto. payload: {external_client_ref, agent_id, agent, from_model, to_model}.
+    AGENT_MODEL_RESET = "agent.model_reset"
     # Spec 050 — Meta changed something on the client's WhatsApp that stops or
     # will stop sends. payload: {external_client_ref, template_name?, phone?,
     # reason?, quality?, category?}

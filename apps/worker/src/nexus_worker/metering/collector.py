@@ -202,10 +202,19 @@ def usage_fields(response: Any) -> dict[str, int]:
         if isinstance(val, int):
             out[key] = val
     # Anthropic a veces reporta el acierto de caché en ``prompt_tokens_details``.
+    details = _get(usage, "prompt_tokens_details")
     if "cache_read_input_tokens" not in out:
-        cached = _get(_get(usage, "prompt_tokens_details"), "cached_tokens")
+        cached = _get(details, "cached_tokens")
         if isinstance(cached, int):
             out["cache_read_input_tokens"] = cached
+    # Spec 065 (T044): GPT-5.6 cobra lo escrito en caché y lo cuenta en
+    # ``prompt_tokens_details.cache_write_tokens``, que LiteLLM deja pasar tal cual (1.83.0 y
+    # 1.83.14). Solo si no vino la clave de Anthropic: con ella, lo escrito se contaría dos
+    # veces (``test_cache_write_on_the_wire``).
+    if "cache_creation_input_tokens" not in out:
+        written = _get(details, "cache_write_tokens")
+        if isinstance(written, int):
+            out["cache_creation_input_tokens"] = written
     return out
 
 

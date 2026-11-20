@@ -88,11 +88,15 @@ _APPS = Path(__file__).resolve().parents[3]
 DECIDERS = (
     "worker/src/nexus_worker/runtime/pipeline.py",
     "api/src/nexus_api/services/agent_model.py",
+    # T081: el uso de un modelo (059) y el ciclo de vida, con la elección de cada agente.
+    "api/src/nexus_api/services/model_lifecycle.py",
 )
 
 #: Leer el rol ``respond`` de las asignaciones de cliente: la resolución de antes.
 _RESPOND_BINDING = re.compile(
-    r"""bindings\.get\(\s*["']respond["']\s*\)|role\s*==\s*["']respond["']|\[\s*["']respond["']\s*\]"""
+    r"""bindings\.get\(\s*["']respond["']\s*\)|role\s*==\s*["']respond["']|"""
+    # ``default_models()["respond"]`` es el uso de la plataforma, no una asignación de cliente.
+    r"""(?<!default_models\(\))\[\s*["']respond["']\s*\]"""
 )
 
 
@@ -106,9 +110,11 @@ def test_each_decider_goes_through_resolve(relative: str) -> None:
 
 #: Sitios que todavía leen la asignación de cliente, con la tarea que los cambia. Cuando una
 #: tarea los arregla, esta prueba falla hasta que salen de aquí: la lista no se queda vieja.
-PENDING: dict[str, str] = {
-    "api/src/nexus_api/services/model_lifecycle.py": "T081",
-    "api/src/nexus_api/services/model_usage.py": "T081",
+PENDING: dict[str, str] = {}
+
+#: Los que nombran el rol sin leerlo, con el motivo.
+ALLOWED: dict[str, str] = {
+    "api/src/nexus_api/api/admin/model_bindings.py": "T034: rechaza el rol respond (422)",
 }
 
 
@@ -121,7 +127,40 @@ def test_nobody_reads_the_clients_respond_binding() -> None:
                 continue
             if _RESPOND_BINDING.search(text):
                 offenders.append(path.relative_to(_APPS).as_posix())
+    offenders = [o for o in offenders if o not in ALLOWED]
     assert sorted(offenders) == sorted(PENDING), (
         f"leen la asignación de cliente del rol respond: {sorted(offenders)}; "
         f"pendientes declarados: {sorted(PENDING)}"
     )
+
+
+# ── /cso 2026-11-20 (T093): un heredado de Anthropic y la reserva no habilitada ───────────
+
+MCP = frozenset({"anthropic_mcp"})
+
+
+def test_a_legacy_anthropic_choice_keeps_running_skills_and_mcp() -> None:
+    """CE-005: la 0240 deja a un agente con MCP en Sonnet 4.6, que hoy los ejecuta. Al
+    desplegar sigue igual, no salta al modelo por defecto ni a una reserva."""
+    from nexus_api.core.respond_profiles import ANTHROPIC_MCP, ANTHROPIC_SKILLS, can_run
+
+    legacy = "anthropic/claude-sonnet-4-6"
+    assert can_run(legacy, frozenset({ANTHROPIC_MCP, ANTHROPIC_SKILLS}))
+    assert not can_run("openai/gpt-4o", frozenset({ANTHROPIC_MCP}))
+    got = resolve(
+        AgentChoice(legacy, "operator"), None, SOL, agent_needs=frozenset({ANTHROPIC_MCP})
+    )
+    assert (got.model_id, got.source, got.skipped) == (legacy, "agent_operator", ())
+
+
+def test_the_defaults_reserve_is_used_only_if_enabled() -> None:
+    """Un agente con MCP sin elección: el modelo por defecto (Sol) no puede, y su reserva
+    (Sonnet 5.5) solo vale si está habilitada para responder en el entorno. Si no, el de
+    siempre, como hoy, en vez de un modelo que no pasó la batería."""
+    from nexus_api.core.respond_profiles import ANTHROPIC_MCP
+
+    needs = frozenset({ANTHROPIC_MCP})
+    off = resolve(None, None, SOL, agent_needs=needs, enabled=frozenset({SOL, TERRA, LUNA}))
+    assert (off.model_id, off.source) == (SOL, "platform")
+    on = resolve(None, None, SOL, agent_needs=needs, enabled=frozenset({SOL, SONNET}))
+    assert (on.model_id, on.source) == (SONNET, "platform")

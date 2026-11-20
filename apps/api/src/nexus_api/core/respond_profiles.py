@@ -49,7 +49,9 @@ class RespondProfile:
 
     model_id: str
     family: Family
-    #: Los kwargs que necesita con herramientas (research.md §D3-D4).
+    #: Los kwargs que necesita con herramientas (research.md §D3-D4). Los de Claude van
+    #: también sin herramientas; los de GPT-5.6, solo con ellas (sin herramientas sale como
+    #: hoy).
     request: Mapping[str, Any]
     #: Lo que nunca se le manda.
     forbidden: frozenset[str]
@@ -64,13 +66,30 @@ class RespondProfile:
     cross_in_request: Mapping[str, Any] | None = None
     #: Para los que razonan: qué hacer si lo enviado cambió. Nunca junto a ``between_tools``.
     block_binding: Mapping[str, Any] | None = None
+    #: Lo que lleva además una llamada del turno de respuesta, y no una tarea del router
+    #: (``apply_capabilities`` solo aplica ``request``: así un ``classify`` enrutado a Haiku
+    #: 5.5 conserva su ``thinking: disabled``). Para Claude 5.5: razonamiento adaptativo y
+    #: la caché automática de la conversación (§D4, §D14).
+    turn_request: Mapping[str, Any] | None = None
     #: Lo que gasta frente a Sol con los mismos tokens (razonamiento, tokenizador). 1,0
     #: hasta que lo mida la batería real (T064).
     estimate_factor: float = 1.0
     supports: frozenset[str] = field(default_factory=frozenset)
 
 
-_OPENAI_FORBIDDEN = frozenset({"thinking", "output_config", "context_management", "temperature"})
+#: ``mcp_servers`` (con el token del servidor MCP del cliente) y ``container`` (sus Skills)
+#: son de Anthropic: hacia OpenAI, LiteLLM los metería en el cuerpo (/cso del 2026-11-20).
+_OPENAI_FORBIDDEN = frozenset(
+    {
+        "thinking",
+        "output_config",
+        "context_management",
+        "cache_control",
+        "temperature",
+        "mcp_servers",
+        "container",
+    }
+)
 _ANTHROPIC_FORBIDDEN = frozenset({"temperature", "top_p", "top_k", "reasoning_effort"})
 _ANTHROPIC_RUNS = frozenset({ANTHROPIC_SKILLS, ANTHROPIC_MCP})
 _DROP_BLOCK = {"prefix_mismatch_behavior": "drop_block"}
@@ -105,6 +124,13 @@ def _claude55(
         # El esfuerzo como ``output_config`` y no como ``reasoning_effort``: este último lo
         # traduce LiteLLM a su propio ``thinking`` (§D3).
         request=MappingProxyType({"output_config": {"effort": "low"}}),
+        # Razonamiento adaptativo: el transporte le pone ``block_binding`` (o lo cambia por
+        # ``cross_in_request`` en un cruce). ``cache_control`` arriba es la caché automática
+        # de la conversación, que no toca los mensajes; la marca fija del ``system`` la pone
+        # el transporte (§D14).
+        turn_request=_frozen(
+            {"thinking": {"type": "adaptive"}, "cache_control": {"type": "ephemeral"}}
+        ),
         forbidden=frozenset(forbidden),
         keeps_reasoning=True,
         timeout_s=timeout_s,
@@ -148,11 +174,15 @@ def can_run(model_id: str, needs: frozenset[str]) -> bool:
     """Si ``model_id`` puede ejecutar lo que el agente usa (requisito 4.8).
 
     Un modelo sin perfil puede con un agente que no necesita nada especial: es el caso de
-    los heredados que responden hoy (requisito 12.5)."""
+    los heredados que responden hoy (requisito 12.5). Uno heredado de Anthropic (Sonnet 4.6,
+    Haiku 4.5) ejecuta también Skills y MCP, como hoy: la 0240 deja a esos agentes en él y
+    al desplegar no cambian (CE-005; /cso del 2026-11-20)."""
     if not needs:
         return True
     profile = profile_for(model_id)
-    return profile is not None and needs <= profile.supports
+    if profile is None:
+        return model_id.startswith("anthropic/")
+    return needs <= profile.supports
 
 
 __all__ = [

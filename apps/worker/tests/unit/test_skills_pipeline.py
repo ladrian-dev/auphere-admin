@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -124,42 +124,52 @@ class TestLiteLLMExtraMerge:
     def _proxy(self, litellm_proxy_partner: uuid.UUID) -> uuid.UUID:
         return litellm_proxy_partner
 
+    _SKILLS_EXTRA: ClassVar[dict[str, Any]] = {
+        "container": {"skills": [{"type": "custom", "skill_id": "skill_abc", "version": "latest"}]},
+        "extra_headers": {
+            "anthropic-beta": ("code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14")
+        },
+    }
+    _TOOLS: ClassVar[list[dict[str, Any]]] = [
+        {"type": "function", "function": {"name": "x", "parameters": {}}}
+    ]
+
     async def test_container_and_headers_land_in_kwargs(
         self, patched_litellm: _LiteLLMStub
     ) -> None:
-        """When ``extra`` carries container + extra_headers, the provider
-        merges both into the litellm call. LiteLLM passes them through to
-        Anthropic — `container.skills` activates the Skills runtime and
-        the headers turn on the betas Anthropic requires."""
-        provider = LiteLLMProvider()
-        tools = [{"type": "function", "function": {"name": "x", "parameters": {}}}]
-        extra = {
-            "container": {
-                "skills": [{"type": "custom", "skill_id": "skill_abc", "version": "latest"}]
-            },
-            "extra_headers": {
-                "anthropic-beta": (
-                    "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
-                )
-            },
-        }
+        """When ``extra`` carries container + extra_headers, the provider merges both into
+        the litellm call to Anthropic: `container.skills` activates the Skills runtime and the
+        headers turn on the betas Anthropic requires."""
+        await LiteLLMProvider().acomplete_with_tools(
+            tenant_id=uuid.uuid4(),
+            role="book",
+            model="anthropic/claude-sonnet-4-6",
+            messages=[{"role": "user", "content": "hola"}],
+            tools=self._TOOLS,
+            extra=dict(self._SKILLS_EXTRA),
+        )
+        kw = patched_litellm.calls[0]
+        assert kw["container"] == self._SKILLS_EXTRA["container"]
+        assert kw["extra_headers"]["anthropic-beta"] == (
+            "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
+        )
 
-        await provider.acomplete_with_tools(
+    async def test_toward_openai_the_anthropic_only_kwargs_never_leave(
+        self, patched_litellm: _LiteLLMStub
+    ) -> None:
+        """G1 hops are openai/*; LiteLLM 1.83 raises UnsupportedParamsError for
+        Anthropic-only kwargs on that prefix, and would put ``container`` (the client's
+        Skills) in the body. The hop gate strips them (/cso del 2026-11-20)."""
+        await LiteLLMProvider().acomplete_with_tools(
             tenant_id=uuid.uuid4(),
             role="book",
             model="openai/gpt-5.6-sol",
             messages=[{"role": "user", "content": "hola"}],
-            tools=tools,
-            extra=extra,
+            tools=self._TOOLS,
+            extra=dict(self._SKILLS_EXTRA),
         )
-
         kw = patched_litellm.calls[0]
-        assert kw["container"] == extra["container"]
-        assert kw["extra_headers"]["anthropic-beta"] == (
-            "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
-        )
-        # G1 hops are openai/*; LiteLLM 1.83 raises UnsupportedParamsError
-        # for Anthropic-only kwargs on that prefix. The hop gate strips them.
+        assert "container" not in kw
         assert "context_management" not in kw
         assert "thinking" not in kw
         assert "reasoning_effort" not in kw
@@ -240,6 +250,20 @@ class _CapturingProvider:
         return LLMResponse(text=self.text_to_return, tool_calls=())
 
 
+_SKILLS_BETAS = {"code-execution-2025-08-25", "skills-2025-10-02", "files-api-2025-04-14"}
+
+
+def _betas(extra: dict[str, Any] | None) -> set[str]:
+    headers = (extra or {}).get("extra_headers") or {}
+    return {b for b in str(headers.get("anthropic-beta") or "").split(",") if b}
+
+
+def _without_skills(extra: dict[str, Any] | None) -> bool:
+    """Spec 065 (T052): the call also carries the profile of the agent's model (its
+    timeout; with Claude, its reasoning and beta). Without skills, none of theirs."""
+    return extra is None or ("container" not in extra and not (_betas(extra) & _SKILLS_BETAS))
+
+
 class TestHandlerSkillsInjection:
     """Drive ``make_handler_node`` directly and assert that the
     skills-aware call shape lands in the provider when the bundle
@@ -265,6 +289,11 @@ class TestHandlerSkillsInjection:
             tools=frozenset(),
             policies={},
             runtime_skills=runtime_skills,
+            # Spec 065: un agente con Skills responde con un modelo de Anthropic, el suyo (la
+            # 0240 conserva el heredado). Sin elección respondería el modelo por defecto, y
+            # hacia OpenAI el ``container`` no sale nunca (/cso del 2026-11-20).
+            respond_model="anthropic/claude-sonnet-4-6",
+            respond_model_set_by="operator",
         )
 
         class _LoaderStub:
@@ -335,10 +364,8 @@ class TestHandlerSkillsInjection:
             {"type": "custom", "skill_id": "skill_def", "version": "3"},
         ]
 
-        # 3) Anthropic betas in the right shape
-        assert extra["extra_headers"]["anthropic-beta"] == (
-            "code-execution-2025-08-25,skills-2025-10-02,files-api-2025-04-14"
-        )
+        # 3) Anthropic betas in the right shape — joined with the model's own (spec 065)
+        assert _betas(extra) >= _SKILLS_BETAS
 
     async def test_no_skills_means_no_container_no_code_execution(self) -> None:
         provider = await self._run_handler(runtime_skills=())
@@ -349,8 +376,8 @@ class TestHandlerSkillsInjection:
         tool_types = [t.get("type") for t in cap["tools"]]
         assert "code_execution_20250825" not in tool_types
 
-        # extra should be None (no container, no beta headers).
-        assert cap["extra"] is None
+        # No container, no skills betas.
+        assert _without_skills(cap["extra"])
 
 
 # ── channel-gated skills ──────────────────────────────────────────────
@@ -514,7 +541,7 @@ class TestChannelGatingHandlerIntegration(TestHandlerSkillsInjection):
         cap = provider.captures[0]
         # Bundle had a skill but it was filtered out — the call MUST
         # behave exactly as if no skills were configured.
-        assert cap["extra"] is None
+        assert _without_skills(cap["extra"])
         tool_types = [t.get("type") for t in cap["tools"]]
         assert "code_execution_20250825" not in tool_types
 

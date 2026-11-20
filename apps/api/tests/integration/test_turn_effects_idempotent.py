@@ -240,7 +240,12 @@ async def test_the_retry_is_charged_as_the_same_turn(db_session, monkeypatch) ->
     for fields in turn_entries:
         _tenant, entry_rows = metering.rows_from_entry(fields)
         rows.extend(entry_rows)
-    weights = {"t/r": {"input": Decimal(1), "cache_read": Decimal(1), "output": Decimal(1)}}
+    # Spec 065: el turno lo responde el modelo del agente (sin elección, el de Auphere), con
+    # los cuatro carriles; aquí todos a 1, porque lo que se mira es que se cobre una vez.
+    lanes = {"input": Decimal(1), "cache_read": Decimal(1), "output": Decimal(1)}
+    weights = {
+        str(row["model"]): {**lanes, "cache_write": Decimal(1)} for row in rows if row.get("model")
+    }
     charged = metering._turn_quota(rows, weights)
     assert list(charged) == [turn_entries[0]["turn_id"]], "un débito por turno: channel:{turno}"
     assert uuid.UUID(turn_entries[0]["turn_id"])

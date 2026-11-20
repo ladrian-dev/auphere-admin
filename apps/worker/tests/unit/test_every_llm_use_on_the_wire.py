@@ -172,6 +172,18 @@ USE_SHAPES = json.loads(os.environ["PROBE_USE_SHAPES"])
 
 
 async def main():
+    # Spec 065 (T056): las reservas de la otra familia son usos mientras estén habilitadas;
+    # aquí, las seis, para que cada una tenga su caso.
+    from nexus_api.core import respond_catalog
+    from nexus_api.core.respond_profiles import PROFILES
+
+    respond_catalog.refresh_from_rows(
+        [{"model_id": m, "status": "active", "offer_label": m, "price_input_per_mtok": 1,
+          "respond_enabled_at": "2026-11-20"} for m in PROFILES]
+        + [{"model_id": m, "status": "active", "offer_label": None, "price_input_per_mtok": 1,
+            "respond_enabled_at": None}
+           for m in respond_catalog.BOOT_HOP_MODEL_IDS if m not in PROFILES]
+    )
     models = default_models()
     results = {}
     for use, shapes in USE_SHAPES.items():
@@ -198,6 +210,11 @@ USE_SHAPES: dict[str, list[str]] = {
     # El turno del agente: las herramientas y el cierre con ``tool_choice: none``.
     "respond": ["tools", "closure"],
     "respond_fallback": ["tools", "closure"],
+    # Spec 065: la reserva de la otra familia de cada modelo y el modelo de los agentes sin
+    # elección también responden el turno.
+    "respond_fallback_openai": ["tools", "closure"],
+    "respond_fallback_anthropic": ["tools", "closure"],
+    "agent_default": ["tools", "closure"],
     "qa_respond": ["tools", "closure"],
     "console_fallback": ["tools"],
     "partner_default": ["tools"],

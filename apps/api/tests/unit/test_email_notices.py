@@ -78,7 +78,7 @@ NEVER_EMAILED: dict[str, str] = {
     "client.read.failed": "business/reader.py: email=False",
     "client.business_changed": "business/writes.py: email=False",
     # ``info`` (por defecto o explícito): campana, y push donde toca.
-    "client.model_reset": "core/partner_allowlist.py: severity info",
+    "agent.model_reset": "core/partner_allowlist.py: severity info (spec 065)",
     "member.joined": "api/console/invitations.py: severity info",
     "client.balance_request": "api/console/client_bags.py: severity info",
     "agent.paused": "lite/agents.py y agent_lifecycle_routes.py: severity info",
@@ -92,6 +92,7 @@ NEVER_EMAILED: dict[str, str] = {
     # Sin emisor: vocabulario que ya no se usa.
     "onboarding.step": "nadie lo emite",
     "channel.degraded": "nadie lo emite (lo sustituyó channel.problem)",
+    "client.model_reset": "nadie lo emite desde la spec 065 (lo sustituyó agent.model_reset)",
 }
 
 #: Solo para la persona del cliente (``audience = client``) y con plantilla

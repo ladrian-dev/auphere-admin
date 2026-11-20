@@ -237,7 +237,12 @@ async def test_the_offer_and_prices_are_data(_clean: Any) -> None:
         "SELECT model_id, offer_label FROM model_profiles WHERE offer_label IS NOT NULL "
         "ORDER BY model_id"
     )
+    # Spec 065 (0238): la oferta son los seis; los de Anthropic responden solo cuando se
+    # habilitan en el entorno (``respond_enabled_at``), no por estar aquí.
     assert offer == [
+        ("anthropic/claude-haiku-5-5", "Claude Haiku 5.5"),
+        ("anthropic/claude-opus-5-5", "Claude Opus 5.5"),
+        ("anthropic/claude-sonnet-5-5", "Claude Sonnet 5.5"),
         ("openai/gpt-5.6-luna", "Luna"),
         ("openai/gpt-5.6-sol", "Sol"),
         ("openai/gpt-5.6-terra", "Terra"),

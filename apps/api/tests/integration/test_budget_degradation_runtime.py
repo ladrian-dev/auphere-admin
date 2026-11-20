@@ -29,6 +29,7 @@ from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.state import new_state
 from nexus_worker.runtime.thread_id import make_thread_id
 
+from nexus_api.core import respond_catalog
 from nexus_api.db.models import (
     Conversation,
     ConversationStatus,
@@ -141,7 +142,12 @@ async def test_without_degradation_the_normal_model_is_used(db_session) -> None:
         state,
         config={"configurable": {"thread_id": make_thread_id(tenant_id, channel.id, "no-degr")}},
     )
-    assert _respond_models(provider) == [EXPENSIVE]
+    # Spec 065 (T025): sin elección ni degradación, el agente responde con el modelo por
+    # defecto de Auphere, no con el de responder del router.
+    assert _respond_models(provider) == [respond_catalog.agent_respond_default()]
+    assert respond_catalog.agent_respond_default() != await cheapest_model(), (
+        "el de siempre no es el barato: si lo fuera, este control no distinguiría nada"
+    )
 
 
 async def test_a_degraded_turn_runs_on_the_cheapest_model_in_the_catalog(db_session) -> None:

@@ -157,7 +157,13 @@ def test_a_database_row_carries_every_field() -> None:
     assert shape["route"] == "eu.anthropic.claude-haiku-5-5"
     assert shape["region"] == "eu-south-2"
     assert shape["quota"]["tpm"] == 400000
-    assert shape["meter_weights"] == {"w_in": 0.0242, "w_cache": 0.00242, "w_out": 0.121}
+    # Spec 065: el cuarto carril, nulo en una fila de antes de la 0239.
+    assert shape["meter_weights"] == {
+        "w_in": 0.0242,
+        "w_cache": 0.00242,
+        "w_out": 0.121,
+        "w_cache_write": None,
+    }
     assert deployment.weighted
 
 

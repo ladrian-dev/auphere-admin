@@ -44,6 +44,11 @@ def _catalog(monkeypatch):
         quota_weight_input = Decimal(1)
         quota_weight_cache_read = Decimal(1)
         quota_weight_output = Decimal(1)
+        # Spec 065: el cuarto carril y el tramo, que ``lane_weights_from`` también lee.
+        quota_weight_cache_write = Decimal(1)
+        cache_write_per_mtok = None
+        tier_above_tokens = None
+        tier_multiplier = None
 
     async def _fake_catalog():
         return {"openai/gpt-5.6-sol": _Row()}

@@ -122,7 +122,7 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   _Requisitos: 2.1, 10.1_
 - [X] T013 [P] Test en rojo en `apps/worker/tests/unit/test_respond_profiles_on_the_wire.py`: las llamadas de dos clientes, incluidas las de la reserva cruzada, salen en peticiones separadas, sin lote.
 
-  _Hecho el 2026-11-20 para OpenAI y Claude; el caso de la reserva cruzada se añade con su implementación, en T051._
+  _Hecho el 2026-11-20 para OpenAI y Claude, y para la reserva cruzada (GPT-5.6 caído, Sonnet 5.5 responde a cada cliente en su petición) con T050._
 
   _Requisitos: 10.3_
 
@@ -232,9 +232,9 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - `reconcile_bindings` deja el rol `respond`.
 
   _Requisitos: 12.4_
-- [ ] T035 [P] [US1] Test en rojo: un agente migrado con un modelo heredado sin perfil (Claude Sonnet 4.6) responde con los parámetros de hoy, byte a byte. La consola lo enseña con su precio y la línea «ya no se ofrece» (`outside_offer: retired`), sin incluirlo en `options`, y el partner solo puede cambiarlo a uno de su oferta.
+- [X] T035 [P] [US1] Test en rojo: un agente migrado con un modelo heredado sin perfil (Claude Sonnet 4.6) responde con los parámetros de hoy, byte a byte. La consola lo enseña con su precio y la línea «ya no se ofrece» (`outside_offer: retired`), sin incluirlo en `options`, y el partner solo puede cambiarlo a uno de su oferta.
 
-  _A medias el 2026-11-20: la consola, en verde (`test_agent_model_legacy.py`). El cable (`test_respond_profiles_on_the_wire.py`, el de Sonnet 4.6 frente al camino sin perfiles) todavía no puede fallar: el turno de hoy va por `respond_with_tools` sin salto enrutado, y por ahí ningún perfil llega al cable (la rama de `apply_capabilities` solo corre con un salto del router). Se cierra con T052, con la mutación (un perfil de Claude 5.5 aplicado a Sonnet 4.6 tiene que cambiar el cuerpo)._
+  _Cerrada el 2026-11-20 con T052: el cable va por `LLMRouter.respond_with_tools`, y la mutación (el perfil de Haiku 5.5 aplicado a Sonnet 4.6) cambia el cuerpo (`output_config`, `thinking`, `cache_control`, `max_tokens` 8192 frente a 64000), así que la prueba byte a byte ya puede fallar._
 
   _Requisitos: 12.5_
 
@@ -244,12 +244,12 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
 ## Fase 4: Lo que se cobra y lo que se informa (US3, P1)
 
-- [ ] T040 [P] [US3] Test en rojo `apps/worker/tests/unit/test_metering_per_served_model.py`:
+- [X] T040 [P] [US3] Test en rojo `apps/worker/tests/unit/test_metering_per_served_model.py`:
   - la llamada de la reserva (de otra familia) se registra y se cobra con sus pesos;
   - Opus 5.5 y Sonnet 5.5 tienen pesos (ningún `metering.unweighted_model`).
 
   _Requisitos: 5.1, 5.2_
-- [ ] T041 [P] [US3] Test en rojo `apps/worker/tests/unit/test_response_model_is_served.py`:
+- [X] T041 [P] [US3] Test en rojo `apps/worker/tests/unit/test_response_model_is_served.py`:
   - `response_model` es el modelo que respondió, también con asignación o elección;
   - `response_fell_back`;
   - `handler.turn_complete` y `llm.respond_fell_back` sin texto;
@@ -257,7 +257,7 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - `llm.attempt_failed` lleva la clase original aunque se mapee a `LLMProxyUnavailable`.
 
   _Requisitos: 3.1, 5.3, 5.4_
-- [ ] T042 [US3] Implementar en `runtime/llm.py`, `pipeline.py` y `state.py`:
+- [X] T042 [US3] Implementar en `runtime/llm.py`, `pipeline.py` y `state.py`:
   - `LLMResponse.model`, `fell_back` y `finish_reason` desde `_call_with_resilience`;
   - `response_model` y `response_fell_back`;
   - `llm.respond_fell_back`;
@@ -265,10 +265,10 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - la clase original en `llm.attempt_failed`.
 
   _Requisitos: 3.1, 5.3, 5.4_
-- [ ] T043 [US3] Comprobar que `metering` cobra por `usage_records.model` del salto. Deja en verde T040.
+- [X] T043 [US3] Comprobar que `metering` cobra por `usage_records.model` del salto. Deja en verde T040.
 
   _Requisitos: 5.1, 5.2_
-- [ ] T044 [P] [US3] **Primero, en el cable** (servidor de eco, mapa local, LiteLLM 1.83.0 y 1.83.14): una respuesta de Anthropic con `cache_creation_input_tokens` y `cache_read_input_tokens` ¿suma las dos en `prompt_tokens`? Y una de GPT-5.6 con `prompt_tokens_details.cache_write_tokens` y `cached_tokens`: ¿la deja pasar LiteLLM con las dos versiones, y el colector la registra como `llm.cache_write`? Hoy Sol sale con escritura 0 (research.md §D14, «Hallazgo»). Fijar las dos respuestas en un test; si `prompt_tokens` no incluye lo escrito, ajustar la fórmula de abajo antes de tocar el consumidor (research.md §D14). Después, test en rojo `apps/worker/tests/unit/test_cache_write_lane.py`:
+- [X] T044 [P] [US3] **Primero, en el cable** (servidor de eco, mapa local, LiteLLM 1.83.0 y 1.83.14): una respuesta de Anthropic con `cache_creation_input_tokens` y `cache_read_input_tokens` ¿suma las dos en `prompt_tokens`? Y una de GPT-5.6 con `prompt_tokens_details.cache_write_tokens` y `cached_tokens`: ¿la deja pasar LiteLLM con las dos versiones, y el colector la registra como `llm.cache_write`? Hoy Sol sale con escritura 0 (research.md §D14, «Hallazgo»). Fijar las dos respuestas en un test; si `prompt_tokens` no incluye lo escrito, ajustar la fórmula de abajo antes de tocar el consumidor (research.md §D14). Después, test en rojo `apps/worker/tests/unit/test_cache_write_lane.py`:
   - una llamada de Anthropic con lectura y escritura en caché cobra la entrada como «prompt − lectura − escritura» y la escritura con su peso;
   - el margen es el multiplicador en los cuatro carriles;
   - una llamada de GPT-5.6 con `cache_write_tokens` cobra lo escrito por el carril de escritura con su peso, y no además como entrada;
@@ -276,8 +276,10 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - una llamada de Haiku 5.5 con más de 100.000 tokens de prompt se cobra con los pesos del tramo;
   - un modelo sin peso de escritura cuando la tiene da `unweighted_model`, no un cobro a 0.
 
+  Hecho: el cable en `apps/worker/tests/unit/test_cache_write_on_the_wire.py` (1.83.14; 1.83.0 comprobado aparte, en un entorno efímero, research.md §D14). `prompt_tokens` trae las dos cachés y la fórmula no cambia; LiteLLM deja pasar `cache_write_tokens` y el arreglo es del colector, no de `runtime/llm.py`.
+
   _Requisitos: 5.5, 5.6, 5.7, 5.8_
-- [ ] T046 [US3] Implementar el cuarto carril:
+- [X] T046 [US3] Implementar el cuarto carril:
   - `cache_write` en `metering/pricing_policy.LANES` y `weights_for`;
   - en `worker/metering/consumer.py`, `_apply_native_breakdown` (entrada = prompt − lectura − escritura; escritura con su cantidad, también la de GPT-5.6 desde `prompt_tokens_details.cache_write_tokens`) y `_apply_lane_weights`;
   - los tramos desde `model_prices.surcharge`;
@@ -286,8 +288,10 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
   Deja en verde T044.
 
+  Hecho, también el campo de `apps/admin` (solo en los modelos con tarifa de escritura). Quedan fuera, escritos en `docs/billing.md`: `cost_usd` no aplica el recargo del tramo, el copiloto no aplica tramos (debita con totales de turno) y la activación no exige el cuarto peso.
+
   _Requisitos: 5.5, 5.6, 5.7_
-- [ ] T047 [P] [US3] Actualizar las pruebas de la spec 007 y de la 059 que fijaban tres carriles (`test_metering_end_to_end`, `test_sale_api` y las de `pricing_policy`), con el importe nuevo calculado a mano en el test, no copiado del resultado.
+- [X] T047 [P] [US3] Actualizar las pruebas de la spec 007 y de la 059 que fijaban tres carriles (`test_metering_end_to_end`, `test_sale_api` y las de `pricing_policy`), con el importe nuevo calculado a mano en el test, no copiado del resultado.
 
   _Requisitos: 5.5, 5.7_
 
@@ -299,7 +303,7 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
 **Prueba independiente**: la batería en el cable (T050, T051) en CI y la batería real en staging (T064).
 
-- [ ] T050 [P] [US2] Tests en rojo en `apps/worker/tests/unit/test_respond_profiles_on_the_wire.py` (servidor de eco, mapa local), uno por perfil y escenario:
+- [X] T050 [P] [US2] Tests en rojo en `apps/worker/tests/unit/test_respond_profiles_on_the_wire.py` (servidor de eco, mapa local), uno por perfil y escenario:
   - **GPT-5.6**: `reasoning_effort: "none"` en el cuerpo, sin desvío a `/responses`; el cierre con `tool_choice: "none"` sale (lo arregla T014); nunca `thinking` ni `output_config`.
   - **Claude 5.5**: `output_config.effort = "low"`, `max_tokens` del perfil, `thinking.block_binding.prefix_mismatch_behavior = "drop_block"` con su beta, sin `temperature`, `top_p`, `top_k`, `reasoning_effort` ni `tool_choice` forzado; `messages` nunca acaba en `assistant`.
   - **Solo se añade**: entre la primera y la última llamada de un turno con Claude, el `system` de arriba, el conjunto de herramientas y los mensajes anteriores son idénticos byte a byte. El cierre es solo `tool_choice: "none"`, y el reintento del freno de reservas no retira nada.
@@ -311,7 +315,7 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - **Caché hacia Claude** (research.md §D14): una marca `cache_control` fija en el último bloque del `system` y la caché de la conversación, 5 minutos. Antes de escribir el rojo, probar en el cable qué forma deja pasar LiteLLM: el campo `cache_control` de arriba (caché automática, no toca los mensajes y no choca con «solo se añade») o, si no pasa, una marca en el último mensaje. La forma elegida no puede romper la igualdad byte a byte de lo anterior que pide «Solo se añade»; si es la marca que se mueve, la batería real en modo estricto (T055) decide si cuenta como edición.
 
   _Requisitos: 4.1, 4.2, 4.3, 4.4, 4.6, 4.7, 4.10, 11.3_
-- [ ] T051 [P] [US2] Test en rojo `apps/worker/tests/unit/test_respond_fallback_mid_turn.py`, en las dos direcciones (Opus → Terra y Sol → Sonnet 5.5):
+- [X] T051 [P] [US2] Test en rojo `apps/worker/tests/unit/test_respond_fallback_mid_turn.py`, en las dos direcciones (Opus → Terra y Sol → Sonnet 5.5):
   - la segunda llamada falla y la reserva termina el turno;
   - la tercera sigue con la reserva;
   - ninguna herramienta se ejecuta dos veces;
@@ -320,7 +324,7 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - la cadena es elegido → reserva de la otra familia, sin reservas propias de cliente.
 
   _Requisitos: 4.4, 4.5, 11.1, 11.3, 11.4_
-- [ ] T052 [US2] Implementar en `runtime/llm.py`:
+- [X] T052 [US2] Implementar en `runtime/llm.py`:
   - el perfil del modelo de cada salto en `respond_with_tools`: kwargs, `allowed_openai_params` solo para `thinking`, `output_config` como kwarg, plazo y `max_tokens` (el `tool_choice` hacia OpenAI ya lo resolvió T014);
   - `output_config` en `_ANTHROPIC_ONLY_ON_OPENAI`;
   - en `acomplete_with_tools`, `thinking_blocks` y `ProviderRefused` con `content_filter`;
@@ -330,7 +334,9 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - `TurnModelPin`, con el cruce sin razonamiento.
 
   _Requisitos: 4.1, 4.2, 4.3, 4.4, 4.6, 4.7, 4.11, 11.3_
-- [ ] T053 [US2] Implementar en `runtime/pipeline.py`:
+
+  _Pendiente: la ruta para registrar los descartes de `drop_block` existe (un `CustomLogger` recibe el cuerpo crudo en `kwargs["original_response"]`, research.md §D4.3), pero no se ha registrado ningún callback._
+- [X] T053 [US2] Implementar en `runtime/pipeline.py`:
   - `_assistant_tool_message` guarda `thinking_blocks` con su modelo;
   - el cierre por perfil: con Claude, sin `FINAL_ANSWER_NOTE` y con las mismas herramientas; con GPT-5.6, como hoy;
   - el freno de reservas no retira nada en un turno con razonamiento;
@@ -340,10 +346,12 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   Deja en verde T050 y T051.
 
   _Requisitos: 4.3, 4.4, 4.5, 4.10, 11.1, 11.3, 11.4_
-- [ ] T054 [P] [US2] Test en rojo y arreglo de la incompatibilidad en ejecución: un agente con Skills o conector MCP de Anthropic y un modelo de OpenAI elegido responde con el siguiente origen que pueda; su reserva es de Anthropic; el `GET` devuelve `notice = "chosen_model_cannot_run_agent"`.
+- [X] T054 [P] [US2] Test en rojo y arreglo de la incompatibilidad en ejecución: un agente con Skills o conector MCP de Anthropic y un modelo de OpenAI elegido responde con el siguiente origen que pueda; su reserva es de Anthropic; el `GET` devuelve `notice = "chosen_model_cannot_run_agent"`.
 
   _Requisitos: 4.8_
-- [ ] T055 [US2] Script de la batería real `apps/worker/scripts/respond_compat.py` (research.md §D9.2):
+
+  _La lógica del aviso en `services/agent_model.py` ya era correcta (`test_agent_model_cannot_run.py`, en verde sin tocarla); el rojo era del turno: la reserva de un agente con Skills caía a Sol o a Terra._
+- [X] T055 [US2] Script de la batería real `apps/worker/scripts/respond_compat.py` (research.md §D9.2):
   - un agente de prueba con herramientas simuladas;
   - los escenarios por modelo: sin herramientas, cadena de tres, imagen, cambio entre turnos, reserva a mitad de turno en las dos direcciones, cruce de OpenAI a Sonnet 5.5 tras herramientas, freno de reservas con reintento y turno largo hasta el cierre;
   - `prefix_mismatch_behavior = "error"` durante la batería;
@@ -352,7 +360,9 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - tres escenarios con nombre, que el servidor de eco no puede probar porque son hechos del proveedor: `openai_cache_write_reported` (GPT-5.6 devuelve `prompt_tokens_details.cache_write_tokens` por Chat Completions a través de LiteLLM), `prompt_tokens_include_writes` (Anthropic y OpenAI cuentan lo escrito dentro de `prompt_tokens`) y `cache_marker_is_not_an_edit` (la forma de caché de T050 no dispara el control de historial en modo estricto).
 
   _Requisitos: 4.9, 11.3_
-- [ ] T056 [P] [US2] Test en rojo y cambio de la puerta de la reserva:
+
+  _Escrito con su prueba de argumentos y de rechazo (`test_respond_compat_script.py`) y pasado entero en seco contra un servidor de eco local (`--env local`, el turno y el transporte reales); no se ha corrido contra ningún proveedor: eso es T064._
+- [X] T056 [P] [US2] Test en rojo y cambio de la puerta de la reserva:
   - la cadena usa la reserva del perfil solo si está habilitada en ese entorno y, si no, Sol, como hoy;
   - `platform_models.default_models()` publica las reservas habilitadas como usos (`respond_fallback_openai`, `respond_fallback_anthropic`), y la 059 no deja retirarlas ni deshabilitarlas.
 
@@ -360,23 +370,27 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
   _Requisitos: 11.1, 11.2, 8.1_
 
+  _«Ni deshabilitarlas» depende de `respond-disable` (T073, `models_catalog.py`): debe dar `409 model_in_use` si el modelo aparece en `default_models()` como `respond_fallback_*` o `agent_default`. Retirarlas ya lo impide la 059._
+
 ---
 
 ## Fase 6: Probar un agente con el modelo elegido (US4, P1)
 
-- [ ] T060 [P] [US4] Test en rojo `apps/worker/tests/unit/test_simulation_uses_agent_model.py`:
+- [X] T060 [P] [US4] Test en rojo `apps/worker/tests/unit/test_simulation_uses_agent_model.py`:
   - la simulación responde con el modelo efectivo del agente;
   - `TurnOutcome.model` y `fell_back` son reales;
   - el juez evita la familia que respondió de verdad (`customer.py`, `avoid_model`).
 
   _Requisitos: 6.1, 5.3_
-- [ ] T061 [US4] Implementar en `simulation/runner.py` y `simulation/customer.py` lo que falte para T060.
+- [X] T061 [US4] Implementar en `simulation/runner.py` y `simulation/customer.py` lo que falte para T060.
 
   _Requisitos: 6.1, 5.3_
-- [ ] T062 [P] [US4] Test en rojo y arreglo: el resultado de cada prueba y la respuesta del Playground del agente (`api/console/agent_playground.py`) llevan `model` y `fell_back`, y la consola los enseña.
+- [X] T062 [P] [US4] Test en rojo y arreglo: el resultado de cada prueba y la respuesta del Playground del agente (`api/console/agent_playground.py`) llevan `model` y `fell_back`, y la consola los enseña.
+
+  _Hecho el 2026-11-20: la consola dice quién respondió, y si fue la reserva, bajo cada respuesta del agente en el chat de prueba y en la conversación de cada prueba (`answered-by.tsx`); sin nombrar el modelo que falló, que la API no da._
 
   _Requisitos: 5.3, 6.1_
-- [ ] T063 [P] [US4] Test en rojo: cambiar el modelo no crea trabajos `tests` ni toca `agents.tests_pass_returned_at`, y una pasada lanzada después se cobra por `billing.next_full_pass` (spec 047, requisito 68).
+- [X] T063 [P] [US4] Test en rojo: cambiar el modelo no crea trabajos `tests` ni toca `agents.tests_pass_returned_at`, y una pasada lanzada después se cobra por `billing.next_full_pass` (spec 047, requisito 68).
 
   _Requisitos: 6.2, 6.3_
 - [ ] T064 [US4] **Batería real en staging** (única tarea que llama a proveedores, < US$ 1 la pasada):
@@ -400,36 +414,38 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
 ## Fase 7: Auphere ve, cambia y habilita desde el panel (US5, P2)
 
-- [ ] T070 [P] [US5] Test en rojo `apps/api/tests/integration/models/test_agent_model_admin.py`:
+- [X] T070 [P] [US5] Test en rojo `apps/api/tests/integration/models/test_agent_model_admin.py`:
   - `GET /admin/tenants/{id}/agents/models`;
   - `PUT` con cualquier modelo habilitado para responder en el entorno (esté o no en la lista del partner), `reason` obligatorio, `set_by = 'operator'`, `admin.agent.model.update` e invalidación;
   - la consola enseña ese modelo en `choice` sin incluirlo en `options`.
 
   _Requisitos: 7.1, 7.2, 7.3_
-- [ ] T071 [US5] Implementar `apps/api/src/nexus_api/api/admin/agent_models.py` (montado en `api/admin/__init__.py`) sobre `services/agent_model.py`.
+- [X] T071 [US5] Implementar `apps/api/src/nexus_api/api/admin/agent_models.py` (montado en `api/admin/__init__.py`) sobre `services/agent_model.py`.
 
   _Requisitos: 7.1, 7.2, 7.3_
-- [ ] T072 [P] [US5] Test en rojo `apps/api/tests/integration/models/test_model_respond_enable.py`:
+- [X] T072 [P] [US5] Test en rojo `apps/api/tests/integration/models/test_model_respond_enable.py`:
   - `respond-enable` exige perfil (`409 no_respond_profile`) y nota, escribe `respond_enabled_*`, audita y publica `CATALOG_CHANGED`;
   - `respond-disable` pasa al modelo por defecto las elecciones de partners con ese modelo, con `agent.model_reset`, y da `409 model_in_use` si es una reserva habilitada o el valor por defecto;
   - `GET /admin/models` enseña el estado.
 
   _Requisitos: 1.3, 1.4, 8.2, 11.2_
-- [ ] T073 [US5] Implementar `respond-enable` y `respond-disable` en `apps/api/src/nexus_api/api/admin/models_catalog.py`.
+- [X] T073 [US5] Implementar `respond-enable` y `respond-disable` en `apps/api/src/nexus_api/api/admin/models_catalog.py`.
 
   _Requisitos: 1.3, 1.4, 8.2, 11.2_
-- [ ] T074 [P] [US5] Tests en rojo del panel:
+- [X] T074 [P] [US5] Tests en rojo del panel:
   - `tenants/[id]/agent/__tests__/agent-models.test.tsx`: lista por agente con origen, cambio con motivo obligatorio y cinco estados;
   - `models/__tests__/respond-enable.test.tsx`: habilitar con nota y deshabilitar con motivo, con confirmación.
 
   _Requisitos: 7.1, 7.2, 1.3, 1.4_
-- [ ] T075 [US5] Implementar en `apps/admin/src/app/(dashboard)/tenants/[id]/agent/` el bloque «Modelo» por agente, y en `apps/admin/src/app/(dashboard)/models/` «Habilitar para responder» y «Deshabilitar», con `apps/admin/src/lib/backend.ts`. La lista del partner (`partners/[id]/_sections/models*.tsx`) enseña los seis.
+- [X] T075 [US5] Implementar en `apps/admin/src/app/(dashboard)/tenants/[id]/agent/` el bloque «Modelo» por agente, y en `apps/admin/src/app/(dashboard)/models/` «Habilitar para responder» y «Deshabilitar», con `apps/admin/src/lib/backend.ts`. La lista del partner (`partners/[id]/_sections/models*.tsx`) enseña los seis.
+
+  _2026-11-20: probado con la API simulada; la ruta y los campos de `respond-enable`/`respond-disable` siguen los de `models_catalog.py`, sin probar todavía contra la API en marcha._
 
   _Requisitos: 7.1, 7.2, 7.4, 1.3, 1.4_
 
 ### El modelo por defecto de Auphere (US7, P2)
 
-- [ ] T076 [P] [US7] Test en rojo `apps/api/tests/integration/models/test_agent_respond_default.py`:
+- [X] T076 [P] [US7] Test en rojo `apps/api/tests/integration/models/test_agent_respond_default.py`:
   - `GET/PUT /admin/platform/agent-respond-default`: sin `confirm`, `409 confirm_required` con la lista de afectados (solo agentes sin elección ni ajuste de versión);
   - con `confirm`, escribe, audita con el motivo, invalida esos agentes y les devuelve la pasada de pruebas;
   - `422` con un modelo no habilitado;
@@ -438,11 +454,13 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - `default_models()` publica `agent_default` y la 059 no deja retirarlo ni deshabilitarlo;
   - cambiar el por defecto no crea ninguna notificación para los partners (requisito 13.6).
 
+  _Hecho el 2026-11-20; `default_models()` publica `agent_default` (con T056)._
+
   _Requisitos: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6_
-- [ ] T077 [US7] Implementar el ajuste (la columna llega con T045), el endpoint en `apps/api/src/nexus_api/api/admin/platform_settings.py`, su lectura en `resolve()` por el catálogo cacheado (invalidación con `CATALOG_CHANGED`) y `agent_default` en `platform_models.default_models()`.
+- [X] T077 [US7] Implementar el ajuste (la columna llega con T045), el endpoint en `apps/api/src/nexus_api/api/admin/platform_settings.py`, su lectura en `resolve()` por el catálogo cacheado (invalidación con `CATALOG_CHANGED`) y `agent_default` en `platform_models.default_models()`.
 
   _Requisitos: 13.1, 13.2, 13.3, 13.4, 13.5_
-- [ ] T078 [P] [US7] Test en rojo e implementación en el panel (`apps/admin`, Plataforma › Modelos): el modelo por defecto con su selector (solo habilitados), el diálogo con la lista de afectados, el motivo y la confirmación, y los cinco estados.
+- [X] T078 [P] [US7] Test en rojo e implementación en el panel (`apps/admin`, Plataforma › Modelos): el modelo por defecto con su selector (solo habilitados), el diálogo con la lista de afectados, el motivo y la confirmación, y los cinco estados.
 
   _Requisitos: 13.2_
 - [ ] T079 [US7] **Paso a Haiku 5.5 en prod (operación, tras el paso a `main`)**, en este orden (research.md §D16):
@@ -459,16 +477,16 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
 ## Fase 8: Ningún agente sin modelo (US6, P2)
 
-- [ ] T080 [P] [US6] Tests en rojo en `apps/api/tests/integration/models/test_model_usage.py` y `apps/api/tests/isolation/test_model_usage_scan_rls.py`:
+- [X] T080 [P] [US6] Tests en rojo en `apps/api/tests/integration/models/test_model_usage.py` y `apps/api/tests/isolation/test_model_usage_scan_rls.py`:
   - un modelo elegido por un agente no archivado está en uso, y `retire` / `unavailable` dan `409 model_in_use` con el agente;
   - un agente archivado no cuenta;
   - el barrido sigue leyendo cada cliente con su GUC.
 
   _Requisitos: 8.1_
-- [ ] T081 [US6] `services/model_usage.py` y `services/model_lifecycle.py` (`fixed_deployment`, `scan_agents`) por `resolve()`, con la elección de cada agente.
+- [X] T081 [US6] `services/model_usage.py` y `services/model_lifecycle.py` (`fixed_deployment`, `scan_agents`) por `resolve()`, con la elección de cada agente.
 
   _Requisitos: 8.1_
-- [ ] T082 [P] [US6] Test en rojo en `apps/api/tests/integration/models/test_agent_model_admin.py`:
+- [X] T082 [P] [US6] Test en rojo en `apps/api/tests/integration/models/test_agent_model_admin.py`:
   - reescribir la lista de un partner sin Luna pasa al modelo por defecto los agentes con Luna elegida por el partner, y el aviso nombra el modelo con el que responden ahora;
   - una `agent.model_reset` por agente, sin ids internos;
   - no toca las elecciones de Auphere;
@@ -476,10 +494,14 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   - reconciliar la lista de un partner no toca los agentes de los clientes de otro partner, ni aunque compartan modelo (lo que fijaban las dos pruebas de `test_16_model_binding_scoped.py` que se retiraron con T034).
 
   _Requisitos: 8.2, 8.3, 10.1_
-- [ ] T083 [US6] Implementar la reconciliación de agentes en `core/partner_allowlist.py` (en lugar de `reconcile_bindings` para el rol `respond`, una sesión por cliente), la notificación `agent.model_reset` (kind, vocabulario y texto en la consola) y su llamada desde `api/admin/partner_models.py` y desde `respond-disable`.
+- [X] T083 [US6] Implementar la reconciliación de agentes en `core/partner_allowlist.py` (en lugar de `reconcile_bindings` para el rol `respond`, una sesión por cliente), la notificación `agent.model_reset` (kind, vocabulario y texto en la consola) y su llamada desde `api/admin/partner_models.py` y desde `respond-disable`.
+
+  _Hecho el 2026-11-20 desde `PUT /admin/partners/{id}/models` y desde `respond-disable` (`reset_choices_of_model`), con el aviso en la consola._
 
   _Requisitos: 8.2, 8.3, 1.4_
-- [ ] T084 [P] [US6] Test en rojo: un modelo elegido cuyo `status` deja de ser ejecutable responde con la reserva y deja `llm.respond_fell_back`.
+- [X] T084 [P] [US6] Test en rojo: un modelo elegido cuyo `status` deja de ser ejecutable responde con la reserva y deja `llm.respond_fell_back`.
+
+  _Hecho el 2026-11-20 en `test_respond_profiles_on_the_wire.py` (escenario `unexecutable`): la puerta del catálogo (`require_hop_model`) para el modelo antes de salir y la reserva termina el turno. Pasó a la primera: el comportamiento ya lo daba esa puerta; sin ella, Opus saldría al cable y la prueba fallaría._
 
   _Requisitos: 4.4, 8.1_
 
@@ -487,7 +509,7 @@ description: "Tareas de la spec 065: el modelo de cada agente"
 
 ## Fase 9: Cierre
 
-- [ ] T090 Actualizar en el mismo cambio:
+- [X] T090 Actualizar en el mismo cambio:
   - `docs/modelos-y-router.md`: la elección, la puerta por entorno, la reserva de la otra familia, el turno que solo añade y el requisito 64;
   - `docs/console.md`: Avanzado y la tarjeta de modelo por cliente retirada;
   - `docs/agentes.md`: el modelo que responde;
@@ -500,25 +522,35 @@ description: "Tareas de la spec 065: el modelo de cada agente"
   _Requisitos: todos_
 - [ ] T091 Terraform: `LITELLM_LOCAL_MODEL_COST_MAP=True` en las taskdefs (`infra/terraform/20-services/`). Aplicar **solo en staging**; prod en el paso a `main` (memoria del 2026-11-03). El `setdefault` de T001 lo cubre mientras tanto.
 
+  _A medias el 2026-11-20: la variable está en `common_env_base` (`taskdefs.tf`, `terraform fmt` limpio); el `apply` en staging espera el sí de Luis._
+
   _Requisitos: 4.12_
-- [ ] T092 Puertas de UI sobre el selector y los bloques del panel: `ui-states-checklist`, `a11y-audit`, `responsive-audit` y `design-tokens`, en vivo, con tema claro y oscuro.
+- [X] T092 Puertas de UI sobre el selector y los bloques del panel: `ui-states-checklist`, `a11y-audit`, `responsive-audit` y `design-tokens`, en vivo, con tema claro y oscuro.
+
+  _Hecho el 2026-11-20 por análisis estático, vitest + axe y contraste calculado desde `tokens.css` en los dos temas: sin rojos (los que salieron, títulos sin `text-balance` en cuatro ficheros, el correo de quien cambió el modelo por defecto y los clientes del aviso de «Deshabilitar» sin partir, arreglados con su prueba). Pendiente el pase en vivo con navegador (foco real, contraste medido, 200 % y anchos reales): el MCP de Playwright no conectó._
 
   _Requisitos: 2.7, 9.2, 7.1_
-- [ ] T093 `/cso` sobre el cambio: toca la autorización entre partners, el transporte de modelos y la configuración de LiteLLM. Ningún hallazgo HIGH abierto.
+- [X] T093 `/cso` sobre el cambio: toca la autorización entre partners, el transporte de modelos y la configuración de LiteLLM. Ningún hallazgo HIGH abierto.
 
   _Requisitos: 10.1, 10.2, 10.3, 4.12_
-- [ ] T094 Verificación:
+
+  _Hecho el 2026-11-20 (`cso` + `tenant-security-audit`): ningún HIGH ni CRITICAL. Arreglados con su prueba: la degradación por presupuesto ya no pasa a un modelo que no puede con el agente y `mcp_servers` / `container` nunca salen hacia OpenAI (MEDIUM, latente); la elección comprueba `respond_enabled_at` en la base, no en la caché (LOW); un heredado de Anthropic sigue ejecutando Skills y MCP (CE-005) y `resolve()` solo cae a una reserva habilitada (LOW). Quedan como información: la reconciliación no lanza (se registra), y en un cliente compartido entre partners una lista más corta de A puede devolver una elección de B._
+- [X] T094 Verificación:
   - `./scripts/verify.sh lint`;
   - las suites de los ficheros tocados (worker con `uv run --with lupa`);
   - `tests/isolation/` completa;
   - `./scripts/verify.sh js`;
   - `gh workflow run ci --ref develop` antes del PR a `main`.
 
+  _Hecho el 2026-11-20: `verify.sh lint` y `js` en verde; aislamiento completo 4005; API unitarias e integración sobre el árbol final 6279; dos rojos de orden en test_admin_owner_invitation (captura de logs; la 065 no toca esos ficheros; pasan solos y junto a las suites nuevas de la 065; sin comprobar si fallan igual sin la 065); 699 omisiones, todas de test_openapi_contract (rutas que no son de partners); worker unitarias 1235. Queda `gh workflow run ci --ref develop` antes del PR a `main`._
+
   _Requisitos: todos_
 - [ ] T095 Playwright en staging siguiendo quickstart.md §2, §4 y §5, con capturas; la prueba de CE-005 antes y después del despliegue; la reserva cruzada (§6) y la conciliación de un día de cobro (§7).
 
   _Requisitos: CE-001, CE-003, CE-004, CE-005, CE-007_
-- [ ] T096 Mensajes de commit para Luis (guion en `.claude/commits/`) y nota de estado en la KB (`decisions/2026-11-19-modelo-por-agente.md`).
+- [X] T096 Mensajes de commit para Luis (guion en `.claude/commits/`) y nota de estado en la KB (`decisions/2026-11-19-modelo-por-agente.md`).
+
+  _Hecho el 2026-11-20: siete commits, un parche por unidad (`.claude/commits/065/*.patch`, fotos en `refs/snapshots/065/*`), comprobados en seco; nota de KB con lo hecho, lo decidido sin Luis y lo que queda._
 
   _Requisitos: —_
 

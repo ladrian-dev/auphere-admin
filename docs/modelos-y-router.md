@@ -73,7 +73,9 @@ todo de una vez (`ActivationRejected.missing`, con el texto de
 - el proveedor dado de alta como subprocesador;
 - una licencia leída entera (enlace y fecha) y no excluida: Llama 4,
   Qwen3.8-Flash-Next y cualquier AGPL;
-- los tres pesos del medidor;
+- los tres pesos del medidor (el cuarto, la escritura en caché, no lo pide la
+  activación, pero sin él un modelo con tarifa de escritura no se cobra: spec 065,
+  [billing.md](billing.md));
 - certificación por clase en alguna tarea.
 
 ## Los perfiles
@@ -175,7 +177,11 @@ el despliegue declara:
 - **razonamiento**: el nivel de la tarea, como `reasoning_effort` o como
   presupuesto de pensamiento según `reasoning_control`.
 
-Lo que no va enrutado —todo el código de hoy— sale exactamente como antes.
+Lo que no va enrutado —todo el código de hoy— sale exactamente como antes, salvo la
+respuesta del agente con uno de los seis modelos con perfil: ese salto lleva el perfil de
+su modelo (spec 065, `llm.respond_hop_extra`; ver `docs/agentes.md`, «Cómo sale cada
+llamada»). Mientras el router siga aparcado, es el único camino por el que un perfil llega
+al cable; `apply_capabilities` lo toma también, para cuando el router vuelva.
 
 **Staging y producción van por el mismo camino.** Las llamadas salen directas al
 proveedor, con las claves de vendor del entorno, y el techo de gasto es el saldo
@@ -266,7 +272,7 @@ más baratos que el suyo pasan su suite; el router solo los usa si pasan.
 
 | Versión | Clasificar | Responder (`answer` / `tool_turn`) |
 |---|---|---|
-| **Sin `model_policy`**: un agente de hoy | El de hoy (`llm.classify`, la etiqueta suelta) mientras ningún despliegue certificado para `classify` pase el filtro duro; en cuanto uno pasa, el **tipado** por el router (research D24) | **El camino de hoy, byte a byte**: `respond_with_tools` con su modelo propio, su asignación `respond` y la reserva global. Fijado en su modelo de hoy (D24, D44, historia 13) |
+| **Sin `model_policy`**: un agente de hoy | El de hoy (`llm.classify`, la etiqueta suelta) mientras ningún despliegue certificado para `classify` pase el filtro duro; en cuanto uno pasa, el **tipado** por el router (research D24) | **El camino de hoy**: `respond_with_tools` con el modelo del agente (spec 065, `resolve()`) y la reserva de la otra familia de su perfil si está habilitada, si no la global; el router no cambia nada (D24, D44, historia 13) |
 | **Con perfil** (`{"kind": "profile", "profile": "auto"}`…) | Tipado, por el router, con el perfil del agente | Por el router: una decisión para todo el bucle ReAct, con su afinidad |
 | **«Fijar un modelo»** (`{"kind": "pinned", "deployment": …}`) | Tipado, con «Automático» (39.8) | El despliegue fijado, mientras pase el filtro duro |
 
@@ -380,6 +386,29 @@ hace una persona (39.11).
 
 ## Los modelos los gestiona Auphere (requisito 64)
 
+> **Enmienda de la spec 065 (2026-11-20).** El requisito 64 se retira **solo para el
+> modelo de respuesta**:
+>
+> - **La elección.** Cada agente tiene su modelo (`agents.respond_model_profile_id`), que
+>   elige el partner en Agente › Avanzado › Modelo, entre los de la lista de su cuenta, o
+>   Auphere desde el panel, entre todos los habilitados. Sin elección, el ajuste de la
+>   versión (`policies.llm.respond_model`) y, si no, el modelo por defecto de Auphere de ese
+>   entorno (`platform_settings.agent_respond_default`). Una sola resolución,
+>   `nexus_api.core.respond_model.resolve`. La asignación `respond` del cliente ya no
+>   decide nada (`422 respond_is_per_agent`; la 0240 la pasó a los agentes).
+> - **La puerta por entorno.** Un modelo responde agentes solo si tiene perfil de llamada
+>   (`core/respond_profiles.py`) y está habilitado en ese entorno
+>   (`model_profiles.respond_enabled_at`, «Habilitar para responder» en el panel, con la
+>   nota de la batería real). Los de Anthropic llegan sin habilitar.
+> - **La reserva de la otra familia.** OpenAI cae a Sonnet 5.5 y Anthropic a Terra, si
+>   están habilitadas; si no, la de hoy. Un agente con Skills o MCP de Anthropic solo cae a
+>   Anthropic.
+> - **El turno que solo añade.** Con Claude, de la primera llamada a la última, el `system`,
+>   las herramientas y los mensajes anteriores son idénticos; el razonamiento vuelve con su
+>   firma, y al caer a la otra familia se quita lo que esa no entiende.
+>
+> «Calidad», «Fijar un modelo» y el router siguen como dice esta sección.
+
 Enmienda del 2026-10-29 (D55 y D64): hasta que la gestión de modelos, precios y
 selección llegue al panel de operador, **la consola no cambia la política de
 modelo** de un agente. `PATCH …/draft` con otra `model_policy` y `POST
@@ -449,7 +478,10 @@ todo idempotente):
   clasificar y su reserva, extraer, simular, construir, leer, sector, cliente
   simulado, juez, Playground, freno de reservas, calificador, companion,
   transcribir, visión, mejorar, la reserva de la consola y las evaluaciones del
-  panel). `tests/unit/test_platform_default_models.py` **barre** los campos
+  panel; desde la spec 065, también las reservas de la otra familia mientras estén
+  habilitadas para responder, `respond_fallback_openai` y `respond_fallback_anthropic`, y
+  el modelo por defecto de los agentes, `agent_default`; salen del catálogo cacheado de
+  cada proceso y por eso no están en `WORKER_USES`). `tests/unit/test_platform_default_models.py` **barre** los campos
   `*_model` de las dos configuraciones y los modelos escritos a mano en el código:
   un valor por defecto que no pase por el registro lo rompe;
 - **un agente activo que responde con él**: por la asignación de su cliente, por

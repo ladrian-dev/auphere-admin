@@ -60,11 +60,13 @@ def test_input_billable_is_uncached_and_the_cache_row_stays_native() -> None:
     )
     by_meter = {r["meter"]: r for r in rows}
     assert by_meter["llm.input_tokens"]["quantity"] == 10_000
-    assert by_meter["llm.input_tokens"]["billable_qty"] == 1_000.0
+    # Spec 065: la entrada nativa es «prompt - lectura - escritura» = 10.000 - 9.000 - 400,
+    # y la escritura va en su fila con su cantidad (hasta la 065: 1.000 y 0).
+    assert by_meter["llm.input_tokens"]["billable_qty"] == 600.0
     assert by_meter["llm.cache_read"]["quantity"] == 9_000
     assert by_meter["llm.cache_read"]["billable_qty"] == 9_000.0
     assert by_meter["llm.output_tokens"]["billable_qty"] == 100.0
-    assert by_meter["llm.cache_write"]["billable_qty"] == 0.0
+    assert by_meter["llm.cache_write"]["billable_qty"] == 400.0
 
 
 def test_summing_input_billable_plus_cache_native_is_not_quota() -> None:
@@ -82,7 +84,9 @@ def test_summing_input_billable_plus_cache_native_is_not_quota() -> None:
     # Pesos neutros: lo que este test compara es la unidad, no la ponderación.
     # El argumento es obligatorio a propósito — sin él, olvidarlo en producción
     # sería un cobro silencioso a la baja.
-    neutral = LaneWeights(input=Decimal(1), cache_read=Decimal(1), output=Decimal(1))
+    neutral = LaneWeights(
+        input=Decimal(1), cache_read=Decimal(1), output=Decimal(1), cache_write=Decimal(1)
+    )
     right = quota_tokens(prompt_tokens=10_000, cache_read=9_000, output_tokens=100, weights=neutral)
     assert wrong != right
 
@@ -95,7 +99,9 @@ def test_companion_quota_matches_channel_billable_for_the_same_call() -> None:
     arreglar un lado sin el otro se vea— está en ``test_turn_quota_lanes.py``.
     """
     prompt, cache, output, write = 10_000, 9_000, 100, 400
-    neutral = LaneWeights(input=Decimal(1), cache_read=Decimal(1), output=Decimal(1))
+    neutral = LaneWeights(
+        input=Decimal(1), cache_read=Decimal(1), output=Decimal(1), cache_write=Decimal(1)
+    )
     companion = quota_tokens(
         prompt_tokens=prompt,
         cache_read=cache,

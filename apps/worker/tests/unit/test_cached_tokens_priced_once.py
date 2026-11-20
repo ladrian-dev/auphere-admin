@@ -172,6 +172,7 @@ async def test_what_was_measured_stays_as_measured() -> None:
             "input": Decimal("0.88"),
             "cache_read": Decimal("0.088"),
             "output": Decimal("4.4"),
+            "cache_write": Decimal("1.10"),
         }
     }
     tenant_id, rows = consumer.rows_from_entry(

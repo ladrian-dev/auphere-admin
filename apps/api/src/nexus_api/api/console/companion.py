@@ -1536,7 +1536,7 @@ def _make_on_complete(
         # procesos distintos usaran la misma constante, y con un peso por carril
         # deja de ser invertible. Ahora no hay nada que deshacer.
         uncached = max(0, int(handle.total_input_tokens))
-        # Los tres pesos salen del catálogo cacheado —el mismo que se lee unas
+        # Los pesos salen del catálogo cacheado —el mismo que se lee unas
         # líneas más arriba para valorar el turno—, así que no añaden una
         # consulta por turno.
         #
@@ -1545,12 +1545,12 @@ def _make_on_complete(
         # silencio. Se registra y se omite, igual que hace el consumidor de
         # canal, y queda medido en la fila del run.
         try:
-            qty = quota_tokens(
-                prompt_tokens=uncached + int(handle.total_cache_read),
+            qty = _turn_quota_units(
+                uncached=uncached,
                 cache_read=int(handle.total_cache_read),
-                output_tokens=int(handle.total_output_tokens),
                 cache_write=int(handle.total_cache_write),
-                weights=await _lane_weights(handle.model),
+                output=int(handle.total_output_tokens),
+                lanes=await _lane_weights(handle.model),
             )
         except UnweightedModel as exc:
             log.error(
@@ -1578,13 +1578,35 @@ def _make_on_complete(
     return _on_complete
 
 
+def _turn_quota_units(
+    *, uncached: int, cache_read: int, cache_write: int, output: int, lanes: LaneWeights
+) -> int:
+    """La cuota de un turno del copiloto: la misma fórmula que el canal (spec 007 y 065).
+
+    ``uncached`` es lo que acumula el grafo, «prompt - lectura» de cada llamada, con lo
+    escrito dentro; ``quota_tokens`` lo saca de la entrada si el modelo pesa la escritura.
+
+    **Sin tramo de precio.** El tramo (Haiku 5.5 por encima de 100.000 tokens) se decide por
+    llamada y aquí solo están los totales del turno: aplicarlo sobre el total cobraría x5 a
+    un turno de varias llamadas cortas. ``quota_tokens`` no lo aplica; el copiloto nunca
+    corre en un modelo con tramo hoy (``llm_companion_model``).
+    """
+    return quota_tokens(
+        prompt_tokens=uncached + cache_read,
+        cache_read=cache_read,
+        output_tokens=output,
+        cache_write=cache_write,
+        weights=lanes,
+    )
+
+
 async def _lane_weights(model: str | None) -> LaneWeights:
-    """Los tres pesos de cuota del modelo del turno (spec 007, R1.2).
+    """Los pesos de cuota del modelo del turno (spec 007, R1.2; spec 065, cuatro carriles).
 
     Del catálogo cacheado (TTL 300 s), que ya se lee en este mismo camino para
     valorar el turno: cero consultas nuevas por llamada. El mapa lo construye
-    ``lane_weights_from`` y no una comprensión escrita aquí — con tres carriles,
-    tres copias de la misma comprensión divergen a la primera.
+    ``lane_weights_from`` y no una comprensión escrita aquí — con cuatro carriles,
+    cuatro copias de la misma comprensión divergen a la primera.
     """
     from nexus_worker.metering.pricing import get_catalog, lane_weights_from
 
@@ -1628,6 +1650,11 @@ async def _turn_cost_usd(handle: streaming.CompanionRunHandle) -> float | None:
     # desaparece — valorar en dólares deja de depender de la política de
     # cuota, que es como debió estar siempre: son dos preguntas distintas.
     uncached = max(0, int(handle.total_input_tokens))
+    # Spec 065: lo escrito en caché va dentro de ese uncached y se valora en su fila, a su
+    # tarifa; contarlo además como entrada lo cobraba dos veces (INC-70, como el canal). Desde
+    # que GPT-5.6 informa de lo escrito, también pasaba con el copiloto en Sol.
+    if row.cache_write_per_mtok is not None:
+        uncached = max(0, uncached - int(handle.total_cache_write))
     total = 0.0
     seen_any = False
     for tokens, rate in (

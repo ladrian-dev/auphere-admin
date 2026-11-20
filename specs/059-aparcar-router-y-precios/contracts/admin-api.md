@@ -36,6 +36,13 @@ La lista entera gana `sale_policy`:
 {"multiplier": "2.2", "floor": "1.5", "sell_usd_per_million": "10"}
 ```
 
+**Spec 065 (cuarto carril).** `lanes` y `proposed` traen además `cache_write`, la
+escritura en caché: con tarifa de escritura, su coste, peso, venta y multiplicador como
+los otros (Sol: `{"cost": "5.000000", "weight": "1.100000", "sale": "11.000000",
+"multiplier": "2.20"}`); sin tarifa, `cost` nulo y peso `"0.000000"` (un peso nulo sin
+tarifa se enseña como 0, que es lo que cobra el medidor). Con tarifa y peso nulo, el
+estado es `unweighted`. `deployment.meter_weights` gana `w_cache_write`.
+
 Si no se puede leer el ajuste, es `{"multiplier": null, ...}`, `sale.proposed` es
 `null` y el estado es `unknown`, salvo que algún carril esté bajo el suelo
 (requisito 4.7). El panel tolera una API anterior que no mande `uses`, `sale` ni
@@ -87,10 +94,14 @@ Los tres pesos son decimales mayores que 0. Errores:
 
 | Código | Cuándo | Detalle |
 |---|---|---|
-| `422 partial_weights` | Falta alguno de los tres | |
+| `422 partial_weights` | Falta alguno de los tres; o, spec 065, el modelo tiene tarifa de escritura, no viene `cache_write` y no hay uno guardado | `{"lanes": ["cache_write"]}` en el segundo caso |
 | `422 below_floor` | Algún carril queda por debajo del suelo | `{"lanes": ["output"]}` |
+| `422 no_write_tariff` | Spec 065: `cache_write` mayor que 0 en un modelo sin tarifa de escritura | |
 | `422 per_minute` | El modelo no se cobra por tokens | |
 | `422 reason_required` | Falta el motivo | |
+
+Spec 065: `cache_write` (decimal mayor o igual que 0) es opcional; si no viene, se
+queda el guardado. La auditoría lleva los cuatro en `before` y `after`.
 
 Responde `200 DeploymentRow`. El cambio se audita y publica `CATALOG_CHANGED`.
 
@@ -104,7 +115,8 @@ Responde `200 DeploymentRow`. El cambio se audita y publica `CATALOG_CHANGED`.
 - Si va bien, devuelve `{"sale_policy": {...}, "applied_to": ["openai/gpt-5.6-sol", ...]}`.
 
 Con `apply_to_all`, en la misma transacción, cada modelo cobrado por tokens que
-tenga coste vigente recibe los pesos propuestos.
+tenga coste vigente recibe los pesos propuestos. Spec 065: también el de escritura,
+que es 0 en un modelo sin tarifa de escritura.
 
 ## §8 `GET /admin/whatsapp/login-beta/countries` (existe; cambia)
 

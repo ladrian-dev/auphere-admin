@@ -57,7 +57,7 @@ nueva, con su batería de certificación.
       "long_context_surcharge": { "above_tokens": 100000, "multiplier": 5, "applies_to": "whole_request" }
     }
   ],
-  "meter_weights": { "w_in": null, "w_cache": null, "w_out": null }
+  "meter_weights": { "w_in": null, "w_cache": null, "w_out": null, "w_cache_write": null }
 }
 ```
 
@@ -65,6 +65,9 @@ Las cifras del ejemplo son ilustrativas (Haiku 5.5 en `eu.` = global × 1,1,
 derivado en `06` §2.3, sin leer). Los precios reales se cargan con su fuente y su
 fecha. `meter_weights` se calcula con la regla de ADR-037 (`w = 2,2 × precio /
 10`); un despliegue sin pesos no se puede activar (`UnweightedModel`).
+`w_cache_write` es el cuarto carril, la escritura en caché (spec 065, 0239): 0 si el
+modelo no tiene tarifa de escritura; nulo con tarifa, el medidor no lo cobra
+(`UnweightedModel`).
 
 `status`: `draft` → `certifying` → `active` → `retiring` → `retired`, y
 `unavailable` desde cualquiera (requisito 41.9).

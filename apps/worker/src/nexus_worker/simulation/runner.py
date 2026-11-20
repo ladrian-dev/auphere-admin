@@ -98,10 +98,13 @@ class TurnOutcome:
     bubbles: list[str]
     actions: list[dict[str, Any]]
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    #: Spec 065 (T060): el modelo que respondió de verdad (``response_model`` del turno) y si
+    #: fue uno que no era el primero de la cadena (la reserva).
     model: str | None = None
     intent: str | None = None
     #: La burbuja es el texto de emergencia y el agente no llegó a contestar.
     failure: ModelFailure | None = None
+    fell_back: bool = False
 
     @property
     def several_bubbles(self) -> bool:
@@ -294,6 +297,7 @@ async def run_turn(
         model=final.get("response_model"),
         intent=final.get("intent"),
         failure=failure,
+        fell_back=bool(final.get("response_fell_back")),
     )
 
 

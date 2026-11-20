@@ -40,6 +40,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
+import dataclasses
 import json
 import math
 import os
@@ -51,7 +53,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Final, Generic, Protocol, TypeVar
+from typing import Any, Final, Generic, Protocol, TypeVar, cast
 
 import structlog
 from nexus_api.core.errors import IsolationViolation
@@ -67,7 +69,12 @@ from nexus_api.core.metrics import (
 )
 from nexus_api.core.otel_metrics import record_llm_call
 from nexus_api.core.respond_catalog import require_hop_model
-from nexus_api.core.respond_profiles import profile_for
+from nexus_api.core.respond_profiles import (
+    BLOCK_BINDING_BETA,
+    FORCED_TOOL_CHOICE,
+    RespondProfile,
+    profile_for,
+)
 from nexus_api.metering.pricing_policy import QUOTA_TARGET_MULTIPLIER
 from nexus_api.services.router_catalog import (
     Deployment,
@@ -118,6 +125,20 @@ _FAST_RETRY_ERROR_NAMES = frozenset(
         "InternalServerError",
     }
 )
+
+
+def _error_classes(exc: BaseException) -> dict[str, str | None]:
+    """The class of the error that happened, and what it was mapped to, if anything.
+
+    Spec 065 (T042, requisito 5.4): a provider failure re-raised as
+    ``LLMProxyUnavailable`` (``raise … from original``) used to log only the mapped class,
+    so a 429 and a dead proxy read the same. ``error_class`` is the original;
+    ``mapped_to`` is set only when there was a mapping."""
+    original = exc.__cause__ if exc.__cause__ is not None else exc
+    return {
+        "error_class": type(original).__name__,
+        "mapped_to": type(exc).__name__ if original is not exc else None,
+    }
 
 
 def _is_fast_retry_error(exc: BaseException) -> bool:
@@ -332,10 +353,24 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class LLMResponse:
-    """Unified result for both plain ``acomplete`` and ``acomplete_with_tools``."""
+    """Unified result for both plain ``acomplete`` and ``acomplete_with_tools``.
+
+    Spec 065 (T042, requisitos 3.1 y 5.3): ``model`` is the model that actually answered and
+    ``fell_back`` whether it was not the first of the chain; ``_call_with_resilience`` fills
+    both. ``finish_reason`` is the provider's, as it came."""
 
     text: str
     tool_calls: tuple[ToolCall, ...] = ()
+    model: str = ""
+    fell_back: bool = False
+    finish_reason: str | None = None
+    #: Spec 065 (T052, requisito 4.3): los bloques de razonamiento que devolvió el modelo
+    #: (``thinking`` y ``redacted_thinking``, firma incluida), tal cual: vuelven a él mismo
+    #: en la siguiente llamada del turno y a ningún otro.
+    reasoning_blocks: tuple[dict[str, Any], ...] = ()
+    #: Por qué la cadena pasó del primer modelo, si pasó: ``error``, ``timeout``,
+    #: ``refusal`` o ``rate_limit`` (``llm.respond_fell_back``, data-model.md §7).
+    fallback_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1023,7 +1058,15 @@ def _finish_tool_call(slot: dict[str, Any]) -> dict[str, Any]:
 
 #: Spec 065 (T009): ``output_config`` (el esfuerzo del Companion) también es solo de
 #: Anthropic. Con Sol como modelo del Companion salía en el cuerpo hacia OpenAI.
-_ANTHROPIC_ONLY_ON_OPENAI = ("thinking", "context_management", "output_config")
+#: /cso del 2026-11-20: ``mcp_servers`` lleva el token del servidor MCP del cliente y
+#: ``container`` sus Skills; hacia OpenAI no salen nunca.
+_ANTHROPIC_ONLY_ON_OPENAI = (
+    "thinking",
+    "context_management",
+    "output_config",
+    "mcp_servers",
+    "container",
+)
 
 
 def _drop_openai_unsupported(kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -1242,6 +1285,213 @@ async def _proxied_acompletion(litellm: Any, kwargs: dict[str, Any]) -> Any:
     return response
 
 
+# ── el perfil de cada salto (spec 065, T052) ─────────────────────────────────
+
+
+class ProviderRefused(RuntimeError):
+    """El proveedor no quiso responder: ``finish_reason == "content_filter"``, que es como
+    llega un ``stop_reason: "refusal"`` de Claude 5.5 (sin excepción y con el texto parcial,
+    si lo hay; research.md §D3). Es un fallo (requisito 4.4): el texto parcial se descarta,
+    no se reintenta en el mismo modelo y pasa a la reserva."""
+
+    def __init__(self, model: str) -> None:
+        super().__init__(f"{model} refused to answer")
+        self.model = model
+
+
+#: Clases de error de un plazo agotado, por nombre, como ``_FAST_RETRY_ERROR_NAMES``.
+_TIMEOUT_ERROR_NAMES = frozenset({"Timeout", "APITimeoutError", "ReadTimeout", "ConnectTimeout"})
+
+
+def fallback_reason(exc: BaseException | None) -> str | None:
+    """Por qué se dejó un modelo, de la clase **original** del error (``raise … from``):
+    un 429 que el proxy convierte en ``LLMProxyUnavailable`` sigue siendo ``rate_limit``."""
+    if exc is None:
+        return None
+    chain = [exc] if exc.__cause__ is None else [exc, exc.__cause__]
+    if any(isinstance(e, ProviderRefused) for e in chain):
+        return "refusal"
+    names = {type(e).__name__ for e in chain}
+    if names & _TIMEOUT_ERROR_NAMES or any(isinstance(e, TimeoutError) for e in chain):
+        return "timeout"
+    if "RateLimitError" in names or any(getattr(e, "status_code", None) == 429 for e in chain):
+        return "rate_limit"
+    return "error"
+
+
+#: Quién escribió un mensaje de herramientas del turno (``pipeline._assistant_tool_message``).
+#: Solo vive en la memoria del turno: :func:`messages_for` lo quita antes de cada llamada.
+SERVED_BY_KEY: Final = "nexus_served_by"
+#: Lo que LiteLLM reenvía tal cual a OpenAI en un mensaje del asistente (research.md §D3).
+_REASONING_KEYS = ("thinking_blocks", "reasoning_content", "provider_specific_fields")
+
+
+def _is_anthropic(model: str) -> bool:
+    return model.startswith("anthropic/")
+
+
+def messages_for(model: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Los mensajes del turno saneados para ``model`` (research.md §D4.4). Copia: lo que el
+    turno ya envió no cambia.
+
+    - Hacia OpenAI (y cualquier otro que no sea Anthropic): sin razonamiento ni
+      ``tool_calls[].index``.
+    - Hacia Anthropic: los bloques de razonamiento solo vuelven al modelo que los escribió.
+    - Siempre sin :data:`SERVED_BY_KEY`.
+
+    Con un hilo sin razonamiento, lo que sale es lo de antes de la 065, byte a byte."""
+    out: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") != "assistant":
+            out.append(message)
+            continue
+        clean = dict(message)
+        author = clean.pop(SERVED_BY_KEY, None)
+        if not _is_anthropic(model):
+            for key in _REASONING_KEYS:
+                clean.pop(key, None)
+            calls = clean.get("tool_calls")
+            if isinstance(calls, list):
+                clean["tool_calls"] = [
+                    {k: v for k, v in c.items() if k != "index"} if isinstance(c, dict) else c
+                    for c in calls
+                ]
+        elif author is not None and author != model:
+            for key in _REASONING_KEYS:
+                clean.pop(key, None)
+        out.append(clean if clean != message else message)
+    return out
+
+
+def crosses_into(model: str, messages: list[dict[str, Any]]) -> bool:
+    """¿Entra ``model`` en un turno con herramientas que llamó **otro** modelo? Solo cuenta
+    para un perfil con modo de cruce (Sonnet 5.5, research.md §D5.4): sigue el turno con el
+    razonamiento apagado, porque los bloques del otro ni existen ni se pueden comprobar."""
+    profile = profile_for(model)
+    if profile is None or profile.cross_in_request is None:
+        return False
+    return any(
+        m.get("role") == "assistant"
+        and m.get("tool_calls")
+        and m.get(SERVED_BY_KEY, model) != model
+        for m in messages
+    )
+
+
+def _forced(tool_choice: Any) -> bool:
+    if isinstance(tool_choice, str):
+        return tool_choice not in {"none", "auto"}
+    if isinstance(tool_choice, Mapping):
+        return tool_choice.get("type") not in {"none", "auto"}
+    return False
+
+
+def _join_betas(*values: Any) -> str:
+    seen: dict[str, None] = {}
+    for value in values:
+        for beta in str(value or "").split(","):
+            if beta.strip():
+                seen.setdefault(beta.strip(), None)
+    return ",".join(seen)
+
+
+def respond_hop_extra(
+    model: str,
+    extra: Mapping[str, Any] | None,
+    *,
+    tools: bool,
+    crossed: bool = False,
+    prefix_mismatch: str | None = None,
+) -> dict[str, Any] | None:
+    """Lo que lleva una llamada de conversación a ``model`` según su perfil (research.md
+    §D3, §D4, §D5.4, §D7, §D12): los kwargs del perfil, el razonamiento con su
+    ``block_binding`` y su beta (o el del cruce, sin nada más), ``max_tokens``, el plazo y lo
+    que pide quien llama (``tool_choice``, Skills, MCP), sin lo prohibido y con las betas
+    unidas.
+
+    Un modelo sin perfil sale como hoy: ``extra`` tal cual (CE-005). ``prefix_mismatch``
+    cambia el ``drop_block`` del perfil (la batería real corre con ``"error"``, §D9.2)."""
+    profile: RespondProfile | None = profile_for(model)
+    if profile is None:
+        return dict(extra) if extra else None
+    out: dict[str, Any] = {}
+    if tools or profile.family != "openai":
+        # GPT-5.6 sin herramientas sale como hoy: el razonamiento apagado solo lo exige Chat
+        # Completions con herramientas (§D3).
+        out.update(copy.deepcopy(dict(profile.request)))
+    out.update(copy.deepcopy(dict(profile.turn_request or {})))
+    headers: dict[str, Any] = {}
+    if crossed and profile.cross_in_request is not None:
+        # Nada más dentro de ``thinking``: ``block_binding`` junto a ``between_tools`` es un
+        # 400 (§D5.4).
+        out.update(copy.deepcopy(dict(profile.cross_in_request)))
+    elif profile.block_binding is not None:
+        binding = dict(profile.block_binding)
+        if prefix_mismatch:
+            binding["prefix_mismatch_behavior"] = prefix_mismatch
+        out["thinking"] = {
+            **dict(out.get("thinking") or {"type": "adaptive"}),
+            "block_binding": binding,
+        }
+        headers["anthropic-beta"] = BLOCK_BINDING_BETA
+    if "thinking" in out:
+        # Si el mapa de LiteLLM no conociera el modelo, rechazaría ``thinking`` antes de
+        # salir; con esto lo deja pasar. LiteLLM lo consume: no llega al proveedor.
+        out["allowed_openai_params"] = ["thinking"]
+    if profile.max_tokens is not None:
+        out["max_tokens"] = profile.max_tokens
+    out["timeout"] = profile.timeout_s
+    for key, value in (extra or {}).items():
+        if key in profile.forbidden:
+            continue
+        if key == "tool_choice" and FORCED_TOOL_CHOICE in profile.forbidden and _forced(value):
+            continue
+        if key == "extra_headers":
+            merged = {**dict(value or {}), **headers}
+            if "anthropic-beta" in headers and (value or {}).get("anthropic-beta"):
+                merged["anthropic-beta"] = _join_betas(
+                    value["anthropic-beta"], headers["anthropic-beta"]
+                )
+            headers = merged
+            continue
+        out.setdefault(key, value)
+    if headers:
+        out["extra_headers"] = headers
+    return out
+
+
+@dataclass
+class TurnModelPin:
+    """El modelo de un turno (research.md §D5.3, data-model.md §6): la cadena es el elegido
+    y su reserva, y cuando la reserva responde una llamada, el resto del turno sigue con
+    ella. ``crossed``: entró tras herramientas de otro modelo y sigue con el razonamiento
+    apagado (§D5.4)."""
+
+    chosen: str
+    reserve: str | None = None
+    pinned: str | None = None
+    crossed: bool = False
+
+    @property
+    def current(self) -> str:
+        return self.pinned or self.chosen
+
+    def models(self) -> tuple[str, ...]:
+        if self.pinned:
+            return (self.pinned,)
+        return tuple(dict.fromkeys(m for m in (self.chosen, self.reserve) if m))
+
+    def answered(self, model: str, *, crossed: bool) -> None:
+        if model and model != self.chosen and self.pinned is None:
+            self.pinned = model
+            self.crossed = crossed
+
+    def keeps_reasoning(self) -> bool:
+        """¿Razona el modelo que va a responder? Entonces el turno solo añade (§D4.2)."""
+        profile = profile_for(self.current)
+        return profile is not None and profile.keeps_reasoning
+
+
 # ── litellm provider ─────────────────────────────────────────────────────────
 
 
@@ -1418,7 +1668,12 @@ class LiteLLMProvider:
         if not choices:
             raise RuntimeError("provider returned no choices")
         msg = choices[0]["message"]
+        finish = choices[0].get("finish_reason")
+        if finish == "content_filter":
+            # Spec 065 (T052, requisito 4.4): un rechazo es un fallo, sin su texto parcial.
+            raise ProviderRefused(model)
         text = str(msg.get("content") or "")
+        blocks = msg.get("thinking_blocks") or ()
         emitted: list[ToolCall] = []
         for raw in msg.get("tool_calls") or []:
             fn = raw.get("function") or {}
@@ -1434,7 +1689,12 @@ class LiteLLMProvider:
                     arguments=args,
                 )
             )
-        return LLMResponse(text=text, tool_calls=tuple(emitted))
+        return LLMResponse(
+            text=text,
+            tool_calls=tuple(emitted),
+            finish_reason=str(finish) if finish is not None else None,
+            reasoning_blocks=tuple(dict(b) for b in blocks if isinstance(b, Mapping)),
+        )
 
     async def _raw_complete(
         self,
@@ -1850,6 +2110,9 @@ class LLMRouter:
     #: dan reserva a responder, pero sin reserva aquí una caída de Anthropic sería un fallo
     #: del agente en la prueba. Vacío: ``fallback_model``.
     classify_fallback_model: str = ""
+    #: Spec 065 (research.md §D9.2): ``prefix_mismatch_behavior`` de los modelos que razonan.
+    #: ``None``: el del perfil (``drop_block``); la batería real pone ``"error"``.
+    prefix_mismatch_behavior: str | None = None
 
     @property
     def classify_fallback(self) -> str:
@@ -1870,7 +2133,11 @@ class LLMRouter:
         every model and retry has failed.
         """
         last_exc: Exception | None = None
+        #: El último error del modelo anterior: por qué la cadena siguió (T042).
+        left_because: Exception | None = None
         for model in models:
+            if last_exc is not None:
+                left_because = last_exc
             for attempt in range(_MAX_ATTEMPTS_PER_MODEL):
                 # Spec 047 (40.10): every attempt is a call against the turn's
                 # ceiling, when C3 has set one. Outside the ``try``: reaching the
@@ -1879,7 +2146,7 @@ class LLMRouter:
                 if budget is not None:
                     budget.before_call()
                 try:
-                    return await invoke(model)
+                    value = await invoke(model)
                 except Exception as exc:
                     last_exc = exc
                     fast_retry = _is_fast_retry_error(exc)
@@ -1891,12 +2158,30 @@ class LLMRouter:
                         attempt=attempt,
                         error=str(exc),
                         fast_retry=fast_retry,
+                        **_error_classes(exc),
                     )
+                    if isinstance(exc, ProviderRefused):
+                        # Spec 065 (requisito 4.4): a refusal is not retried on the same
+                        # model; the chain goes on to the reserve.
+                        break
                     # A dead pooled socket fails in ~1ms; retry it on a fresh
                     # connection immediately instead of paying the backoff.
                     # Everything else (rate limits, …) still backs off.
                     if attempt + 1 < _MAX_ATTEMPTS_PER_MODEL and not fast_retry:
                         await asyncio.sleep(_RETRY_BACKOFF_S * (attempt + 1))
+                    continue
+                if isinstance(value, LLMResponse):
+                    # Spec 065 (T042): the model that answered, not the one that was asked,
+                    # and why the chain moved past the first one.
+                    fell_back = model != models[0]
+                    served = dataclasses.replace(
+                        value,
+                        model=model,
+                        fell_back=fell_back,
+                        fallback_reason=fallback_reason(left_because) if fell_back else None,
+                    )
+                    return cast(_T, served)
+                return value
         assert last_exc is not None  # the loop ran at least once
         log.error(
             "llm.all_attempts_exhausted",
@@ -1968,19 +2253,27 @@ class LLMRouter:
         *,
         tenant_id: uuid.UUID,
         messages: list[dict[str, str]],
+        model_override: str | None = None,
     ) -> str:
         async def invoke(model: str) -> str:
+            # Spec 065: the agent's model goes out with its profile here too (the rewrite).
+            hop = respond_hop_extra(
+                model, None, tools=False, prefix_mismatch=self.prefix_mismatch_behavior
+            )
             return await self.provider.acomplete(
                 tenant_id=tenant_id,
                 role="respond",
                 model=model,
                 messages=messages,
+                **({"extra": hop} if hop else {}),
             )
 
         return await self._call_with_resilience(
             tenant_id=tenant_id,
             role="respond",
-            models=self._model_chain(self.respond_model),
+            # Spec 065 (T042): the agent's model when the caller has it (the grader's
+            # rewrite), not the global one.
+            models=self._model_chain(model_override or self.respond_model),
             invoke=invoke,
         )
 
@@ -1994,6 +2287,7 @@ class LLMRouter:
         extra: dict[str, Any] | None = None,
         model_override: str | None = None,
         fallback_override: Sequence[str] = (),
+        pin: TurnModelPin | None = None,
     ) -> LLMResponse:
         """Function-calling completion for the handler ReAct loop. ``role``
         is the intent (``book``, ``queue``, …) so traces can attribute the
@@ -2002,6 +2296,12 @@ class LLMRouter:
         ``extra`` carries Anthropic-specific kwargs (container, extra_headers,
         mcp_servers) the caller wants the provider to passthrough — Fase D
         Skills uses it, future Fase E (MCP connector) will too.
+
+        Spec 065 (T052): every hop goes out with **its** model's profile
+        (:func:`respond_hop_extra`) and the thread sanitized for it
+        (:func:`messages_for`). With a ``pin`` the chain is the turn's — the
+        chosen model and its cross-family reserve, then only the reserve once
+        it answered — and ``model_override`` / ``fallback_override`` are not used.
         """
 
         async def invoke(model: str) -> LLMResponse:
@@ -2009,21 +2309,32 @@ class LLMRouter:
                 tenant_id=tenant_id,
                 role=role,
                 model=model,
-                messages=messages,
+                messages=messages_for(model, messages),
                 tools=tools,
-                extra=extra,
+                extra=respond_hop_extra(
+                    model,
+                    extra,
+                    tools=bool(tools),
+                    crossed=crosses_into(model, messages),
+                    prefix_mismatch=self.prefix_mismatch_behavior,
+                ),
             )
 
-        return await self._call_with_resilience(
+        if pin is not None:
+            models = pin.models()
+        else:
+            # Per-tenant override wins over the global respond model; the global
+            # fallback closes the chain so resilience never depends on config.
+            models = self._model_chain(model_override or self.respond_model, fallback_override)
+        response = await self._call_with_resilience(
             tenant_id=tenant_id,
             role=role,
-            # Per-tenant override (e.g. a latency-sensitive sales agent pinned
-            # to a faster model) wins over the global respond model; the
-            # tenant's own fallbacks (WP-19) go next, and the global fallback
-            # always closes the chain so resilience never depends on config.
-            models=self._model_chain(model_override or self.respond_model, fallback_override),
+            models=models,
             invoke=invoke,
         )
+        if pin is not None:
+            pin.answered(response.model, crossed=crosses_into(response.model, messages))
+        return response
 
     # ── routed calls (spec 047, T141) ────────────────────────────────────
 
@@ -2107,7 +2418,7 @@ class LLMRouter:
                 tenant_id=tenant_id,
                 role=role,
                 model=model,
-                messages=messages,
+                messages=messages_for(model, messages),
                 tools=tools,
                 extra=extra,
             )
@@ -2180,6 +2491,7 @@ class LLMRouter:
                             attempt=attempt,
                             error=str(exc),
                             fast_retry=fast,
+                            **_error_classes(exc),
                         )
                         if attempt + 1 < _MAX_ATTEMPTS_PER_MODEL and not fast:
                             await asyncio.sleep(backoff * (attempt + 1))
@@ -2317,6 +2629,7 @@ __all__ = [
     "REASONING_BUDGET_TOKENS",
     "RETENTION_WIRE",
     "ROUTE_DECISION_EVENT",
+    "SERVED_BY_KEY",
     "TASK_BY_ROLE",
     "Completion",
     "CooldownBook",
@@ -2328,19 +2641,25 @@ __all__ = [
     "LiteLLMProvider",
     "NoModelAvailable",
     "ProviderChainExhausted",
+    "ProviderRefused",
     "RetentionNotGuaranteed",
     "RouteHop",
     "RoutedCall",
     "StructuredOutputInvalid",
     "ToolCall",
+    "TurnModelPin",
     "UnknownRetention",
     "apply_capabilities",
     "build_default_router",
+    "crosses_into",
     "current_hop",
     "default_context_management_from_env",
+    "fallback_reason",
     "label_format",
     "label_in",
     "litellm_kwargs_contract",
+    "messages_for",
+    "respond_hop_extra",
     "routed",
     "supports_json_object",
     "task_for_call",

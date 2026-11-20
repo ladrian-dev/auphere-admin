@@ -280,3 +280,35 @@ async def test_read_only_can_see_but_not_change(client, console_world, db_sessio
         url(a["ref"], agent), headers=analyst["headers"](), json={"model_id": TERRA}
     )
     assert resp.status_code == 403
+
+
+async def test_a_model_disabled_after_the_cache_was_read_is_refused(client, console_world) -> None:
+    """/cso 2026-11-20 (T093): un proceso que aún no refrescó su catálogo tras
+    ``respond-disable`` no deja elegir ese modelo: la escritura mira la base."""
+    a = console_world["a"]
+    agent = await agent_of(a["tenant_id"])
+    async with get_sessionmaker()() as session, session.begin():
+        await session.execute(
+            sa.text(
+                "UPDATE model_profiles SET respond_enabled_at = NULL, respond_enabled_by = NULL, "
+                "respond_enabled_note = NULL WHERE model_id = :m"
+            ),
+            {"m": LUNA},
+        )
+    try:
+        assert LUNA in {m for m, _ in respond_catalog.RESPOND_MODELS}, "la caché aún lo ofrece"
+        resp = await client.put(
+            url(a["ref"], agent), headers=a["headers"](), json={"model_id": LUNA}
+        )
+        assert resp.status_code == 422, resp.text
+        assert resp.json()["detail"]["code"] == "unknown_model"
+        assert (await choice_of(a["tenant_id"], agent))[0] is None
+    finally:
+        async with get_sessionmaker()() as session, session.begin():
+            await session.execute(
+                sa.text(
+                    "UPDATE model_profiles SET respond_enabled_at = now(), "
+                    "respond_enabled_by = 'migration:0238' WHERE model_id = :m"
+                ),
+                {"m": LUNA},
+            )

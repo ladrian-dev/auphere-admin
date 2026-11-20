@@ -67,7 +67,7 @@ si la hay y el enlace a Equipo (spec 052). Pestañas:
 | Equipo | Personas (`GET /admin/partners/{id}/members`), invitar, reenviar y revocar al propietario, e invitaciones vivas del partner sin acciones: una pasada de plazo no sale, aunque nadie haya abierto su enlace (spec 052, [`registro-de-partners.md`](registro-de-partners.md) §0) |
 | Módulos | Consola encendida y qué secciones y servicios tiene (spec 032): rejilla Operar · Cuenta · Asistente; el Companion se enciende aquí |
 | Facturas | Saldo recargado, pool semanal y asignado en US$; recarga en dólares con confirmación e idempotencia; «¿cuadra el libro?»; movimientos con tipo (spec 033); tarjeta, modo de cobro, cobros y la línea de crédito del pospago (spec 041); recibos |
-| Configuración | Límites (broadcast, rate limits, blueprint), modelos, claves API e impersonación |
+| Configuración | Límites (broadcast, rate limits, blueprint), modelos, claves API e impersonación. Los modelos (spec 065) son los seis que se pueden ofrecer; los que aún no responden en este entorno lo dicen, y quitar uno pasa al modelo por defecto los agentes que el partner tenía con él |
 | Consola nueva | Ensayo, activación y vuelta atrás de la consola de la fábrica, con el historial de informes (spec 047, [abajo](#palancas-del-partner-y-del-cliente-spec-047)) |
 | Tope y moneda | El tope mensual de «Construcción y pruebas», los «Pedir ampliación» y la moneda de la cuenta (spec 047, [abajo](#palancas-del-partner-y-del-cliente-spec-047)) |
 | Auditoría | Las acciones de plataforma sobre el partner, en una frase y nombrando al operador (`GET /admin/partners/{id}/audit-log`, spec 052), y la actividad del embed |
@@ -136,6 +136,12 @@ En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar u
 
   Canales lleva un punto si ningún canal atiende o alguno tiene problemas. La ficha del partner usa el mismo componente con Observar, Configurar y Cuenta.
 - **Agente.** Como en la consola: «Nuevo borrador» a partir de la versión activa (solo el prompt) y una tarjeta por versión con «⋯» para publicar, revertir o ver el prompt. Debajo van las capacidades del runtime y las evaluaciones. Spec 047: cada agente tiene un solo borrador, y guardar desde aquí escribe **en** él. Lo que el operador deja como está en la versión activa conserva lo que el borrador ya tenía, así que editar desde aquí no deshace lo que el partner dejó pendiente.
+  - **Modelo de cada agente** (spec 065, T075; requisitos 7.1 y 7.2; `agent-models.tsx`), bajo el selector de agente. Una fila por agente activo (`GET /admin/tenants/{id}/agents/models`): con qué modelo responde y de dónde sale («Elegido por el partner», «Fijado por Auphere», «Lo fija la versión» o «Por defecto de Auphere»), desde cuándo, y lo elegido si no es con lo que responde. «Cambiar» abre un diálogo con los modelos habilitados para responder en el entorno, estén o no en la lista del partner, más «Por defecto de Auphere (hoy: …)», y el motivo obligatorio (`PUT …/agents/{agent_id}/model`, `admin.agent.model.update`). Vale desde el próximo mensaje del agente. La lista de habilitados sale de `GET /admin/platform/agent-respond-default` (`options`); si no se lee, la tabla se ve sin «Cambiar». Se lee aparte del resto de la pestaña: si falla, lo dice el bloque, con «Reintentar».
+  - **El modelo por cliente se retiró** (spec 065, requisito 12.4): `PUT` y `DELETE
+    /admin/tenants/{id}/model-bindings/respond` responden `422 respond_is_per_agent`; los
+    demás roles (`classify`) siguen igual. La migración 0240 pasó la asignación de cada
+    cliente a sus agentes (`set_by = 'operator'`, o `'partner'` si la había elegido el
+    partner desde la consola) y dejó una línea `model.respond_binding.migrated` por cliente.
 - **Habilidades.** El catálogo de la consola, con un interruptor por habilidad que guarda en el borrador. Se sirve en `GET/PUT /admin/tenants/{id}/capabilities`, con el mismo código que la consola y la auditoría firmada por el operador.
 - **Playground.** El de `/qa/{cliente}/chat`, dentro de la ficha. «Probar agente» lleva aquí.
 - **Resumen.** A dos columnas. A la izquierda va lo que falta para operar, solo lo pendiente y con lo hecho plegado; con todo hecho es una línea. Debajo, las conversaciones recientes. A la derecha, los datos del cliente, la **restricción soberana** (spec 047, [abajo](#palancas-del-partner-y-del-cliente-spec-047)) y las pruebas del agente.
@@ -338,12 +344,43 @@ recargado con el libro.
   - la venta por millón con el multiplicador de cada carril, y «Desfasado» o «Bajo
     el suelo».
 
+  Un modelo que factura la escritura en caché (Anthropic y GPT-5.6) enseña además ese
+  carril, «Escritura en caché», en el coste, en la venta y en «Pesos de venta»; uno sin
+  tarifa de escritura no lo enseña, porque no cobra nada por él (spec 065,
+  [billing.md](billing.md)).
+
   Las acciones son «Precio» y un menú con «Pesos de venta», «Cancelar retirada» o
   «Volver a disponible», y al final, separadas, «Retirar» y «No disponible». Estas
   dos solo aparecen si el modelo no está en uso; la API las rechaza igual
   ([modelos-y-router.md](modelos-y-router.md)). El diálogo de coste viene
   precargado con el vigente y la fecha de hoy, rechaza fechas pasadas y no avisa a
   nadie.
+
+  Spec 065 (T075 y T078):
+  - **Modelo por defecto de los agentes** (`agent-default.tsx`), encima de la tabla:
+    con qué modelo responden los agentes sin modelo elegido
+    (`GET /admin/platform/agent-respond-default`), quién lo cambió y cuándo, y un
+    selector con solo los habilitados para responder. «Revisar el cambio» pide a la
+    API los agentes que cambiarían (`PUT` sin `confirm`, que responde `409
+    confirm_required` y no guarda nada; la API pide un motivo también ahí, y el
+    panel manda uno fijo que no llega a la auditoría). El diálogo los lista por
+    cliente (la referencia del partner, o «Cliente directo») con el modelo de
+    ahora, pide el motivo y confirma (`confirm: true`,
+    `admin.platform.agent_respond_default`). Dice que a los partners no les llega
+    ningún aviso (13.6). Sin agentes afectados, dice que solo nacerán con él los
+    nuevos. Se lee aparte del catálogo: si falla, lo dice su tarjeta.
+  - Cada fila dice si el modelo **responde a los agentes en este entorno**:
+    «Habilitado para responder» con la fecha y la nota de la pasada de la batería,
+    o «Sin habilitar para responder · Pasa primero la batería en este entorno.».
+    Sin perfil de llamada no dice nada. En «⋯», «Habilitar para responder» (un
+    modelo activo con perfil, con la nota obligatoria;
+    `POST /admin/models/deployments/{uuid}/respond-enable`) y, al final con las
+    destructivas, «Deshabilitar para responder» (con el motivo;
+    `…/respond-disable`). Este no se ofrece sobre el modelo por defecto de los
+    agentes ni sobre la reserva de una familia (`agent_default`,
+    `respond_fallback_openai`, `respond_fallback_anthropic`); la API lo rechaza
+    igual con `409 model_in_use`, que el diálogo dice en palabras, como
+    `no_respond_profile`.
 
 El catálogo de modelos, la política del router y las certificaciones, sin tocar la
 base a mano (historia 30; `contracts/admin-api.md` §1 a §3). Cada escritura lleva

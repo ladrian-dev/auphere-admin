@@ -325,6 +325,8 @@ class Deployment:
     w_in: Decimal | None = None
     w_cache: Decimal | None = None
     w_out: Decimal | None = None
+    #: Spec 065 (0239): el cuarto carril, la escritura en caché.
+    w_cache_write: Decimal | None = None
     id: uuid.UUID | None = None
     display_name: str | None = None
 
@@ -376,6 +378,7 @@ class Deployment:
             w_in=_dec(weights.get("w_in")),
             w_cache=_dec(weights.get("w_cache")),
             w_out=_dec(weights.get("w_out")),
+            w_cache_write=_dec(weights.get("w_cache_write")),
         )
 
     def to_contract(self) -> dict[str, Any]:
@@ -415,6 +418,7 @@ class Deployment:
                 "w_in": _num(self.w_in),
                 "w_cache": _num(self.w_cache),
                 "w_out": _num(self.w_out),
+                "w_cache_write": _num(self.w_cache_write),
             },
         }
 
@@ -465,6 +469,7 @@ def deployment_from_row(row: Mapping[str, Any], *, prices: Iterable[Price]) -> D
         w_in=_dec(row.get("quota_weight_input")),
         w_cache=_dec(row.get("quota_weight_cache_read")),
         w_out=_dec(row.get("quota_weight_output")),
+        w_cache_write=_dec(row.get("quota_weight_cache_write")),
     )
 
 
@@ -796,6 +801,7 @@ _DEPLOYMENTS_SQL = sa.text(
            contract_dpa, subprocessor_listed, status, retire_after, capabilities, quota,
            supports_tools, supports_vision, max_context, cache_min_tokens,
            quota_weight_input, quota_weight_cache_read, quota_weight_output,
+           quota_weight_cache_write,
            offer_label, price_input_per_mtok, respond_enabled_at
       FROM model_profiles
     """

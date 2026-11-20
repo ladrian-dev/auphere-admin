@@ -541,6 +541,18 @@ siguen sin montar (`agent-model-quality.tsx`), y un cambio de política desde la
 consola (`PATCH …/draft` con otra `model_policy`, `POST …/quality/check`) sigue
 respondiendo `409 model_policy_managed` (D64).
 
+**Quién respondió** (spec 065, T062; requisitos 5.3 y 6.1; `answered-by.tsx`): en el
+chat de prueba y en la conversación de cada prueba («Por qué falló» y «Ver la
+conversación»), bajo cada respuesta del agente, una línea discreta dice con qué modelo
+respondió («Respondió Terra») y, si fue la reserva, que lo fue («Respondió Claude
+Sonnet 5.5, el modelo de reserva, porque el del agente no contestó.»). El chat de prueba
+lo lee de `turn.model_name` (o `model` si no hay nombre) y `fell_back`. La
+transcripción de una prueba solo trae el id (`model`): el nombre sale de los modelos
+que ya lee la pantalla del agente (`modelNamesOf`: opciones, elección y con cuál
+responde) y, si no está, se dice el id. No se nombra el modelo que falló ni por qué: la
+API no lo dice y el elegido pudo cambiar después. Las conversaciones de antes no traen
+modelo y no dicen nada, y un turno en el que el modelo no respondió tampoco.
+
 **Solo lo que tenemos** (spec 047, enmienda del 2026-10-30, T228; requisitos 65.3,
 65.4, 65.7, 65.8 y 65.9; contrato en `contracts/console-api.md` §11). Un agente
 puede ser para cualquier cosa, pero solo con las herramientas que existen: la

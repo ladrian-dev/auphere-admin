@@ -23,6 +23,7 @@ lo encuentra después. Lo mismo para un medidor sin tarifa cargada.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Collection
 from collections.abc import Set as AbstractSet
@@ -73,6 +74,13 @@ class ModelPrice:
     quota_weight_input: Decimal | None = None
     quota_weight_cache_read: Decimal | None = None
     quota_weight_output: Decimal | None = None
+    # Spec 065 (0239): el cuarto carril. Nulo con tarifa de escritura es un modelo sin
+    # pesar (``lane_weights_from``); nulo sin tarifa, lo mismo que 0.
+    quota_weight_cache_write: Decimal | None = None
+    # Spec 065: el tramo del precio vigente (``model_prices.surcharge``, 0221). Haiku 5.5
+    # cobra la petición entera a 5 veces por encima de 100.000 tokens de prompt.
+    tier_above_tokens: int | None = None
+    tier_multiplier: Decimal | None = None
     # Ventana de contexto del modelo. No es un precio, pero vive en la
     # misma fila y en el mismo catálogo cacheado: el medidor de contexto
     # del Companion (CO-01) lo necesita en cada llamada, y abrir una
@@ -120,10 +128,44 @@ _CATALOG_SQL = sa.text(
            residency,
            zero_retention,
            offer_label,
-           respond_enabled_at
+           respond_enabled_at,
+           quota_weight_cache_write,
+           -- Spec 065: el tramo del precio vigente, el de ``valid_from`` más reciente.
+           (SELECT p.surcharge
+              FROM model_prices p
+             WHERE p.deployment_id = model_profiles.id
+               AND p.valid_from <= CURRENT_DATE
+             ORDER BY p.valid_from DESC
+             LIMIT 1) AS surcharge
       FROM model_profiles
     """
 )
+
+
+def tier_from_surcharge(raw: Any) -> tuple[int, Decimal] | None:
+    """``model_prices.surcharge`` → ``(umbral, multiplicador)``, o None.
+
+    La forma de la 0221: ``{"above_tokens": 100000, "multiplier": 5, "applies_to":
+    "whole_request"}``. Solo se entiende la petición entera; otra cosa se registra y no se
+    aplica, porque aplicarla a medias cobraría un número que nadie decidió.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            log.error("pricing.surcharge_unreadable", surcharge=raw)
+            return None
+    if not isinstance(raw, dict):
+        log.error("pricing.surcharge_unreadable", surcharge=str(raw))
+        return None
+    above, multiplier = raw.get("above_tokens"), raw.get("multiplier")
+    if raw.get("applies_to", "whole_request") != "whole_request" or above is None or not multiplier:
+        log.error("pricing.surcharge_unreadable", surcharge=json.dumps(raw, default=str))
+        return None
+    return int(above), Decimal(str(multiplier))
+
 
 _cache: dict[str, ModelPrice] | None = None
 _cached_at: float = 0.0
@@ -201,7 +243,10 @@ async def load_catalog() -> dict[str, ModelPrice]:
         zero_retention,
         offer_label,
         respond_enabled_at,
+        w_write,
+        surcharge,
     ) in rows:
+        tier = tier_from_surcharge(surcharge)
         catalog[model_id] = ModelPrice(
             model_id=model_id,
             input_per_mtok=inp,
@@ -215,6 +260,9 @@ async def load_catalog() -> dict[str, ModelPrice]:
             quota_weight_input=w_in,
             quota_weight_cache_read=w_cache,
             quota_weight_output=w_out,
+            quota_weight_cache_write=w_write,
+            tier_above_tokens=None if tier is None else tier[0],
+            tier_multiplier=None if tier is None else tier[1],
             status=status,
             supports_tools=bool(supports_tools),
             residency=residency,
@@ -263,6 +311,7 @@ def _warn_on_weight_drift(catalog: dict[str, ModelPrice], *, target: Decimal | N
             "input": row.input_per_mtok,
             "cache_read": row.cache_read_per_mtok,
             "output": row.output_per_mtok,
+            "cache_write": row.cache_write_per_mtok,
         }
         for model_id, row in catalog.items()
     }
@@ -291,22 +340,44 @@ def _warn_on_weight_drift(catalog: dict[str, ModelPrice], *, target: Decimal | N
         )
 
 
-def lane_weights_from(catalog: dict[str, ModelPrice]) -> dict[str, dict[str, Decimal | None]]:
-    """El catálogo, visto como ``modelo -> {carril: peso}``.
+def _write_weight(row: ModelPrice) -> Decimal | None:
+    """El peso del cuarto carril, resuelto aquí y en ningún otro sitio (spec 065).
 
-    Existe para que los tres llamantes de ``weights_for`` construyan el mapa de
+    - el guardado, si lo hay;
+    - 0 si el modelo no tiene tarifa de escritura: lo escrito sigue dentro de la entrada,
+      como antes de la 065 (un modelo dado de alta en el panel nace con el peso nulo);
+    - nulo si la tiene y nadie le puso peso: ``weights_for`` lo rechaza, porque cobrarlo a 0
+      sería el cobro silencioso a la baja.
+    """
+    if row.quota_weight_cache_write is not None:
+        return row.quota_weight_cache_write
+    rate = row.cache_write_per_mtok
+    if rate is None or rate <= 0:
+        return Decimal(0)
+    return None
+
+
+def lane_weights_from(catalog: dict[str, ModelPrice]) -> dict[str, dict[str, Decimal | None]]:
+    """El catálogo, visto como ``modelo -> {carril: peso}``, con el tramo si lo hay.
+
+    Existe para que los llamantes de ``weights_for`` construyan el mapa de
     **una sola manera**. Con la versión de un peso, cada uno armaba su
     comprensión de diccionario a mano y las tres eran iguales por casualidad;
-    con tres carriles, tres copias divergen a la primera.
+    con cuatro carriles, cuatro copias divergen a la primera.
     """
-    return {
-        model_id: {
+    out: dict[str, dict[str, Decimal | None]] = {}
+    for model_id, row in catalog.items():
+        lanes: dict[str, Decimal | None] = {
             "input": row.quota_weight_input,
             "cache_read": row.quota_weight_cache_read,
             "output": row.quota_weight_output,
+            "cache_write": _write_weight(row),
         }
-        for model_id, row in catalog.items()
-    }
+        if row.tier_above_tokens is not None and row.tier_multiplier is not None:
+            lanes["tier_above_tokens"] = Decimal(row.tier_above_tokens)
+            lanes["tier_multiplier"] = row.tier_multiplier
+        out[model_id] = lanes
+    return out
 
 
 async def get_catalog(*, force: bool = False) -> dict[str, ModelPrice]:

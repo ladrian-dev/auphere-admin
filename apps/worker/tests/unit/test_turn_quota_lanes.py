@@ -14,12 +14,19 @@ from nexus_api.metering.quota import quota_tokens
 
 from nexus_worker.metering.consumer import _turn_quota
 
-SONNET = LaneWeights(input=Decimal("0.66"), cache_read=Decimal("0.066"), output=Decimal("3.3"))
+SONNET = LaneWeights(
+    input=Decimal("0.66"),
+    cache_read=Decimal("0.066"),
+    output=Decimal("3.3"),
+    cache_write=Decimal("0.825"),
+)
 WEIGHTS = {
     "anthropic/claude-sonnet-4-6": {
         "input": Decimal("0.66"),
         "cache_read": Decimal("0.066"),
         "output": Decimal("3.3"),
+        # Spec 065: 3,75 de tarifa de escritura x 2,2 / 10.
+        "cache_write": Decimal("0.825"),
     }
 }
 
@@ -70,6 +77,7 @@ def test_each_call_of_a_turn_is_weighted_with_its_own_model() -> None:
         "input": Decimal("0.22"),
         "cache_read": Decimal("0.022"),
         "output": Decimal("1.1"),
+        "cache_write": Decimal("0.275"),
     }
     rows = _rows("t3", "anthropic/claude-sonnet-4-6", 1000, 0, 1000, seq=1)
     rows += _rows("t3", "anthropic/claude-haiku-4-5", 1000, 0, 1000, seq=2)

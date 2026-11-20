@@ -50,7 +50,9 @@ def lanes_of(model: str) -> LaneWeights:
     q = lambda x: (TARGET * x / SELL_USD_PER_MILLION).quantize(  # noqa: E731
         Decimal("0.000001"), rounding=ROUND_HALF_UP
     )
-    return LaneWeights(input=q(pin), cache_read=q(pc), output=q(pout))
+    # Spec 065: estos turnos no escriben en caché, así que el cuarto peso no cambia nada; 0 es
+    # «sin tarifa de escritura» y deja la fórmula de tres carriles que este test fija.
+    return LaneWeights(input=q(pin), cache_read=q(pc), output=q(pout), cache_write=Decimal(0))
 
 
 def provider_cost(model: str, prompt: int, cache: int, out: int) -> Decimal:

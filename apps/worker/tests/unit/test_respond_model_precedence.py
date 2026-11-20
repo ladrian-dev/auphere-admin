@@ -80,3 +80,14 @@ def test_the_budget_downgrade_wins_over_everything() -> None:
     chosen = bundle(respond_model=TERRA, respond_model_set_by="partner")
     assert turn_respond_model(chosen, degrade_to=LUNA) == (LUNA, ())
     assert turn_respond_model(chosen, degrade_to=None) == (TERRA, ())
+
+
+def test_the_budget_downgrade_never_goes_to_a_model_that_cannot_run_the_agent() -> None:
+    """/cso 2026-11-20 (T093): un agente con conector MCP de Anthropic no se degrada a un
+    modelo de OpenAI, que no puede ejecutarlo (y al que no debe llegar su token)."""
+    with_mcp = bundle(
+        respond_model=HAIKU, respond_model_set_by="partner", runtime_mcp_connector=True
+    )
+    assert turn_respond_model(with_mcp, degrade_to=LUNA) == (HAIKU, ())
+    without = bundle(respond_model=HAIKU, respond_model_set_by="partner")
+    assert turn_respond_model(without, degrade_to=LUNA) == (LUNA, ())

@@ -116,17 +116,45 @@ async def test_a_model_with_no_lanes_at_all_is_refused_by_name() -> None:
     assert "openai/gpt-4o" in str(exc.value)
 
 
-async def test_the_three_lanes_come_back_as_given() -> None:
-    """R1.6 — un modelo completo devuelve sus tres pesos, sin inventar ninguno."""
+async def test_the_four_lanes_come_back_as_given() -> None:
+    """R1.6 — un modelo completo devuelve sus pesos, sin inventar ninguno. Desde la spec 065
+    son cuatro: la escritura en caché (1,10 en Sol) también."""
     from nexus_api.metering.pricing_policy import LaneWeights, weights_for
 
     lanes = weights_for(
         "x",
-        {"x": {"input": Decimal("0.88"), "cache_read": Decimal("0.088"), "output": Decimal("4.4")}},
+        {
+            "x": {
+                "input": Decimal("0.88"),
+                "cache_read": Decimal("0.088"),
+                "output": Decimal("4.4"),
+                "cache_write": Decimal("1.10"),
+            }
+        },
     )
     assert lanes == LaneWeights(
-        input=Decimal("0.88"), cache_read=Decimal("0.088"), output=Decimal("4.4")
+        input=Decimal("0.88"),
+        cache_read=Decimal("0.088"),
+        output=Decimal("4.4"),
+        cache_write=Decimal("1.10"),
     )
+
+
+async def test_a_missing_write_lane_is_refused_by_name() -> None:
+    """Spec 065 — un mapa sin el cuarto peso no se cobra a 0: lo nombra."""
+    from nexus_api.metering.pricing_policy import UnweightedModel, weights_for
+
+    with pytest.raises(UnweightedModel, match="cache_write"):
+        weights_for(
+            "x",
+            {
+                "x": {
+                    "input": Decimal("0.88"),
+                    "cache_read": Decimal("0.088"),
+                    "output": Decimal("4.4"),
+                }
+            },
+        )
 
 
 async def test_a_model_outside_the_llm_quota_lane_is_unaffected() -> None:

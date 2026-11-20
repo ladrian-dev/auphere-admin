@@ -72,7 +72,9 @@ Gana `provider` y `line` en cada elemento, y solo lista modelos con perfil de ll
 
 Cuerpo: `{"model_id": "…" | null, "reason": "texto"}`. Acepta cualquier modelo activo, con perfil y habilitado para responder en el entorno, esté o no en la lista del partner (requisito 7.2). Escribe con `set_by = 'operator'`, audita `admin.agent.model.update` con el motivo y publica la invalidación del agente.
 
-### `POST /admin/models/{id}/respond-enable` y `/respond-disable` · token de operador
+### `POST /admin/models/deployments/{deployment_id}/respond-enable` y `/respond-disable` · token de operador
+
+Con la convención de las demás acciones del catálogo (`…/retire`, `…/unavailable`); `{deployment_id}` es el `uuid` de cada fila de `GET /admin/models/deployments`. Las dos devuelven la fila actualizada.
 
 - `respond-enable`, cuerpo `{"note": "pasada de la batería: fecha, commit, resultado"}`:
   - `409 {"code": "no_respond_profile"}` si el modelo no tiene perfil de llamada;
@@ -80,9 +82,9 @@ Cuerpo: `{"model_id": "…" | null, "reason": "texto"}`. Acepta cualquier modelo
   - escribe `respond_enabled_*`, audita `admin.model.respond_enable` y publica `CATALOG_CHANGED`.
 - `respond-disable`, cuerpo `{"reason": "…"}`:
   - pasa al modelo por defecto las elecciones de agentes hechas por partners con ese modelo, con `agent.model_reset` (requisito 1.4);
-  - `409 model_in_use` si es la reserva de otra familia habilitada o el valor por defecto;
+  - `409 {"code": "model_in_use", "uses": ["agent_default" | "respond_fallback_openai" | "respond_fallback_anthropic"]}` si es el valor por defecto o la reserva habilitada de la otra familia;
   - audita `admin.model.respond_disable`.
-- `GET /admin/models` (lista del panel) gana `respond_enabled_at`, `respond_enabled_by`, `respond_enabled_note` y `has_respond_profile`.
+- `GET /admin/models/deployments` (lista del panel) gana, en cada fila, `respond_enabled_at`, `respond_enabled_by`, `respond_enabled_note` y `has_respond_profile`.
 
 ### `GET/PUT /admin/platform/agent-respond-default` · token de operador
 
@@ -103,6 +105,6 @@ Cuerpo: `{"model_id": "…" | null, "reason": "texto"}`. Acepta cualquier modelo
 ## Lo que informa el turno
 
 - Evento `llm.call_complete` (ya existe): sin cambios; ya lleva el `model` real de cada llamada.
-- Evento nuevo `llm.respond_fell_back` (warning): `tenant_id`, `agent_id`, `chosen`, `served`, `reason` (`error` · `timeout` · `refusal`). Sin texto.
+- Evento nuevo `llm.respond_fell_back` (warning): `tenant_id`, `agent_id`, `chosen`, `served`, `reason` (`error` · `timeout` · `refusal` · `rate_limit`, de la clase original del último error antes de la reserva). Sin texto.
 - `handler.turn_complete` y el estado del turno: `respond_model` / `response_model` = el modelo que respondió; `fell_back: bool`.
 - Resultado de cada prueba de la batería y respuesta del Playground del agente: `model` y `fell_back`.

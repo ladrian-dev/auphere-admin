@@ -20,10 +20,11 @@ panel; ``test_respond_model_resolution`` barre que nadie resuelva por su cuenta.
 
 from __future__ import annotations
 
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from typing import Literal
 
-from nexus_api.core.respond_profiles import can_run, profile_for
+from nexus_api.core.respond_profiles import SONNET_55, can_run, profile_for
 
 Source = Literal["agent", "agent_operator", "version", "platform"]
 SetBy = Literal["partner", "operator"]
@@ -53,8 +54,13 @@ def resolve(
     platform_default: str,
     *,
     agent_needs: frozenset[str] = frozenset(),
+    enabled: AbstractSet[str] | None = None,
 ) -> Resolved:
-    """El modelo de respuesta de un agente. Pura: no lee nada."""
+    """El modelo de respuesta de un agente. Pura: no lee nada.
+
+    ``enabled``: lo habilitado para responder en este entorno. Si nada de la cadena puede
+    con el agente, la reserva del modelo por defecto solo vale si está ahí; si no, el modelo
+    por defecto, como hoy (/cso del 2026-11-20). ``None``: sin esa comprobación."""
     candidates: list[tuple[str, Source]] = []
     if choice is not None and choice.model_id:
         source: Source = "agent_operator" if choice.set_by == "operator" else "agent"
@@ -70,9 +76,44 @@ def resolve(
         skipped.append(model_id)
 
     profile = profile_for(platform_default)
-    if profile is not None and can_run(profile.reserve, agent_needs):
+    if (
+        profile is not None
+        and can_run(profile.reserve, agent_needs)
+        and (enabled is None or profile.reserve in enabled)
+    ):
         return Resolved(profile.reserve, "platform", tuple(skipped))
     return Resolved(platform_default, "platform", tuple(skipped))
 
 
-__all__ = ["AgentChoice", "Resolved", "SetBy", "Source", "resolve"]
+def respond_reserve(
+    model_id: str,
+    *,
+    enabled: AbstractSet[str],
+    agent_needs: frozenset[str] = frozenset(),
+    today: str | None,
+) -> str | None:
+    """La reserva del turno de ``model_id`` (research.md §D5, §D10; requisitos 11 y 4.8).
+
+    - La de su perfil, que es de la otra familia, si está habilitada para responder en este
+      entorno (``enabled``: la oferta, ``respond_enabled_at``) y puede con el agente.
+    - Un agente con Skills o conector MCP de Anthropic solo puede caer a Anthropic: a Sonnet
+      5.5, la única que tiene modo de cruce (``cross_in_request``), si no es él mismo.
+    - Si no, la de hoy (``today``, Sol en producción), salvo que no pueda con el agente: una
+      reserva que no puede ejecutarlo solo añadiría un intento fallido.
+    - Un modelo sin perfil (heredado, CE-005) sigue con la de hoy.
+
+    ``None``: sin reserva. Pura: no lee nada."""
+    profile = profile_for(model_id)
+    if profile is not None:
+        candidates = [profile.reserve]
+        if not can_run(profile.reserve, agent_needs):
+            candidates = [SONNET_55]
+        for candidate in candidates:
+            if candidate != model_id and candidate in enabled and can_run(candidate, agent_needs):
+                return candidate
+    if not today or (agent_needs and not can_run(today, agent_needs)):
+        return None
+    return today
+
+
+__all__ = ["AgentChoice", "Resolved", "SetBy", "Source", "resolve", "respond_reserve"]

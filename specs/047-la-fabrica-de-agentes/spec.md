@@ -2473,6 +2473,8 @@ Enmienda los requisitos 21.2, 21.3 y 21.8 en lo que decían de un solo turno.
 
 Enmienda los requisitos 39.4, 39.5, 39.7, 39.9 y 39.11 mientras dure.
 
+> **Enmienda del 2026-11-20 (spec 065, decisión de Luis):** el requisito 64 se retira **solo para el modelo de respuesta**. Quien tiene `agents:write` elige en Agente › Avanzado › Modelo el modelo con el que responde cada agente, entre los de la lista de su cuenta, con el precio estimado por cada 1.000 respuestas; Auphere lo elige también desde el panel. «Calidad» y «Fijar un modelo» siguen sin enseñarse y la API sigue rechazando un cambio de `model_policy` desde la consola (64.1 y 64.3), porque el router sigue apagado: su filtro exige retención cero y ningún modelo la tiene. Ver `specs/065-modelo-por-agente/spec.md`, requisitos 1, 2 y 9.
+
 ### Requisito 65 — Solo lo que tenemos: propósito libre y ninguna capacidad inventada
 
 **Historia de usuario:** Como partner, quiero crear un agente para cualquier cosa que necesite el negocio, y que el constructor use solo herramientas que existen. Así no descubro con un cliente que el agente promete lo que no puede hacer.

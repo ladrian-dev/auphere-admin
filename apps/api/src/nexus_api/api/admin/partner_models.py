@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.admin.agent_configs import PROMOTE_CHANNEL
 from nexus_api.api.admin.partners import _admin_actor, _get_partner_or_404
 from nexus_api.api.deps import get_db_session, get_redis
-from nexus_api.core.partner_allowlist import read_allowlist, reconcile_bindings, replace_allowlist
+from nexus_api.core.partner_allowlist import read_allowlist, reconcile_agents, replace_allowlist
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.respond_catalog import OFFERABLE_MODEL_ID_SET, OFFERABLE_MODELS
 from nexus_api.core.security import require_admin_token
@@ -71,11 +71,12 @@ async def put_partner_models(
     actor: str = Depends(require_admin_token),
     redis: Redis = Depends(get_redis),
 ) -> AdminModelsOut:
-    """Sustituye la allowlist y reconcilia los bindings (spec 016, R5.3).
+    """Sustituye la allowlist y reconcilia las elecciones de los agentes (spec 016, R5.3;
+    spec 065, 8.2).
 
-    Los bindings ``respond`` que quedan fuera se borran DESPUÉS de confirmar
-    la lista nueva —el cliente pasa al modelo por defecto en su siguiente
-    turno— y el partner recibe ``client.model_reset`` por cada uno.
+    Los agentes con un modelo elegido por el partner que queda fuera pasan al modelo por
+    defecto DESPUÉS de confirmar la lista nueva —desde su siguiente turno— y el partner
+    recibe ``agent.model_reset`` por cada uno. Las elecciones de Auphere no cambian.
     """
     for model_id in body.model_ids:
         if model_id not in OFFERABLE_MODEL_ID_SET:
@@ -95,11 +96,12 @@ async def put_partner_models(
             platform=True,
         )
         allowed = frozenset(after)
-    for reset in await reconcile_bindings(partner_id, allowed):
+    # Spec 065 (8.2): los agentes con un modelo elegido por el partner que ya no está.
+    for reset in await reconcile_agents(partner_id, allowed, actor=_admin_actor(actor)):
         try:
-            await redis.publish(PROMOTE_CHANNEL, str(reset.tenant_id))
+            await redis.publish(PROMOTE_CHANNEL, f"{reset.tenant_id}:{reset.agent_id}")
         except Exception as exc:
             log.warning(
-                "partner_models.invalidate_failed", tenant_id=str(reset.tenant_id), error=str(exc)
+                "partner_models.invalidate_failed", agent_id=str(reset.agent_id), error=str(exc)
             )
     return _models_out(allowed)

@@ -63,10 +63,12 @@ from typing import TYPE_CHECKING, Any, Final
 
 import structlog
 from langgraph.graph import END, START, StateGraph
+from nexus_api.core import respond_catalog
 from nexus_api.core.admin_gate import ROLE_READONLY, sender_role
 from nexus_api.core.llm_proxy import current_llm_proxy_partner
 from nexus_api.core.respond_catalog import agent_respond_default
-from nexus_api.core.respond_model import AgentChoice, Resolved, resolve
+from nexus_api.core.respond_model import AgentChoice, Resolved, resolve, respond_reserve
+from nexus_api.core.respond_profiles import can_run
 from nexus_api.core.tenant_context import (
     customer_context,
     tenant_context,
@@ -106,7 +108,14 @@ from nexus_worker.runtime.console_context import (
 )
 from nexus_worker.runtime.grading_policy import decide as grading_decide
 from nexus_worker.runtime.grading_policy import load_read_only_tools, turn_writes
-from nexus_worker.runtime.llm import LLMResponse, LLMRouter, ToolCall, label_in
+from nexus_worker.runtime.llm import (
+    SERVED_BY_KEY,
+    LLMResponse,
+    LLMRouter,
+    ToolCall,
+    TurnModelPin,
+    label_in,
+)
 from nexus_worker.runtime.model_resolver import (
     PINNED_BASE_PROFILE,
     ClassifyResult,
@@ -1441,7 +1450,11 @@ def agent_respond_model(bundle: AgentBundle) -> Resolved:
         set_by = "operator" if bundle.respond_model_set_by == "operator" else "partner"
         choice = AgentChoice(bundle.respond_model, set_by)
     return resolve(
-        choice, version_override, agent_respond_default(), agent_needs=bundle.agent_needs
+        choice,
+        version_override,
+        agent_respond_default(),
+        agent_needs=bundle.agent_needs,
+        enabled=respond_catalog.RESPOND_MODEL_ID_SET,
     )
 
 
@@ -1453,9 +1466,28 @@ def turn_respond_model(
     WP-20: a soft budget with ``downgrade`` goes to the cheapest model above any choice;
     that is explicitly worse quality to keep answering. Spec 065 (requisito 11.4): no own
     fallbacks of a client's binding any more; the reserve comes from the model's profile."""
-    if degrade_to:
+    # /cso del 2026-11-20: nunca a un modelo que no puede con el agente (Skills o MCP de
+    # Anthropic hacia OpenAI): ese turno sigue con su modelo, más caro pero que funciona.
+    if degrade_to and can_run(degrade_to, bundle.agent_needs):
         return degrade_to, ()
     return agent_respond_model(bundle).model_id, ()
+
+
+def turn_model_pin(
+    bundle: AgentBundle, *, degrade_to: str | None, today: str | None
+) -> TurnModelPin:
+    """Spec 065 (T053, T056; requisitos 11.1, 11.2, 4.8): the turn's chain — its model and
+    that model's cross-family reserve, if enabled for responding in this environment; if
+    not, ``today`` (the router's fallback, Sol in production), as today. An agent with
+    Anthropic Skills or MCP only falls to Anthropic (``respond_reserve``)."""
+    chosen, _ = turn_respond_model(bundle, degrade_to=degrade_to)
+    reserve = respond_reserve(
+        chosen,
+        enabled=respond_catalog.RESPOND_MODEL_ID_SET,
+        agent_needs=bundle.agent_needs,
+        today=today,
+    )
+    return TurnModelPin(chosen=chosen, reserve=reserve)
 
 
 def _route_state_update(route: _ConversationRoute, state: AgentState) -> dict[str, Any]:
@@ -1707,8 +1739,12 @@ def _assistant_tool_message(response: LLMResponse, calls: list[ToolCall]) -> dic
 
     ``calls`` is the CLIENT-SIDE subset only — server-side calls are
     excluded so we never echo a ``srvtoolu_`` tool_use we won't pair with
-    a tool_result (Anthropic rejects the orphan)."""
-    return {
+    a tool_result (Anthropic rejects the orphan).
+
+    Spec 065 (T053, requisito 4.3): the reasoning blocks go with it, intact, before the
+    tool calls, and who wrote it (``SERVED_BY_KEY``): the transport gives the blocks back
+    only to that model and strips the mark before every call (``llm.messages_for``)."""
+    message: dict[str, Any] = {
         "role": "assistant",
         "content": response.text or "",
         "tool_calls": [
@@ -1720,6 +1756,11 @@ def _assistant_tool_message(response: LLMResponse, calls: list[ToolCall]) -> dic
             for tc in calls
         ],
     }
+    if response.reasoning_blocks:
+        message["thinking_blocks"] = [dict(b) for b in response.reasoning_blocks]
+    if response.model:
+        message[SERVED_BY_KEY] = response.model
+    return message
 
 
 def _tool_result_content(envelope: dict[str, Any]) -> str:
@@ -2110,17 +2151,18 @@ def make_handler_node(
                 )
 
             # Spec 065 (T025): the agent's model by the one resolution (its choice → its
-            # version → Auphere's default), with the WP-20 budget downgrade above all.
+            # version → Auphere's default), with the WP-20 budget downgrade above all; and
+            # (T053) its cross-family reserve. Once the reserve answers, the pin keeps it.
             degrade_to = await cheapest_model() if state.get("budget_degrade_model") else None
-            respond_model_override: str | None
-            respond_fallbacks: tuple[str, ...]
-            respond_model_override, respond_fallbacks = turn_respond_model(
-                bundle, degrade_to=degrade_to
-            )
+            pin = turn_model_pin(bundle, degrade_to=degrade_to, today=llm.fallback_model)
 
             _turn_started = time.perf_counter()
             # Why the fallback text was used, if it was. See ``AgentState.turn_failure``.
             turn_failure: dict[str, Any] | None = None
+            # Spec 065 (T042, 3.1 y 5.3): the model that actually answered the turn, and
+            # whether any call of it ended on a model that was not the first of its chain.
+            served_model: str | None = None
+            turn_fell_back = False
 
             # Spec 047 (T140): an agent with a profile or a pinned model goes
             # through the router; an agent of today (``route is None``) runs
@@ -2180,13 +2222,18 @@ def make_handler_node(
             draft = ""
             for attempt in range(booking_brake.ATTEMPTS):
                 if attempt:
-                    # The first attempt's closing note does not hold for the
-                    # second one: it may book now.
-                    messages[:] = [
-                        m
-                        for m in messages
-                        if not (m.get("role") == "system" and m.get("content") == FINAL_ANSWER_NOTE)
-                    ]
+                    if not pin.keeps_reasoning():
+                        # The first attempt's closing note does not hold for the
+                        # second one: it may book now. Spec 065 (requisito 4.10):
+                        # with a model that reasons nothing already sent is taken
+                        # away — and its closing never carried the note.
+                        messages[:] = [
+                            m
+                            for m in messages
+                            if not (
+                                m.get("role") == "system" and m.get("content") == FINAL_ANSWER_NOTE
+                            )
+                        ]
                     messages.extend(booking_brake.retry_messages())
                     final_text = ""
                     interactive_payload = None
@@ -2203,7 +2250,19 @@ def make_handler_node(
                         # only cares about the dict shape so we widen.
                         tools_arg.append(dict(memory_tool.to_dict()))
                     call_extra = None if last else mcp_extra
-                    if last:
+                    # Spec 065 (T053, requisito 4.10): with a model that reasons, the
+                    # turn only appends — the closing call is the same call plus
+                    # ``tool_choice: "none"``: no note (LiteLLM would lift it into the
+                    # system above) and the same tools, ``code_execution`` included.
+                    appends_only = pin.keeps_reasoning()
+                    if last and appends_only:
+                        if applicable_skills:
+                            tools_arg.append(dict(_CODE_EXECUTION_TOOL))
+                        call_extra = dict(mcp_extra or {})
+                        if tools_arg:
+                            call_extra["tool_choice"] = "none"
+                        call_extra = call_extra or None
+                    elif last:
                         # Spec 047 (requisito 1.4, bug B3 of the 2026-09-19
                         # audit): the closing call still DECLARES the catalogue —
                         # without ``tools`` a thread carrying ``tool_calls`` is a
@@ -2240,8 +2299,7 @@ def make_handler_node(
                                 messages=messages,
                                 tools=tools_arg,
                                 extra=call_extra,
-                                model_override=respond_model_override,
-                                fallback_override=respond_fallbacks,
+                                pin=pin,
                             )
                         else:
                             assert route.decision is not None
@@ -2278,6 +2336,23 @@ def make_handler_node(
                             if turn_failure["reason"] == "turn_limit":
                                 final_text = _handoff_line(state)
                         break
+
+                    if route is None and response.model:
+                        served_model = response.model
+                        if response.fell_back:
+                            turn_fell_back = True
+                            # Models and the reason, never text (requisito 5.4;
+                            # contracts/api.md, data-model.md §7).
+                            log.warning(
+                                "llm.respond_fell_back",
+                                tenant_id=str(tenant_id),
+                                agent_id=None if bundle.agent_id is None else str(bundle.agent_id),
+                                chosen=pin.chosen,
+                                served=response.model,
+                                reason=response.fallback_reason or "error",
+                                intent=intent,
+                                iteration=iteration,
+                            )
 
                     cleaned_text = _clean_model_text(response.text)
                     if cleaned_text:
@@ -2493,11 +2568,8 @@ def make_handler_node(
                 intent=intent,
                 iterations=iteration + 1,
                 elapsed_ms=round((time.perf_counter() - _turn_started) * 1000),
-                respond_model=(
-                    (route.served if route is not None else None)
-                    or respond_model_override
-                    or llm.respond_model
-                ),
+                respond_model=((route.served if route is not None else served_model) or pin.chosen),
+                fell_back=turn_fell_back or _route_fell_back(route),
                 tool_calls=len(envelopes),
             )
 
@@ -2507,8 +2579,11 @@ def make_handler_node(
                 "tool_calls": envelopes,
                 "response": final_text,
                 "response_model": (
-                    route.served if route is not None and route.served else llm.respond_model
+                    route.served
+                    if route is not None and route.served
+                    else served_model or pin.chosen
                 ),
+                "response_fell_back": turn_fell_back or _route_fell_back(route),
                 "turn_failure": turn_failure,
                 # Empty dict (not ``None``) for state-merge stability:
                 # LangGraph keeps the field present on every turn and
@@ -3032,6 +3107,8 @@ def make_grade_outcome_node(
                 intent=intent,
                 original=draft,
                 feedback=verdict.feedback,
+                # Spec 065 (T042): the model that answered this agent's turn, not the global.
+                model=state.get("response_model") or None,
             )
             if not new_draft.strip():
                 # Model refused or produced empty — accept the last
@@ -3144,6 +3221,14 @@ async def _judge_sampling(routed_turn: dict[str, Any]) -> str | float | None:
     return None if policy is None else policy.judge_sampling
 
 
+def _route_fell_back(route: Any) -> bool:
+    """Whether a routed turn ended on a deployment that was not the first of its chain."""
+    if route is None or not route.served or route.decision is None:
+        return False
+    chain = route.decision.chain
+    return bool(chain) and route.served != chain[0].key
+
+
 async def _ask_agent_to_rewrite(
     *,
     llm_router: LLMRouter,
@@ -3151,9 +3236,10 @@ async def _ask_agent_to_rewrite(
     intent: str,
     original: str,
     feedback: str,
+    model: str | None = None,
 ) -> str:
-    """Ask the agent's primary model to rewrite ``original`` using
-    ``feedback``. Used by the outcome grader retry loop.
+    """Ask the agent's model (``model``: the one that answered its turn) to rewrite
+    ``original`` using ``feedback``. Used by the outcome grader retry loop.
 
     This is a one-shot call — no tools, no ReAct loop. The intent is
     only used for tracing; the routing is via the router's normal
@@ -3164,7 +3250,9 @@ async def _ask_agent_to_rewrite(
         {"role": "user", "content": original},
     ]
     try:
-        return await llm_router.respond(tenant_id=tenant_id, messages=messages)
+        return await llm_router.respond(
+            tenant_id=tenant_id, messages=messages, model_override=model
+        )
     except Exception as exc:
         log.warning(
             "outcome_grader.rewrite_failed",
