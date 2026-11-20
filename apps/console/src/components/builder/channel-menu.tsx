@@ -157,6 +157,7 @@ export function ChannelMenu({
       {moving ? (
         <MoveDialog
           number={channel.identifier}
+          social={channel.type === "instagram" || channel.type === "messenger"}
           targets={channel.move_targets}
           onClose={() => setMoving(false)}
           onMove={async (to) => {
@@ -193,11 +194,14 @@ export function ChannelMenu({
 /** «Pasar a otro agente»: los agentes que no son borradores (34.1). */
 function MoveDialog({
   number,
+  social = false,
   targets,
   onClose,
   onMove,
 }: {
   number: string;
+  /** Instagram y Messenger: es un canal, no un número (049, 7.4). */
+  social?: boolean;
   targets: AgentRef[];
   onClose: () => void;
   /** Devuelve el texto del error, o `null` si se pasó. */
@@ -259,7 +263,7 @@ function MoveDialog({
               {t("builder.channel.cancel")}
             </Button>
             <Button type="submit" loading={busy}>
-              {t("builder.channel.move.confirm")}
+              {t(social ? "builder.channel.move.confirm.social" : "builder.channel.move.confirm")}
             </Button>
           </DialogFooter>
         </form>

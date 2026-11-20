@@ -86,6 +86,17 @@ describe.each(["instagram", "messenger"] as const)("la página de un canal de %s
     expect(dialog.textContent).not.toMatch(/se conservan/);
   });
 
+  it("al pasarlo a otro agente lo llama canal, no número (7.4)", async () => {
+    const user = userEvent.setup();
+    const p = social(type);
+    view(p);
+    await user.click(screen.getByRole("button", { name: `Más acciones de ${p.identifier}` }));
+    await user.click(within(await screen.findByRole("menu")).getByRole("menuitem", { name: "Pasar a otro agente" }));
+    const dialog = await screen.findByRole("dialog", { name: `Pasar ${p.identifier} a otro agente` });
+    expect(within(dialog).getByRole("button", { name: "Pasar el canal" })).toBeVisible();
+    expect(dialog.textContent).not.toMatch(/número/);
+  });
+
   it("desconectado, recuerda el plazo de 30 días", () => {
     view(social(type, { status: "disconnected", visible_state: { code: "disconnected", tone: "muted", reason: null }, allowed: [] }));
     expect(screen.getByText(/se borran a los 30 días de desconectarlo/)).toBeVisible();
@@ -104,6 +115,24 @@ describe("textos que valen para cualquier canal", () => {
     const section = screen.getByRole("region", { name: "A quién responde" });
     expect(within(section).getByText("Prueba con tu equipo antes de abrirlo a todos. Vale solo para este número.")).toBeVisible();
     expect(screen.getByText(/porque este número aún no tiene aprobada la plantilla de aviso/)).toBeVisible();
+  });
+});
+
+describe("sin número de avisos de Auphere (requisito 7.1)", () => {
+  it("un canal de Instagram dice que los avisos por WhatsApp no pueden salir", () => {
+    const p = social("instagram");
+    view({ ...p, config: { ...p.config, notify_from: "none" } });
+    const from = document.querySelector("[data-slot=notify-from]") as HTMLElement;
+    expect(from.textContent).toBe("Los avisos por WhatsApp no pueden salir: Auphere aún no tiene número de avisos. Avisa a tu equipo por correo o por la Bandeja.");
+  });
+
+  it("un número de WhatsApp sin plantilla, también", () => {
+    const p = page();
+    view({ ...p, config: { ...p.config, notify_from: "none" } });
+    const from = document.querySelector("[data-slot=notify-from]") as HTMLElement;
+    expect(from.textContent).toBe(
+      "Los avisos por WhatsApp no pueden salir: este número no tiene aprobada la plantilla de aviso y Auphere aún no tiene número de avisos. Avisa a tu equipo por correo o por la Bandeja.",
+    );
   });
 });
 

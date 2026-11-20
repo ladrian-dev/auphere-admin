@@ -44,6 +44,11 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
         link: "text-primary-text underline-offset-4 hover:underline",
+        // Sobre las superficies verde oscuro de Auphere (el velo de la ventana de
+        // Meta, spec 049 7.2): borde, texto y contorno de foco en pistacho, que
+        // sobre ese fondo pasa de 3:1 en los dos temas; el `ring` claro no llega.
+        "on-dark":
+          "border-pistachio/50 bg-transparent text-pistachio hover:bg-pistachio/10 hover:text-pistachio focus-visible:border-pistachio focus-visible:outline-pistachio",
       },
       size: {
         default:

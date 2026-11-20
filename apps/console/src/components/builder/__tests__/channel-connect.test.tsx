@@ -373,5 +373,25 @@ describe("spec 049: Instagram y Messenger para un partner con el canal en beta",
     // Like a WhatsApp number: straight to its page to set it up.
     await waitFor(() => expect(router.push).toHaveBeenCalledWith(expect.stringContaining(CH3)));
   });
+
+  it("requisito 7.2: cancelar la espera de Meta vuelve a «Elegir canal», y lo que Meta mande tarde no conecta", async () => {
+    let late: (code: string) => void = () => {};
+    sdk.loginForCode.mockImplementationOnce(() => new Promise<string>((r) => (late = r)));
+    panel(empty({ meta_social: OFFER }));
+
+    await userEvent.click(within(grid()).getByRole("button", { name: /Instagram/ }));
+    expect(await screen.findByText("Estamos en la ventana de Meta")).toBeInTheDocument();
+    expect(steps()[1]).toHaveAttribute("aria-current", "step");
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByText("Estamos en la ventana de Meta")).toBeNull();
+    expect(steps()[0]).toHaveAttribute("aria-current", "step");
+    expect(within(grid()).getByRole("button", { name: /Instagram/ })).toBeEnabled();
+
+    late("LATE");
+    await new Promise((r) => setTimeout(r, 0));
+    // Este fichero no limpia los mocks entre pruebas: lo que importa es el código tardío.
+    expect(sdk.metaSocialConnectAction).not.toHaveBeenCalledWith(expect.objectContaining({ code: "LATE" }));
+  });
 });
 

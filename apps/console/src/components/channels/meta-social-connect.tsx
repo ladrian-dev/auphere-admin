@@ -62,6 +62,11 @@ export function useMetaSocialConnect({
   // A failure stays on screen with «Intentar de nuevo», as WhatsApp's veil
   // does, instead of a toast that goes away (QA 2026-10-30).
   const [failure, setFailure] = React.useState<{ kind: MetaSocialKind; key: MessageKey } | null>(null);
+  // Spec 049, 7.2: mientras la ventana de Meta está abierta se puede cancelar.
+  // Cada intento lleva su número: lo que Meta devuelva a un intento cancelado
+  // se descarta, sin conectar nada.
+  const [waitingMeta, setWaitingMeta] = React.useState(false);
+  const attempt = React.useRef(0);
 
   async function done(res: MetaSocialConnectResult) {
     const name = res.channel?.username ? `@${res.channel.username}` : (res.channel?.display_name ?? "");
@@ -79,10 +84,14 @@ export function useMetaSocialConnect({
   async function start(kind: MetaSocialKind) {
     const configId = offer?.channels.find((c) => c.kind === kind)?.config_id;
     if (!offer || !configId) return;
+    const mine = ++attempt.current;
     setFailure(null);
     setWorking(true);
+    setWaitingMeta(true);
     try {
       const code = await loginForCode({ appId: offer.app_id, version: offer.graph_version, configId });
+      if (attempt.current !== mine) return;
+      setWaitingMeta(false);
       const res = await metaSocialConnectAction({ ref: refId, kind, code });
       if (!res.ok) return void refused(kind, res.code);
       if (res.data.status === "choose" && res.data.nonce) {
@@ -91,11 +100,21 @@ export function useMetaSocialConnect({
       }
       await done(res.data);
     } catch (err) {
+      if (attempt.current !== mine) return;
       setFailure({ kind, key: LOGIN_ERRORS[err instanceof SignupError ? err.code : "meta_error"] });
     } finally {
-      setWorking(false);
+      if (attempt.current === mine) {
+        setWorking(false);
+        setWaitingMeta(false);
+      }
     }
   }
+
+  const cancelWait = React.useCallback(() => {
+    attempt.current += 1;
+    setWorking(false);
+    setWaitingMeta(false);
+  }, []);
 
   async function pick(account: MetaSocialAccount) {
     if (!choice) return;
@@ -115,7 +134,7 @@ export function useMetaSocialConnect({
 
   const dialog = (
     <>
-      <MetaWindowVeil open={working && !choice} note="ch.social.veil.access" />
+      <MetaWindowVeil open={working && !choice} note="ch.social.veil.access" onCancel={waitingMeta ? cancelWait : undefined} />
       <Dialog open={failure !== null} onOpenChange={(o) => !o && setFailure(null)}>
         <DialogContent showCloseButton={false} className="justify-items-center gap-4 p-8 text-center sm:max-w-120" data-slot="meta-social-failure">
           <CircleAlert aria-hidden="true" className="size-8 text-destructive" />

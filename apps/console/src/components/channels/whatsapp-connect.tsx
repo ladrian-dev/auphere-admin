@@ -33,19 +33,47 @@ export type MetaSignupConfig = {
  * everything around it. Without this, the popup floats over a busy console
  * and the eye does not know which of the two is asking for attention.
  */
-export function MetaWindowVeil({ open, note }: { open: boolean; note?: MessageKey }) {
+export function MetaWindowVeil({ open, note, onCancel }: { open: boolean; note?: MessageKey; onCancel?: () => void }) {
   const t = useT();
+  const cancelRef = React.useRef<HTMLButtonElement>(null);
+  const backTo = React.useRef<HTMLElement | null>(null);
+  const cancellable = open && !!onCancel;
+  // Spec 049, 7.2: si la ventana de Meta se queda detrás de otras, la consola
+  // no puede quedarse bloqueada. «Cancelar» y Escape quitan la espera. El foco
+  // pasa al botón (lo de detrás queda tapado, WCAG 2.4.11) y vuelve después.
+  React.useEffect(() => {
+    if (!cancellable) return;
+    backTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    cancelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cancel();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al abrir o cerrar la espera
+  }, [cancellable]);
+
+  function cancel() {
+    onCancel?.();
+    if (backTo.current?.isConnected) backTo.current.focus();
+  }
+
   if (!open) return null;
   return (
     <div
-      role="status"
-      aria-live="polite"
       data-slot="meta-window-veil"
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-2 bg-dark-green/95 px-6 text-center text-pistachio"
     >
-      <p className="text-lg font-medium">{t("ch.connect.veil.title")}</p>
-      <p className="max-w-md text-sm text-pistachio/80">{t("ch.connect.veil.body")}</p>
-      {note ? <p className="max-w-md text-sm text-pistachio/80">{t(note)}</p> : null}
+      <div role="status" aria-live="polite" className="flex flex-col items-center gap-2">
+        <p className="text-lg font-medium text-balance">{t("ch.connect.veil.title")}</p>
+        <p className="max-w-md text-sm text-pretty text-pistachio/80">{t("ch.connect.veil.body")}</p>
+        {note ? <p className="max-w-md text-sm text-pretty text-pistachio/80">{t(note)}</p> : null}
+      </div>
+      {onCancel ? (
+        <Button ref={cancelRef} type="button" variant="on-dark" className="mt-4" onClick={cancel}>
+          {t("common.cancel")}
+        </Button>
+      ) : null}
     </div>
   );
 }

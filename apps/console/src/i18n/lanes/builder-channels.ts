@@ -57,6 +57,7 @@ export const builderChannelsMessages = {
   },
   "builder.channel.move.field": { es: "Agente que lo atenderá", en: "Agent that will answer it" },
   "builder.channel.move.confirm": { es: "Pasar el número", en: "Move the number" },
+  "builder.channel.move.confirm.social": { es: "Pasar el canal", en: "Move the channel" },
   "builder.channel.move.done": { es: "{number} ya lo atiende {name}.", en: "{name} now answers {number}." },
   "builder.channel.move.error.target": { es: "Ese agente ya no puede atender canales. Elige otro.", en: "That agent can no longer answer channels. Pick another one." },
   "builder.channel.paused": {
@@ -297,6 +298,16 @@ export const builderChannelsMessages = {
   "builder.channel.notify.auphere": {
     es: "Los avisos por WhatsApp saldrán del número de avisos de Auphere, porque este número aún no tiene aprobada la plantilla de aviso.",
     en: "WhatsApp notices will come from Auphere’s notices number, because this number does not have the notice template approved yet.",
+  },
+  // Spec 049, 7.1 (enmienda de 047, 33.3): ni plantilla en el canal ni número de
+  // avisos de Auphere. La página no promete un aviso que no sale.
+  "builder.channel.notify.none": {
+    es: "Los avisos por WhatsApp no pueden salir: este número no tiene aprobada la plantilla de aviso y Auphere aún no tiene número de avisos. Avisa a tu equipo por correo o por la Bandeja.",
+    en: "WhatsApp notices cannot go out: this number does not have the notice template approved and Auphere has no notices number yet. Notify your team by email or in the Inbox.",
+  },
+  "builder.channel.notify.none.social": {
+    es: "Los avisos por WhatsApp no pueden salir: Auphere aún no tiene número de avisos. Avisa a tu equipo por correo o por la Bandeja.",
+    en: "WhatsApp notices cannot go out: Auphere has no notices number yet. Notify your team by email or in the Inbox.",
   },
   // Instagram y Messenger no tienen plantillas: los avisos siempre salen de Auphere.
   "builder.channel.notify.auphere.social": {

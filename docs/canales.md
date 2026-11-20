@@ -65,7 +65,11 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
   `operator_notifications.last_error` y un evento
   `operator_alerter.whatsapp_unavailable` al día por cliente), el correo y la
   Bandeja siguen igual y la página lo enseña con la comprobación
-  `escalation_template_missing`. Lo mismo vale para los avisos de siempre al
+  `escalation_template_missing`. Además, la página no dice que los avisos salgan
+  del número de Auphere cuando Auphere no tiene ninguno que pueda enviar
+  (`auphere_can_notify`): `notify_from` vale `none` y la página dice que no
+  pueden salir (spec 049, requisito 7.1, que enmienda el 33.3 de la 047). El
+  envío no cambia. Lo mismo vale para los avisos de siempre al
   dueño (canal sin destinatarios propios): del número del cliente solo con la
   plantilla aprobada en su WABA, si no del de Auphere.
 - Cada cambio lleva `If-Match` (`412` con lo que cambió), queda en el historial
@@ -80,11 +84,16 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
   - **Sin modo de prueba ni excepciones:** escriben con un IGSID o un PSID, no
     con un teléfono, así que solo hay «A todos». El texto manda probar el agente
     en sus pruebas antes de elegirlo.
-  - **Avisos siempre del número de Auphere:** no tienen plantillas.
+  - **Avisos siempre del número de Auphere:** no tienen plantillas. Si Auphere
+    no tiene número de avisos, la página dice que no pueden salir.
   - **Desconectar borra:** el token se borra al momento y lo recibido por el
     canal se anonimiza a los 30 días (`meta_social_retention`, requisito 5.3).
     Volver a conectarlo antes lo cancela. El diálogo de «Desconectar» y el
     aviso de canal desconectado lo dicen.
+  - **Conectar se puede cancelar:** mientras la ventana de Meta está abierta, la
+    consola ofrece «Cancelar» (y Escape). Lo que Meta devuelva después a un
+    intento cancelado se descarta (`meta-social-connect.tsx`, requisito 7.2).
+  - **Pasar a otro agente** dice «Pasar el canal».
   - **Comentarios** (Instagram y Messenger): responder sí o no y la respuesta
     pública bajo el comentario (`_COMMENT_CHANNELS` en
     `api/console/channel_config.py`).

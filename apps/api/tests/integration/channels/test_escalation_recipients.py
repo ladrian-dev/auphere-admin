@@ -208,9 +208,15 @@ async def test_each_recipient_hears_by_its_way_from_the_channel_number(
 
 
 async def test_without_the_approved_template_whatsapp_comes_from_auphere(
-    two_tenants_with_channels: dict[str, Any], fake_adapter: Any, sent: dict[str, list[Any]]
+    two_tenants_with_channels: dict[str, Any],
+    fake_adapter: Any,
+    sent: dict[str, list[Any]],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     info = two_tenants_with_channels["b"]
+    # El número de avisos de Auphere existe y puede enviar (``sent`` ya simula el
+    # envío): sin él, la página diría «none» (spec 049, requisito 7.1).
+    monkeypatch.setattr(channel_config, "auphere_can_notify", _yes)
     await _configure(info, [Recipient(name="Marta", via="whatsapp", phone_e164="+34600555002")])
     assert await _notify_from(info) == "auphere", "la configuración dice cuál se usará"
     await _escalate(info)
@@ -219,6 +225,25 @@ async def test_without_the_approved_template_whatsapp_comes_from_auphere(
     assert sent["auphere"] == [
         ("+34600555002", "alert_escalation_v1", ["Lucía", "Quiere hablar con el dueño"], "es_CL")
     ], "en el idioma configurado para el número de Auphere"
+
+
+async def _yes() -> bool:
+    return True
+
+
+async def _no() -> bool:
+    return False
+
+
+async def test_without_the_template_nor_auphere_number_the_page_says_none(
+    two_tenants_with_channels: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Spec 049, requisito 7.1 (enmienda de 047, 33.3): ni plantilla en el canal
+    ni número de avisos de Auphere: la configuración no dice que salgan de Auphere."""
+    monkeypatch.setattr(channel_config, "auphere_can_notify", _no)
+    info = two_tenants_with_channels["b"]
+    await _configure(info, [Recipient(name="Marta", via="whatsapp", phone_e164="+34600555003")])
+    assert await _notify_from(info) == "none"
 
 
 @pytest.mark.parametrize("language", ["es", "es_CL"])

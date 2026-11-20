@@ -765,6 +765,13 @@ function AudienceSection({
   );
 }
 
+/** De dónde salen los avisos por WhatsApp (047, 33.3). `none` (049, 7.1): no pueden salir. */
+function notifyKey(from: string, social: boolean): MessageKey {
+  if (from === "channel") return "builder.channel.notify.channel";
+  if (from === "none") return social ? "builder.channel.notify.none.social" : "builder.channel.notify.none";
+  return social ? "builder.channel.notify.auphere.social" : "builder.channel.notify.auphere";
+}
+
 /** La explicación de cada modo; en Instagram y Messenger «A todos» no tiene excepciones. */
 function hintKey(mode: AudienceMode, social: boolean): MessageKey {
   if (mode === "everyone" && social) return "builder.channel.mode.everyone.hint.social";
@@ -885,9 +892,7 @@ function EscalationSection({
   return (
     <div className="grid min-w-0 gap-4">
       <p className="text-sm text-pretty" data-slot="notify-from">
-        {notifyFrom === "channel"
-          ? t("builder.channel.notify.channel")
-          : t(social ? "builder.channel.notify.auphere.social" : "builder.channel.notify.auphere")}
+        {t(notifyKey(notifyFrom, social))}
       </p>
       {recipients.length ? (
         writable ? (
