@@ -1,37 +1,27 @@
+import { Eyebrow } from "@nexus/ui";
+
 import { getT } from "@/i18n/server";
 
-import { AuthHero } from "./auth-hero";
-import "./auth.css";
-
 /**
- * El marco de las páginas públicas — spec 066, requisito 1.
- *
- * Partido desde 900 px: el líquido a la izquierda y la página a la derecha, en
- * una columna de 360 px. Por debajo, el líquido es una franja encima.
- *
- * **El líquido vive aquí y no en cada página** (R1.3): un layout no se vuelve a
- * montar al navegar entre sus páginas, así que al pasar de Entrar a Recuperar la
- * cuenta el líquido sigue donde estaba. La página que cambia entra con su propio
- * fundido (`template.tsx`, R6.1).
- *
  * Spec 056 (14.1): sin principal, el idioma es el de la cookie o el del
  * navegador (`getT()` sin argumento), el mismo que usa el cuerpo de cada página.
  */
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   const { t } = await getT();
   return (
-    <main className="auth-shell">
-      <AuthHero
-        eyebrow={t("login.eyebrow")}
-        title={t("auth.hero.title")}
-        beta={t("shell.beta")}
-      />
-      <div className="auth-side">
-        <div className="auth-col">
-          {children}
-          <p className="text-xs text-muted-foreground">{t("login.footer")}</p>
-        </div>
+    <main className="mx-auto flex min-h-svh w-full max-w-md flex-col justify-center gap-8 px-6 py-12">
+      <div className="flex flex-col gap-2">
+        <span className="flex items-center gap-2">
+          <span className="font-mono text-sm font-semibold tracking-tight text-primary-deep">auphere</span>
+          {/* Owner, 2026-10-19: the partner console is in beta. */}
+          <span className="rounded-full bg-status-warning-bg px-2 text-xs leading-5 font-semibold text-status-warning-text ring-1 ring-status-warning-border">
+            {t("shell.beta")}
+          </span>
+        </span>
+        <Eyebrow>{t("login.eyebrow")}</Eyebrow>
       </div>
+      {children}
+      <p className="font-mono text-xs text-muted-foreground">{t("login.footer")}</p>
     </main>
   );
 }

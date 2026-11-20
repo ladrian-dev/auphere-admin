@@ -32,20 +32,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const googleAvailable = await consoleService.googleAvailable();
   return (
     <section className="flex flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold">{t("login.title")}</h1>
-        <p className="text-pretty text-muted-foreground">{t("auth.hero.body")}</p>
-      </div>
+      <h1 className="text-3xl font-semibold">{t("login.title")}</h1>
       <LoginForm redirectTo={redirectTo} />
-      {/* Spec 066 (R4.2): con Google, un «o» que separa los dos caminos. Sin
-          Google no hay botón (spec 006, 5.6) y tampoco separador. */}
-      {googleAvailable ? (
-        <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
-          <span className="h-px flex-1 bg-border" />
-          {t("auth.or")}
-          <span className="h-px flex-1 bg-border" />
-        </div>
-      ) : null}
       <GoogleButton intent="login" available={googleAvailable} returnTo={redirectTo} />
       {/* Con el alta apagada NO hay enlace, ni gris ni con explicación: la
           ausencia se diseña (constitución §V). Quien no puede registrarse no
