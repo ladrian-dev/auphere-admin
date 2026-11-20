@@ -11,6 +11,7 @@ import { agendaMessages } from "./lanes/agenda";
 import { agentImproveMessages } from "./lanes/agent-improve";
 import { amendmentMessages } from "./lanes/amendment";
 import { amendment1030Messages } from "./lanes/amendment-1030";
+import { authAltaMessages } from "./lanes/auth-alta";
 import { authEntrarMessages } from "./lanes/auth-entrar";
 import { agentProtoMessages } from "./lanes/agent-proto";
 import { agentToolsMessages } from "./lanes/agent-tools";
@@ -178,7 +179,7 @@ const core = {
   "role.billing.desc": { es: "Facturación, plan y recibos. Nada operativo.", en: "Billing, plan and receipts. Nothing operational." },
 
   // auth
-  "login.noAccount": { es: "¿No tienes cuenta? Crea una.", en: "No account? Create one." },
+  "login.noAccount": { es: "¿No tienes cuenta?", en: "No account?" },
   "auth.google": { es: "Continuar con Google", en: "Continue with Google" },
   // Spec 009 — el código que lleva la sesión a la app de escritorio. La frase
   // que importa es la segunda: quien llega aquí no sabe por qué no está ya
@@ -309,7 +310,6 @@ const core = {
     en: "It may have expired, been used, or been replaced by a newer one. Request a new one.",
   },
   "reset.askAnother": { es: "Pedir otro enlace", en: "Request another link" },
-  "login.footer": { es: "Auphere", en: "Auphere" },
   "noAccess.title": { es: "Tu cuenta no tiene acceso a ningún partner", en: "Your account has no partner access" },
   "noAccess.body": { es: "Pide a un propietario o administrador de tu partner que te invite, o vuelve a intentarlo con la cuenta correcta.", en: "Ask an owner or admin of your partner to invite you, or try again with the right account." },
   "noAccess.disabled": { es: "La consola aún no está activada para tu partner. Auphere la enciende partner a partner durante el piloto.", en: "The console is not enabled for your partner yet. Auphere turns it on partner by partner during the pilot." },
@@ -623,6 +623,8 @@ const messages = {
   ...agendaMessages,
   // Spec 066: Entrar con el líquido vivo.
   ...authEntrarMessages,
+  // Spec 067: crear cuenta.
+  ...authAltaMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

@@ -51,9 +51,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           ausencia se diseña (constitución §V). Quien no puede registrarse no
           tiene por qué enterarse de que existe un registro. */}
       {env().NEXUS_SIGNUP_ENABLED ? (
+        // Spec 067 (owner, 2026-11-20): la pregunta en texto y solo
+        // «Regístrate» como enlace, igual que «Iniciar sesión» en el alta.
         <p className="text-sm text-muted-foreground">
-          <Link href="/signup" className="underline underline-offset-4">
-            {t("login.noAccount")}
+          {t("login.noAccount")}{" "}
+          <Link href="/signup" className="font-medium text-foreground underline underline-offset-4">
+            {t("login.signUp")}
           </Link>
         </p>
       ) : null}

@@ -57,7 +57,8 @@ export function GoogleButton({
 
   return (
     <Button type="button" variant="outline" onClick={go} disabled={pending} className="w-full">
-      {t("auth.google")}
+      {/* Spec 067 (R2.2): en el alta dice lo que hace. */}
+      {intent === "signup" ? t("signup.google") : t("auth.google")}
     </Button>
   );
 }
