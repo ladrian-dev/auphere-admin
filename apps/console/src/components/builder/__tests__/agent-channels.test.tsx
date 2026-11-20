@@ -75,7 +75,7 @@ beforeEach(() => {
 describe("la sección Canales del agente", () => {
   it("cada número con su estado visible y el camino a su página", async () => {
     const { container } = panel();
-    const list = screen.getByRole("list", { name: "Números de este agente" });
+    const list = screen.getByRole("list", { name: "Canales de este agente" });
     const items = within(list).getAllByRole("listitem");
     expect(within(items[0]!).getByText("Solo mi equipo")).toBeVisible();
     expect(within(items[1]!).getByText("Con problemas · la app lleva días sin abrirse")).toBeVisible();
@@ -141,10 +141,10 @@ describe("la sección Canales del agente", () => {
   it("si no se pudieron leer los números, lo dice y deja reintentar", async () => {
     const user = userEvent.setup();
     const { actions } = panel(null);
-    expect(screen.getByText(/No pudimos cargar los números de este agente/)).toBeVisible();
+    expect(screen.getByText(/No pudimos cargar los canales de este agente/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(actions.reload).toHaveBeenCalledWith({ ref: REF, agent: RECEPCION });
-    expect(await screen.findByRole("list", { name: "Números de este agente" })).toBeVisible();
+    expect(await screen.findByRole("list", { name: "Canales de este agente" })).toBeVisible();
   });
 });
 

@@ -141,6 +141,9 @@ class ConversationPageOut(BaseModel):
 class WindowOut(BaseModel):
     open: bool
     closes_at: datetime | None
+    # Spec 049, 7.3: si el agente aún puede responder. Solo difiere de ``open``
+    # en Instagram y Messenger con Human Agent aprobado (persona 7 días, agente 24 h).
+    agent_open: bool = False
 
 
 class NextBookingLocal(BaseModel):
@@ -361,7 +364,9 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
         assignee=_author(d.assignee),
         agent=({"id": str(d.agent[0]), "name": d.agent[1]} if d.agent else None),
         control_version=conv.agent_active_version,
-        window=WindowOut(open=d.window_open, closes_at=d.window_closes_at),
+        window=WindowOut(
+            open=d.window_open, closes_at=d.window_closes_at, agent_open=d.agent_window_open
+        ),
         channel={"kind": d.channel_kind, "connected": d.channel_connected},
         contact=ContactDetailOut(
             name=d.contact_name,

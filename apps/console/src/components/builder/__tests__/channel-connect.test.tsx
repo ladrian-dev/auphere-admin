@@ -107,7 +107,7 @@ describe("sin canales: el asistente (§7.1)", () => {
     expect(steps()[0]).toHaveAttribute("aria-current", "step");
     expect(within(steps()[0]!).getByText("Por dónde escribirán los clientes de este negocio.")).toBeVisible();
     expect(screen.getByRole("heading", { level: 2, name: "Elige un canal" })).toBeVisible();
-    expect(screen.getByText(/Los de Meta van primero\. Un agente puede tener varios números del mismo canal\./)).toBeVisible();
+    expect(screen.getByText(/Los de Meta van primero\. Un agente puede tener varios números o cuentas del mismo canal\./)).toBeVisible();
 
     const cards = within(grid()).getAllByRole("listitem");
     expect(cards.map((c) => c.querySelector("[data-slot=channel-name]")?.textContent)).toEqual(["WhatsApp", "Messenger", "Instagram", "Threads", "TikTok", "Telegram", "X"]);
@@ -137,7 +137,7 @@ describe("sin canales: el asistente (§7.1)", () => {
   it("quien solo lee no ve el asistente: el agente aún no tiene números", () => {
     panel(empty(), {}, { canWrite: false });
     expect(screen.queryByRole("heading", { name: "Elige un canal" })).toBeNull();
-    expect(screen.getByText("Este agente aún no tiene ningún número.")).toBeVisible();
+    expect(screen.getByText("Este agente aún no tiene ningún canal.")).toBeVisible();
   });
 });
 
@@ -280,7 +280,7 @@ describe("con canales: la lista (§7.2)", () => {
   it("cada número con el logo de WhatsApp, a quién responde y a quién escala, y «Añadir otro canal» despliega la rejilla", async () => {
     const user = userEvent.setup();
     const { container } = panel(channels(), {}, { pages: { [CH]: page() } });
-    const rows = within(screen.getByRole("list", { name: "Números de este agente" })).getAllByRole("listitem");
+    const rows = within(screen.getByRole("list", { name: "Canales de este agente" })).getAllByRole("listitem");
     expect(rows.map((r) => r.querySelector("[data-slot=brand-logo]")?.getAttribute("data-brand"))).toEqual(["whatsapp", "whatsapp"]);
     expect(within(rows[0]!).getByText("WhatsApp · responde solo a 1 número de prueba · escala a Marta")).toBeVisible();
     expect(within(rows[1]!).getByText("WhatsApp")).toBeVisible();
@@ -372,6 +372,26 @@ describe("spec 049: Instagram y Messenger para un partner con el canal en beta",
     expect(toast.success).toHaveBeenCalledWith("@demo.store conectado. Configura a quién responde para que el agente empiece.");
     // Like a WhatsApp number: straight to its page to set it up.
     await waitFor(() => expect(router.push).toHaveBeenCalledWith(expect.stringContaining(CH3)));
+  });
+
+  it("requisito 7.2: cancelar la espera de Meta vuelve a «Elegir canal», y lo que Meta mande tarde no conecta", async () => {
+    let late: (code: string) => void = () => {};
+    sdk.loginForCode.mockImplementationOnce(() => new Promise<string>((r) => (late = r)));
+    panel(empty({ meta_social: OFFER }));
+
+    await userEvent.click(within(grid()).getByRole("button", { name: /Instagram/ }));
+    expect(await screen.findByText("Estamos en la ventana de Meta")).toBeInTheDocument();
+    expect(steps()[1]).toHaveAttribute("aria-current", "step");
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByText("Estamos en la ventana de Meta")).toBeNull();
+    expect(steps()[0]).toHaveAttribute("aria-current", "step");
+    expect(within(grid()).getByRole("button", { name: /Instagram/ })).toBeEnabled();
+
+    late("LATE");
+    await new Promise((r) => setTimeout(r, 0));
+    // Este fichero no limpia los mocks entre pruebas: lo que importa es el código tardío.
+    expect(sdk.metaSocialConnectAction).not.toHaveBeenCalledWith(expect.objectContaining({ code: "LATE" }));
   });
 });
 

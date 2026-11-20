@@ -90,8 +90,9 @@ describe("mientras la ventana de Meta está abierta (2026-09-30)", () => {
         <MetaWindowVeil open />
       </LocaleProvider>,
     );
-    const veil = screen.getByRole("status");
-    expect(veil).toHaveTextContent("Estamos en la ventana de Meta");
+    expect(screen.getByRole("status")).toHaveTextContent("Estamos en la ventana de Meta");
+    // El fondo es del velo entero; la región que se anuncia es solo el texto (049, 7.2).
+    const veil = document.querySelector("[data-slot=meta-window-veil]") as HTMLElement;
     expect(veil.className).toContain("bg-dark-green");
   });
 

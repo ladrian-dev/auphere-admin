@@ -170,7 +170,11 @@ el despliegue declara:
 - **prefijo estable**: herramientas ordenadas por nombre y JSON con las claves
   ordenadas;
 - **nombres con punto**: traducidos a `__` para todo despliegue `no_dots`, no
-  solo para GPT-5.6, y devueltos al nombre del catálogo en la respuesta;
+  solo para GPT-5.6, y devueltos al nombre del catálogo en la respuesta. También
+  para todo salto `anthropic/`, aunque su ficha diga `dotted_ok`: Anthropic
+  rechaza el punto con un 400 (`tools.0.custom.name`), lo encontró la primera
+  batería real de la spec 065 (T099). Las fichas de la 0185 que marcan Claude en
+  Bedrock como `dotted_ok` no se han comprobado contra el proveedor;
 - **salidas estructuradas**: estrictas donde existen y `json_object` donde solo
   hay las normales; la validación propia corre **siempre**
   (`complete_structured`, `StructuredOutputInvalid`);

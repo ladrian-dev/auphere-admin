@@ -41,7 +41,7 @@ from nexus_api.db.models import (
     Message,
     MessageDirection,
 )
-from nexus_api.services.meta_window import person_window
+from nexus_api.services.meta_window import AGENT_WINDOW, person_window
 
 #: El canal del Playground: pruebas del partner, nunca conversaciones del negocio.
 PLAYGROUND_PROVIDER = "qa_playground"
@@ -577,6 +577,41 @@ class Activity:
     detail: str | None
 
 
+@dataclass(frozen=True)
+class ReplyWindows:
+    """Hasta cuándo se puede responder a un contacto (spec 049, requisito 7.3).
+
+    ``open`` y ``closes_at`` son los de una persona; ``agent_open``, los del
+    agente. Solo difieren en Instagram y Messenger con Human Agent aprobado:
+    la persona tiene 7 días y el agente 24 horas."""
+
+    open: bool
+    closes_at: datetime | None
+    agent_open: bool
+
+
+def reply_windows(
+    channel_type: str | None,
+    last_inbound_at: datetime | None,
+    *,
+    now: datetime,
+    human_agent_approved: bool,
+) -> ReplyWindows:
+    if last_inbound_at is None:
+        return ReplyWindows(open=False, closes_at=None, agent_open=False)
+    person = (
+        person_window(channel_type, human_agent_approved=human_agent_approved)
+        if channel_type is not None
+        else WINDOW
+    )
+    closes = last_inbound_at + person
+    return ReplyWindows(
+        open=closes > now,
+        closes_at=closes,
+        agent_open=last_inbound_at + AGENT_WINDOW > now,
+    )
+
+
 @dataclass
 class Detail:
     conversation: Conversation
@@ -602,6 +637,9 @@ class Detail:
     handled_by: tuple[uuid.UUID, str] | None = None
     #: Instagram / Messenger: where the person's profile picture is stored.
     contact_avatar_key: str | None = None
+    # Spec 049, 7.3: el agente aún puede responder (24 h). En WhatsApp coincide
+    # con ``window_open``; en Instagram y Messenger con Human Agent, no.
+    agent_window_open: bool = False
 
 
 def _event_detail(event: ConversationEvent) -> str | None:
@@ -705,17 +743,15 @@ async def detail(
     if len(agents) > 1:
         agent_id = handled_id or (channel.agent_id if channel else None) or agents[0][0]
         agent = (agent_id, dict(agents).get(agent_id, "—"))
-    now = datetime.now(UTC)
     # Spec 049: on Instagram and Messenger, once Meta approves HUMAN_AGENT, a
-    # person can still answer for 7 days; the composer stays open that long.
-    window = (
-        person_window(
-            channel.type.value, human_agent_approved=get_settings().meta_human_agent_approved
-        )
-        if channel is not None
-        else WINDOW
+    # person can still answer for 7 days; the composer stays open that long,
+    # and says the agent no longer can after 24 hours (requisito 7.3).
+    windows = reply_windows(
+        channel.type.value if channel is not None else None,
+        conversation.last_inbound_at,
+        now=datetime.now(UTC),
+        human_agent_approved=get_settings().meta_human_agent_approved,
     )
-    closes = conversation.last_inbound_at + window if conversation.last_inbound_at else None
     payload: dict[str, Any] = last_escalation.payload if last_escalation is not None else {}
     # Sin nombre, el contacto se llama por su número, también con «+» (13.3).
     handle = display_handle(
@@ -730,8 +766,9 @@ async def detail(
             if conversation.assigned_user_id
             else None
         ),
-        window_open=bool(closes and closes > now),
-        window_closes_at=closes,
+        window_open=windows.open,
+        window_closes_at=windows.closes_at,
+        agent_window_open=windows.agent_open,
         channel_kind=str(getattr(channel.type, "value", channel.type)) if channel else "whatsapp",
         channel_connected=bool(channel and channel.status == ChannelStatus.ACTIVE),
         contact_name=str((customer.name or handle) if customer else "—"),

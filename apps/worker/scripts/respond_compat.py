@@ -412,6 +412,36 @@ def _answered(out: dict[str, Any]) -> str:
     return ""
 
 
+def problem_of(out: dict[str, Any], model: str) -> str:
+    """Lo que falla en un turno que tenía que responder ``model`` él mismo (T100).
+
+    No basta con que el turno tenga respuesta: la primera pasada real dio en verde a los tres
+    de Claude cuando todas sus llamadas con herramientas habían recibido un 400 y había
+    respondido Terra, su reserva."""
+    problem = _answered(out)
+    if problem:
+        return problem
+    served = out.get("response_model")
+    if served != model or out.get("response_fell_back"):
+        return f"respondió {served}, no {model}"
+    return ""
+
+
+def fact_prompt() -> str:
+    """Un prompt que nadie ha dejado en caché, por encima del mínimo de cualquiera de los seis
+    (1.024 y 4.096 tokens). Lo distinto va al principio, porque la caché es por prefijo: con
+    el mismo prompt, la segunda comprobación leía lo que había escrito la primera."""
+    return (
+        f"Pasada {uuid.uuid4().hex}. Eres la recepción de una peluquería de prueba. "
+        + "Regla de la casa. " * 1500
+    )
+
+
+def _chosen_answered_once(model: str, since: int) -> bool:
+    """¿El modelo elegido contestó alguna llamada del turno antes de caer?"""
+    return any(c.get("model") == model and "error" not in c for c in CALLS[since:])
+
+
 def _reserve_of(model: str) -> str:
     from nexus_api.core.respond_profiles import profile_for
 
@@ -424,7 +454,7 @@ async def _scenario(model: str, scenario: str) -> tuple[bool, str]:
     other = "anthropic/claude-sonnet-5-5" if family_of(model) == "openai" else SOL
     if scenario == "no_tools":
         out = await _turn(model, "Hola, ¿a qué hora abrís el sábado?")
-        return not _answered(out), _answered(out)
+        return not problem_of(out, model), problem_of(out, model)
     if scenario == "three_tools":
         out = await _turn(
             model,
@@ -432,7 +462,7 @@ async def _scenario(model: str, scenario: str) -> tuple[bool, str]:
             "primero.",
         )
         tools = len(out.get("tool_calls") or [])
-        problem = _answered(out) or ("" if tools >= 3 else f"{tools} herramientas")
+        problem = problem_of(out, model) or ("" if tools >= 3 else f"{tools} herramientas")
         return not problem, problem
     if scenario == "image":
         message = [
@@ -440,7 +470,7 @@ async def _scenario(model: str, scenario: str) -> tuple[bool, str]:
             {"type": "image_url", "image_url": {"url": "data:image/png;base64," + PIXEL}},
         ]
         out = await _turn(model, message)
-        return not _answered(out), _answered(out)
+        return not problem_of(out, model), problem_of(out, model)
     if scenario == "switch_between_turns":
         first = await _turn(other, "Hola, quiero una cita el martes.")
         history = [
@@ -448,8 +478,11 @@ async def _scenario(model: str, scenario: str) -> tuple[bool, str]:
             {"role": "assistant", "content": str(first.get("response") or "")},
         ]
         out = await _turn(model, "Mejor a las 12. ¿Puedes?", history=history)
-        return not _answered(out), _answered(out)
+        before = problem_of(first, other)
+        problem = problem_of(out, model) or (f"turno anterior: {before}" if before else "")
+        return not problem, problem
     if scenario in {"fallback_mid_turn", "cross_after_tools"}:
+        mark = len(CALLS)
         out = await _turn(
             model,
             "Mira mi historial y busca hueco el martes, y resérvame el primero.",
@@ -459,12 +492,14 @@ async def _scenario(model: str, scenario: str) -> tuple[bool, str]:
         problem = _answered(out) or (
             "" if served == expected else f"respondió {served}, no {expected}"
         )
+        if not problem and not _chosen_answered_once(model, mark):
+            problem = f"{model} no contestó ninguna llamada antes de caer"
         if scenario == "cross_after_tools" and not out.get("tool_calls"):
             problem = problem or "GPT-5.6 no llegó a llamar a una herramienta antes de caer"
         return not problem, problem
     if scenario == "booking_brake_retry":
         out = await _turn(model, "Resérvame el martes a las 10.", brake_first=True)
-        return not _answered(out), _answered(out)
+        return not problem_of(out, model), problem_of(out, model)
     if scenario == "long_turn_to_close":
         out = await _turn(
             model,
@@ -472,7 +507,8 @@ async def _scenario(model: str, scenario: str) -> tuple[bool, str]:
             nothing_free=True,
         )
         closed = any(c.get("tool_choice") == "none" for c in CALLS[-8:])
-        return not _answered(out), _answered(out) or ("" if closed else "(no llegó al cierre)")
+        problem = problem_of(out, model)
+        return not problem, problem or ("" if closed else "(no llegó al cierre)")
     return await _provider_fact(model, scenario)
 
 
@@ -480,15 +516,13 @@ async def _provider_fact(model: str, fact: str) -> tuple[bool, str]:
     from nexus_worker.runtime.llm import LiteLLMProvider, respond_hop_extra
 
     provider = LiteLLMProvider()
-    # Más que el mínimo de caché de cualquiera de los seis (1.024 / 4.096 tokens).
-    prefix = "Eres la recepción de una peluquería de prueba. " + "Regla de la casa. " * 1500
     messages = [
-        {"role": "system", "content": prefix},
+        {"role": "system", "content": fact_prompt()},
         {"role": "user", "content": "Hola, ¿abrís el sábado?"},
     ]
     if fact == "cache_marker_is_not_an_edit":
         out = await _turn(model, "Mira mi historial y busca hueco el martes.")
-        return not _answered(out), _answered(out)
+        return not problem_of(out, model), problem_of(out, model)
     usages: list[dict[str, Any]] = []
     for _ in range(2):
         mark = len(CALLS)

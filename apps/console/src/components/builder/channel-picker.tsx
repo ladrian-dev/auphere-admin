@@ -126,6 +126,13 @@ export function ChannelWizard({
   );
 }
 
+/** «Conectar otro…»: WhatsApp conecta números, Instagram cuentas y Messenger Páginas. */
+function anotherKey(id: ChannelKind["id"]): MessageKey {
+  if (id === "whatsapp") return "channels.proto.cta.another";
+  if (id === "messenger") return "channels.proto.cta.anotherPage";
+  return "channels.proto.cta.anotherAccount";
+}
+
 function ChannelCard({ kind, count, onConnect }: { kind: ChannelKind; count: number; onConnect: (kind: ChannelKind["id"]) => void }) {
   const t = useT();
   const open = kind.state === "open";
@@ -149,7 +156,7 @@ function ChannelCard({ kind, count, onConnect }: { kind: ChannelKind; count: num
       ) : null}
       {open ? (
         <span className="mt-auto inline-flex items-center gap-2 pt-2 text-sm font-medium text-primary-text">
-          {count > 0 ? t(kind.id === "whatsapp" ? "channels.proto.cta.another" : "channels.proto.cta.anotherAccount") : t("channels.proto.cta")}
+          {count > 0 ? t(anotherKey(kind.id)) : t("channels.proto.cta")}
           <ArrowRight aria-hidden="true" className="size-4" />
         </span>
       ) : null}

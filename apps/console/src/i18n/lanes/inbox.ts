@@ -199,6 +199,11 @@ export const inboxMessages = {
     es: "El agente ya no puede responder: pasó el plazo desde el último mensaje del contacto. Podrá hacerlo cuando vuelva a escribir.",
     en: "The agent can no longer answer: the time since the contact's last message has passed. It can answer when they write again.",
   },
+  // Spec 049 (7.3): Instagram / Messenger con Human Agent, entre 24 horas y 7 días.
+  "inbox.composer.agent_person_only": {
+    es: "El agente ya no puede responder: pasaron 24 horas desde el último mensaje del contacto. Tú sí puedes hasta el {until}: toma el control.",
+    en: "The agent can no longer answer: 24 hours have passed since the contact's last message. You still can until {until}: take over.",
+  },
   "inbox.composer.window_closed": {
     es: "Pasó el plazo para escribir a este contacto desde su último mensaje. Podrás hacerlo cuando vuelva a escribir.",
     en: "The time to write to this contact since their last message has passed. You can write when they write again.",

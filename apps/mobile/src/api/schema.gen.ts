@@ -4463,6 +4463,11 @@ export interface components {
         };
         /** WindowOut */
         WindowOut: {
+            /**
+             * Agent Open
+             * @default false
+             */
+            agent_open: boolean;
             /** Closes At */
             closes_at: string | null;
             /** Open */

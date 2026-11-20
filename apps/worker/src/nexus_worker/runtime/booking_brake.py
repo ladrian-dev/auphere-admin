@@ -423,9 +423,30 @@ async def unbacked_claim(
     return await claims_booking(llm, bundle, text, turn=turn, only_new=earlier)
 
 
-def retry_messages() -> list[dict[str, str]]:
-    """What the second attempt appends: the brake's note as ``system``, and not
-    the draft (see :data:`BOOKING_BRAKE_NOTE`)."""
+#: Spec 065 (T104): la nota como turno del usuario, marcada como aviso del sistema. Sin la
+#: marca, Claude la tomaba por palabras del cliente y le contestaba («No la he reservado dos
+#: veces», «Te sugiero comprobarlo con el equipo de recepción»). GPT-5.6, con la nota como
+#: ``system``, contestaba limpio a lo mismo.
+BOOKING_BRAKE_USER_NOTICE: Final = (
+    "<aviso_del_sistema>\n" + BOOKING_BRAKE_NOTE + "\n</aviso_del_sistema>\n"
+    "Este aviso es del sistema: el cliente no lo ha escrito ni lo ve. No lo menciones ni le "
+    "contestes; responde al cliente."
+)
+
+
+def retry_messages(*, only_appends: bool = False) -> list[dict[str, str]]:
+    """What the second attempt appends: the brake's note, and not the draft (see
+    :data:`BOOKING_BRAKE_NOTE`).
+
+    As ``system`` by default, as it always went. Spec 065 (T102): with a model that
+    keeps its reasoning (``only_appends``) the note goes as ``user``. LiteLLM lifts
+    every ``system`` message into Anthropic's top-level ``system``, which then
+    differs from the one the earlier thinking blocks were made with. The first real
+    battery got ``Invalid `signature` in `thinking` block`` in strict mode; in
+    production, with ``drop_block``, that reasoning would be thrown away. As ``user``
+    it goes fenced (:data:`BOOKING_BRAKE_USER_NOTICE`, T104)."""
+    if only_appends:
+        return [{"role": "user", "content": BOOKING_BRAKE_USER_NOTICE}]
     return [{"role": "system", "content": BOOKING_BRAKE_NOTE}]
 
 

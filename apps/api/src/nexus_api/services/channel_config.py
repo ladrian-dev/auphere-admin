@@ -272,8 +272,19 @@ async def read_config(session: AsyncSession, channel: Channel) -> dict[str, Any]
             "summary": bool(cfg.get("escalation_summary", True)),
         },
         "wait_message": cfg.get("wait_message"),
-        "notify_from": (await notify_from(session, channel)).source,
+        "notify_from": await notify_from_shown(session, channel),
     }
+
+
+async def notify_from_shown(session: AsyncSession, channel: Channel) -> str:
+    """Lo que la página dice de dónde saldrán los avisos por WhatsApp (047, 33.3).
+    Spec 049, requisito 7.1: sin plantilla en el canal y sin número de avisos de
+    Auphere que pueda enviar, ``none``: la página no promete un aviso que no sale.
+    El envío no cambia: sigue en ``notify_from``."""
+    source = (await notify_from(session, channel)).source
+    if source == "auphere" and not await auphere_can_notify():
+        return "none"
+    return source
 
 
 def _stored(config: Mapping[str, Any]) -> dict[str, Any]:

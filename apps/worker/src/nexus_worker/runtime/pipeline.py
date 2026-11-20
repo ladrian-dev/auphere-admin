@@ -2234,7 +2234,9 @@ def make_handler_node(
                                 m.get("role") == "system" and m.get("content") == FINAL_ANSWER_NOTE
                             )
                         ]
-                    messages.extend(booking_brake.retry_messages())
+                    messages.extend(
+                        booking_brake.retry_messages(only_appends=pin.keeps_reasoning())
+                    )
                     final_text = ""
                     interactive_payload = None
                     brake_outcome = "retried"

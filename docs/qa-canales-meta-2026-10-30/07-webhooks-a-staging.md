@@ -2,6 +2,8 @@
 
 **Decisión del owner (2026-10-30):** para probar y grabar, staging recibe los eventos reales de Instagram y Messenger.
 
+> **2026-11-20:** Meta aprobó los permisos el 2026-11-19. La vuelta a producción es el paso 3 de [apertura-produccion.md](../../specs/049-meta-instagram-messenger/apertura-produccion.md). Hasta hacerla, producción solo recibe estos eventos a través de staging.
+
 **Lo hace el owner**, porque la app de Meta `957213733862330` es la misma para staging y producción.
 
 ## Estado

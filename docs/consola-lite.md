@@ -250,7 +250,11 @@ frontera. Lo que impide que sea un agujero:
   `user_id` de la consola es texto de Better Auth). El despachador de salida lo
   envía y lo mide como cualquier saliente; los archivos van por enlace firmado.
   Precondiciones (409): `not_assigned_to_you`, `window_closed` (24 h desde el
-  último entrante), `channel_disconnected`. Adjuntos: JPEG/PNG ≤ 5 MB, PDF ≤
+  último entrante; 7 días en Instagram y Messenger con Human Agent aprobado),
+  `channel_disconnected`. El detalle trae `window.agent_open` aparte
+  (`inbox_view.reply_windows`): entre las 24 horas y los 7 días, en Instagram y
+  Messenger, el agente ya no puede y una persona sí, y el compositor lo dice con
+  la fecha límite (spec 049, requisito 7.3). Adjuntos: JPEG/PNG ≤ 5 MB, PDF ≤
   16 MB (415/413 con el límite), comprobados también en la BFF antes de subir.
 - **Eventos** (`conversation_events`): escalado (con motivo y resumen del
   agente), control tomado, devuelta, resuelta, reabierta. Alimentan el hilo y

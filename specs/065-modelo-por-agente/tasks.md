@@ -576,6 +576,62 @@ Luis pidió cerrarlos antes de pasar a Haiku 5.5 por defecto (T079). Quedaban fu
 
   _Requisitos: 5.10, 5.7_
 
+---
+
+## Fase 11: Lo que encontró la primera batería real (2026-11-20)
+
+La primera pasada de T064 en staging (commit `9c836f31`) dio en verde a los tres de Claude, pero **ninguno respondió un turno con herramientas**. Anthropic rechaza los nombres con punto (`tools.0.custom.name: String should match pattern '^[a-zA-Z0-9_-]{1,128}$'`) y el catálogo los usa (`booking.check_availability`). Las 63 llamadas de Claude con herramientas fallaron y en todos sus escenarios respondió Terra. La batería solo exigía que el turno tuviera respuesta. El camino directo solo cambiaba el punto por `__` hacia OpenAI (`_wire_openai_tool_names`). El eco de la batería en el cable aceptaba cualquier nombre, y por eso no lo vio. En prod no llega a nadie: ningún Claude está habilitado.
+
+- [X] T099 [US2] Los nombres de herramienta salen sin punto hacia Anthropic, como hacia OpenAI.
+  - Prueba primero, en rojo, en `apps/worker/tests/unit/test_respond_profiles_on_the_wire.py`:
+    - el eco valida los nombres de herramienta como cada proveedor (los de `tools` y los de las llamadas del historial) y contesta 400 si no cumplen;
+    - con un turno con herramientas y nombre con punto, cada uno de los seis responde él mismo, sin reserva;
+    - la herramienta llega al despacho con su nombre de catálogo.
+  - Después: en `runtime/llm.py`, `_proxied_acompletion` aplica la forma de transporte también a los saltos `anthropic/`. Los nombres del catálogo no cambian.
+
+  _Hecho el 2026-11-20: con el eco que valida, 24 rojos (todos los turnos de Claude, el freno, el saneado, el cruce y los rechazos) y 48 verdes tras el cambio. `test_llm_capabilities` esperaba el punto hacia un despliegue `anthropic/` marcado `dotted_ok` (suposición de la 047) y se corrigió. Worker completo: 1247._
+
+  _Requisitos: 4.1, 4.9, 11.2_
+- [X] T100 [US4] La batería real exige que responda el modelo elegido.
+  - En `apps/worker/scripts/respond_compat.py`, un escenario solo pasa si respondió el modelo que se probaba: sin reserva, salvo en los de caída y cruce, que ya exigen la suya.
+  - Los datos de caché usan un prompt propio en cada pasada, para que la lectura de la pasada anterior no tape la escritura.
+  - Prueba en `apps/worker/tests/unit/test_respond_compat_script.py`.
+
+  _Hecho el 2026-11-20 (`problem_of`, `fact_prompt`); en la caída, además, el modelo elegido tiene que haber contestado alguna llamada antes de caer._
+
+  _Requisitos: 4.9, 1.3_
+- [X] T102 [US2] La nota del freno de reservas no toca el `system` en un turno con Claude.
+  - La segunda pasada real (con T099) dejó un solo rojo: Haiku 5.5 en `booking_brake_retry` cayó a Terra con `Invalid `signature` in `thinking` block … The `system` prompt differs`. Era el riesgo anotado en T055: LiteLLM sube la nota `system` a la cabecera de Anthropic.
+  - Prueba primero, en rojo: `test_the_brake_retry_takes_nothing_away` exige que, con Claude, el `system` no cambie y que la nota llegue como `user` al final de los mensajes, después de lo que ya había.
+  - Después: `booking_brake.retry_messages(only_appends=…)` la manda como `user` cuando el modelo conserva su razonamiento (`pin.keeps_reasoning()`). Con GPT-5.6 sigue como `system`.
+
+  _Hecho el 2026-11-20: worker completo 1249; pruebas del freno de la API, 35; el escenario del freno en la batería real, tres pasadas en verde en los seis y ningún error de firma._
+
+  _Requisitos: 4.10_
+- [X] T101 Repetir T064 con T099, T100 y T102 y anotar las pasadas en quickstart.md §3.
+
+  _Hecho el 2026-11-20: los seis en verde en la pasada completa final (US$ 0,51). De T064 queda el paso 5 (habilitar en el panel de staging); el 4 lo cubre T103._
+- [X] T103 [US1] El factor de gasto de los Claude en el precio estimado (T064, paso 4).
+  - Prueba primero, en rojo: `apps/api/tests/unit/test_agent_model_estimate_factor.py`. Con los mismos tokens y pesos, la estimación de cada Claude es la base por su factor, y los tres GPT-5.6 siguen en 1,0.
+  - Después, en `core/respond_profiles.py`: Opus 5.5 1,9, Sonnet 5.5 1,8 y Haiku 5.5 2,6. Es lo medido con el agente de prueba (quickstart.md §3), con el sí de Luis y revisado por el revisor.
+  - **Provisional, no un techo.** La medida usó tokens brutos con la salida a 5 veces la entrada, y en esa pasada los prompts de Sol no llegaban a entrar en caché. Con prompts largos en caché pesa más la salida, y la de Claude fue de 2,6 a 4,8 veces la de Sol.
+  - Antes de habilitar Claude en prod: una pasada con un agente de tamaño real, en caché en las dos familias, y el factor calculado carril a carril con los pesos de cada modelo.
+  - Efecto visible: en el selector, Haiku 5.5 queda probablemente detrás de Luna, como en los dólares de la batería.
+
+  _Hecho el 2026-11-20: en rojo los tres Claude y en verde tras el cambio. Estimación, consola, modelo heredado, propuesta del copiloto y pruebas del constructor: 85 en verde._
+
+  _Requisitos: 1.5, 1.6_
+- [X] T104 [US2] La nota del freno, como turno del usuario, va marcada como aviso del sistema.
+  - Al leer lo que contestaba cada Claude tras T102, en tres de seis respuestas la nota se tomaba por palabras del cliente: «No la he reservado dos veces», «Antes no te llegó el mensaje de confirmación», «Te sugiero comprobarlo con el equipo de recepción». GPT-5.6, con la nota como `system`, contestaba limpio en las cuatro.
+  - Prueba primero, en rojo: `test_the_brake_retry_takes_nothing_away` exige la nota dentro de `<aviso_del_sistema>` y la línea «el cliente no lo ha escrito ni lo ve».
+  - Después: `booking_brake.BOOKING_BRAKE_USER_NOTICE`, solo en el camino de Claude.
+
+  _Hecho el 2026-11-20. Opus y Sonnet contestan limpio en las cuatro. Haiku, en una de dos, duda de la reserva sin mencionar la nota. Lo confunde la contradicción de la simulación: la batería fuerza el freno aunque haya una reserva, y en la realidad solo salta sin ella. El freno real, en verde en los seis y sin errores de firma; worker completo 1249; pruebas del freno de la API, 16._
+
+  _Requisitos: 4.10_
+
+  _Requisitos: 1.3, CE-002_
+
 ## Dependencias
 
 - La fase 1 bloquea todo, y va entera en el primer despliegue: **T001 (mapa fijo), T009 (cada uso probado) y T014 (el cierre con GPT-5.6) juntos**, o fijar el mapa rompería algún uso (research.md §D8.1 y §D13). T045 (migración 0239) está en la fase 1, aunque su número venga del bloque de cobro, porque la necesitan T024, T025 y T033.

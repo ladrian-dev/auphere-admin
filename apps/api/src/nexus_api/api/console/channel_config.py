@@ -100,7 +100,8 @@ class ChannelConfigOut(ChannelConfigIn):
     model_config = ConfigDict(extra="ignore")
 
     #: Solo lectura: de qué número sale el aviso por WhatsApp (33.3).
-    notify_from: Literal["channel", "auphere"]
+    # Spec 049, 7.1: ``none`` cuando el aviso por WhatsApp no tiene por dónde salir.
+    notify_from: Literal["channel", "auphere", "none"]
 
 
 class VisibleOut(BaseModel):

@@ -70,7 +70,7 @@ describe("the box (R6.3, R6.5)", () => {
   });
 
   it("modes follow who answers", () => {
-    const base = { waiting_reason: null, window: { open: true, closes_at: null }, channel: { kind: "whatsapp", connected: true } };
+    const base = { waiting_reason: null, window: { open: true, agent_open: false, closes_at: null }, channel: { kind: "whatsapp", connected: true } };
     // Spec 044 (R11) adds since when and the agent's name; the kind and reason are the 031's.
     expect(composerMode({ ...base, state: "waiting", assignee: null })).toEqual({ kind: "waiting", reason: null, since: null, agent: null });
     expect(composerMode({ ...base, state: "person", assignee: { kind: "member", name: "Luis", is_me: false } })).toEqual({ kind: "other", name: "Luis" });

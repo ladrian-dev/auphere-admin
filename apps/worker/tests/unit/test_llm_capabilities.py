@@ -200,11 +200,15 @@ async def test_dotted_tool_names_are_translated_for_every_provider_without_dots(
         assert names == {"client__get_history", "booking__check_availability"}, no_dots.key
         # Y la respuesta vuelve con los nombres del catálogo.
         assert all("." in tc.name for tc in result.tool_calls), result.tool_calls
-    await _call(EXPLICIT)
+    # Spec 065 (T099): Anthropic tampoco admite el punto, aunque la ficha del despliegue diga
+    # ``dotted_ok``. La primera batería real recibió un 400
+    # (``tools.0.custom.name: String should match pattern '^[a-zA-Z0-9_-]{1,128}$'``).
+    result = await _call(EXPLICIT)
     assert {t["function"]["name"] for t in wire[-1]["tools"]} == {
-        "client.get_history",
-        "booking.check_availability",
+        "client__get_history",
+        "booking__check_availability",
     }
+    assert all("." in tc.name for tc in result.tool_calls), result.tool_calls
 
 
 # ── salidas estructuradas ───────────────────────────────────────────────────

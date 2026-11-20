@@ -126,6 +126,20 @@ locals {
     # ``no-reply@auphere.com`` → nombrar empresa → dentro como propietario en
     # plan gratuito, sin que nadie ejecutara nada (T053, CE-001).
     { name = "NEXUS_SIGNUP_ENABLED", value = "true" },
+    # Instagram y Messenger para todos los partners (spec 049, requisito 5.5).
+    # Meta aprobó los permisos el 2026-11-19 (solicitud del 2026-11-03). Sin
+    # la bandera solo los ven los partners con el canal en
+    # ``partners.beta_channels``. Va aquí, en un diff, como el alta autónoma:
+    # abre una superficie a todos los partners de golpe. La API la lee para
+    # la consola y el panel; el resto de servicios, sin efecto.
+    { name = "NEXUS_META_SOCIAL_GENERAL_AVAILABILITY", value = "true" },
+    # Human Agent aprobado en la misma solicitud: una persona del equipo
+    # puede responder en Instagram y Messenger hasta 7 días después del
+    # último mensaje del contacto, con la etiqueta HUMAN_AGENT. El agente
+    # sigue con 24 horas. La lee la API (bandeja) y el worker que envía
+    # (``streams/outbound.py``): por eso va en el entorno común. Sin ella, Meta recibe
+    # 24 horas y la bandeja cierra el compositor a las 24 horas (INC-59).
+    { name = "NEXUS_META_HUMAN_AGENT_APPROVED", value = "true" },
   ]
 
   # Solo con ``llm_via_proxy``: staging y prod van directos al proveedor

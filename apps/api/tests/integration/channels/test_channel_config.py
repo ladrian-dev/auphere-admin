@@ -60,9 +60,19 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 # ── secciones ──────────────────────────────────────────────────────────────
 
 
+async def _no_auphere_number() -> bool:
+    return False
+
+
 async def test_the_page_has_its_five_sections_and_its_revision(
-    client: Any, db_session: AsyncSession, biz: Biz, bag: dict[str, bool]
+    client: Any,
+    db_session: AsyncSession,
+    biz: Biz,
+    bag: dict[str, bool],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Sin número de avisos de Auphere, sea cual sea lo que dejaron otras pruebas.
+    monkeypatch.setattr(channel_config, "auphere_can_notify", _no_auphere_number)
     agent_id = await _published(db_session, biz)
     channel_id = await _channel(db_session, biz, agent_id, "34911000001")
     page = await _page(client, biz, channel_id)
@@ -75,7 +85,9 @@ async def test_the_page_has_its_five_sections_and_its_revision(
     assert page["revision"] == 0
     assert page["visible_state"]["code"] == "unconfigured"
     assert page["agent"]["id"] == str(agent_id)
-    assert config["notify_from"] == "auphere"
+    # Spec 049, requisito 7.1: sin plantilla en el canal y sin número de avisos de
+    # Auphere, la página no promete que salgan de Auphere.
+    assert config["notify_from"] == "none"
     assert set(page["allowed"]) == {"configure", "pause", "disconnect"}
 
 
@@ -354,11 +366,18 @@ async def test_the_tests_and_escalation_checks_warn_without_blocking(
 
 
 async def test_the_page_warns_when_the_whatsapp_notice_cannot_leave(
-    client: Any, db_session: AsyncSession, biz: Biz, bag: dict[str, bool]
+    client: Any,
+    db_session: AsyncSession,
+    biz: Biz,
+    bag: dict[str, bool],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Bug el-aviso-de-escalada-no-llega: con destinatarios por WhatsApp, si el
     número no tiene la plantilla de aviso aprobada y Auphere no tiene número de
     avisos, el aviso no puede salir y la página lo dice."""
+    # Primera parte: sin número de avisos de Auphere, sea cual sea lo que dejaron
+    # otras pruebas. Se deshace antes de registrar el número más abajo.
+    monkeypatch.setattr(channel_config, "auphere_can_notify", _no_auphere_number)
     agent_id = await _published(db_session, biz)
     channel_id = await _channel(db_session, biz, agent_id, "34911000012")
     marta = {"name": "Marta", "via": "whatsapp", "phone_e164": "+34600555010"}
@@ -376,6 +395,8 @@ async def test_the_page_warns_when_the_whatsapp_notice_cannot_leave(
         "level": "warn",
         "fix": None,
     }, "avisa sin bloquear"
+    assert saved["config"]["notify_from"] == "none", "049, 7.1: no promete el número de Auphere"
+    monkeypatch.undo()
 
     # Con el número de avisos de Auphere registrado, el aviso sale de ahí.
     auphere = AuphereOwnerChannel(

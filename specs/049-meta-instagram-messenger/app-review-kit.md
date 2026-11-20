@@ -2,6 +2,8 @@
 
 Spec 049, Requisito 6. App de Meta `957213733862330` (negocio Facelad, verificado). Fecha: 2026-10-29.
 
+> **Aprobado el 2026-11-19** (solicitud del 2026-11-03): 13 permisos y funciones. Además de los de este kit, `pages_read_user_content` y `pages_manage_engagement`, que se añadieron el 2026-11-01 para los comentarios de la Página. Lista completa y apertura: [apertura-produccion.md](apertura-produccion.md).
+
 > **Qué se puede grabar hoy y qué no.** Meta pide ver cada permiso **en uso**. Los vídeos se graban en la **consola de partners** (donde el revisor conectará sus cuentas) cuando exista el round trip de las Historias 1 y 2, en staging o producción. Revisado el 2026-10-29 contra la documentación oficial: ver [auditoria-docs-oficiales.md](auditoria-docs-oficiales.md).
 
 ## 1. Reglas de grabación (valen para todos los vídeos)

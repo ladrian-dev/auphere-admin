@@ -101,7 +101,7 @@ describe("the Bandeja says who takes it and why it waits (50.7)", () => {
 });
 
 describe("the conversation says why it waits, by its code (50.7, `waiting_code`)", () => {
-  const base = { state: "waiting" as const, assignee: null, window: { open: true, closes_at: null }, channel: { kind: "whatsapp", connected: true } };
+  const base = { state: "waiting" as const, assignee: null, window: { open: true, agent_open: false, closes_at: null }, channel: { kind: "whatsapp", connected: true } };
 
   it("the code goes with the agent's own words; without a code, as before", () => {
     expect(composerMode({ ...base, waiting_reason: "Pide hablar con alguien", waiting_code: "escalated" })).toMatchObject({ kind: "waiting", code: "escalated", reason: "Pide hablar con alguien" });

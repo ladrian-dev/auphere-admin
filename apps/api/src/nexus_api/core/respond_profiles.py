@@ -71,8 +71,9 @@ class RespondProfile:
     #: 5.5 conserva su ``thinking: disabled``). Para Claude 5.5: razonamiento adaptativo y
     #: la caché automática de la conversación (§D4, §D14).
     turn_request: Mapping[str, Any] | None = None
-    #: Lo que gasta frente a Sol con los mismos tokens (razonamiento, tokenizador). 1,0
-    #: hasta que lo mida la batería real (T064).
+    #: Lo que gasta frente a Sol para el mismo trabajo (razonamiento, tokenizador). Solo entra
+    #: en el precio estimado del selector; se cobra siempre lo gastado. 1,0 en GPT-5.6; en
+    #: Claude, provisional desde la batería real (T103).
     estimate_factor: float = 1.0
     supports: frozenset[str] = field(default_factory=frozenset)
 
@@ -115,6 +116,7 @@ def _claude55(
     *,
     timeout_s: float,
     forced_tool_choice: bool,
+    estimate_factor: float,
     cross_in_request: Mapping[str, Any] | None = None,
 ) -> RespondProfile:
     forbidden = _ANTHROPIC_FORBIDDEN | ({FORCED_TOOL_CHOICE} if not forced_tool_choice else set())
@@ -138,6 +140,7 @@ def _claude55(
         reserve=TERRA,
         cross_in_request=_frozen(cross_in_request),
         block_binding=_frozen(_DROP_BLOCK),
+        estimate_factor=estimate_factor,
         supports=_ANTHROPIC_RUNS,
     )
 
@@ -149,17 +152,35 @@ PROFILES: Final[Mapping[str, RespondProfile]] = MappingProxyType(
             _gpt56("openai/gpt-5.6-sol"),
             _gpt56("openai/gpt-5.6-terra"),
             _gpt56("openai/gpt-5.6-luna"),
+            # ``estimate_factor`` de los Claude: **provisional** (T103). Medido en la batería real
+            # del 2026-11-20 con el agente de prueba, sobre los tokens de las llamadas de turno
+            # del propio modelo frente a Sol y con la salida a 5 veces la entrada (quickstart.md
+            # §3). No es un techo: con prompts largos en caché pesa más la salida, y la de Claude
+            # fue de 2,6 a 4,8 veces la de Sol. Revisar con un agente de tamaño real, carril a
+            # carril, antes de habilitar Claude en prod.
+            #
             # Opus 5.5 no deja apagar el razonamiento: nunca es la reserva del cruce.
-            _claude55("anthropic/claude-opus-5-5", timeout_s=90, forced_tool_choice=False),
+            _claude55(
+                "anthropic/claude-opus-5-5",
+                timeout_s=90,
+                forced_tool_choice=False,
+                estimate_factor=1.9,
+            ),
             # Sonnet 5.5 es la reserva de OpenAI: tras herramientas de GPT-5.6 entra con el
             # razonamiento apagado, sin ``block_binding`` (§D5.4).
             _claude55(
                 SONNET_55,
                 timeout_s=60,
                 forced_tool_choice=False,
+                estimate_factor=1.8,
                 cross_in_request={"thinking": {"type": "between_tools"}},
             ),
-            _claude55("anthropic/claude-haiku-5-5", timeout_s=45, forced_tool_choice=True),
+            _claude55(
+                "anthropic/claude-haiku-5-5",
+                timeout_s=45,
+                forced_tool_choice=True,
+                estimate_factor=2.6,
+            ),
         )
     }
 )
