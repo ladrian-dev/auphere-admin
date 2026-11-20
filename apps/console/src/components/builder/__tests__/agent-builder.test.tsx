@@ -18,6 +18,7 @@ vi.mock("next/navigation", () => ({ usePathname: () => "/", useRouter: () => rou
 vi.mock("@/app/(console)/clients/[ref]/agents/quality-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/life-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/agenda-actions", () => ({}));
+vi.mock("@/app/(console)/clients/[ref]/agents/agent-model-actions", () => ({}));
 vi.mock("@/app/(console)/clients/[ref]/agents/builder-actions", () => ({
   answerDraftJobAction: vi.fn(),
   builderDraftAction: vi.fn(),
@@ -916,30 +917,57 @@ describe("la pantalla del agente · el canal dentro del agente (63.1)", () => {
 });
 
 /**
- * Spec 047 (requisito 64; D55; T214): mientras Auphere gestiona los modelos,
- * Avanzado no enseña «Calidad» ni «Fijar un modelo»: lo dice en una línea. Un
- * aviso viejo que lleva a `?tab=quality` cae en esa línea.
+ * Spec 065 (T026; requisitos 9.1 y 9.2): Avanzado enseña el selector de modelo
+ * en lugar de la línea «El modelo de este agente lo gestiona Auphere», y sigue
+ * sin «Calidad» ni «Fijar un modelo» (`AgentModelQuality`). Un aviso viejo que
+ * lleva a `?tab=quality` cae en el selector.
  */
-describe("la pantalla del agente · Avanzado sin «Calidad» (64.1)", () => {
+describe("la pantalla del agente · Avanzado con el modelo del agente (065, 9.1 y 9.2)", () => {
   const advanced = { cap: null, spent: { amount_micros: 0, currency: "EUR" as const }, currency: "EUR" as const, canWrite: true };
+  const estimate = (amount_micros: number) => ({ amount_micros, currency: "USD", basis: "agent_7d" as const });
+  const MODEL = {
+    agent_id: AGENT,
+    choice: null,
+    effective: { model_id: "openai/gpt-5.6-terra", display_name: "Terra", source: "platform" as const, outside_offer: null, estimate: estimate(6269) },
+    options: [
+      { model_id: "openai/gpt-5.6-luna", display_name: "Luna", provider: "openai", line: "economy" as const, estimate: estimate(550) },
+      { model_id: "openai/gpt-5.6-terra", display_name: "Terra", provider: "openai", line: "balanced" as const, estimate: estimate(6269) },
+    ],
+    notice: null,
+    can_change: true,
+  };
 
-  it("dice que el modelo lo gestiona Auphere, sin «Calidad» ni «Fijar un modelo»", async () => {
-    screenWith({}, { advanced });
+  it("el selector sustituye a la línea de Auphere, sin «Calidad» ni «Fijar un modelo»", async () => {
+    screenWith({}, { advanced, model: MODEL });
     await openMore();
     const region = screen.getByRole("region", { name: "Avanzado" });
     await userEvent.click(within(region).getByRole("heading", { name: "Avanzado" }));
-    expect(within(region).getByText("El modelo de este agente lo gestiona Auphere.")).toBeVisible();
+    expect(document.querySelector("[data-slot=model-managed]")).toBeNull();
+    expect(within(region).queryByText("El modelo de este agente lo gestiona Auphere.")).toBeNull();
+    expect(within(region).getByRole("heading", { name: "Modelo" })).toBeVisible();
+    expect(within(region).getByRole("radio", { name: "Terra" })).toBeChecked();
+    expect(within(region).getByText("Ahora")).toBeVisible();
+    // `AgentModelQuality` no se monta: ni su bloque ni sus palabras.
+    expect(document.querySelector("[data-slot=model-quality]")).toBeNull();
     expect(within(region).queryByRole("heading", { name: "Calidad" })).toBeNull();
     expect(screen.queryByText(/Fijar un modelo/)).toBeNull();
     expect(screen.queryByRole("radiogroup", { name: /calidad/i })).toBeNull();
   });
 
-  it("sin permiso para el tope, Avanzado sigue diciendo quién gestiona el modelo; `?tab=quality` llega a esa línea", () => {
-    screenWith({}, { initialSection: "agente-calidad" });
+  it("sin permiso para el tope, Avanzado sigue enseñando el modelo; `?tab=quality` llega al selector", () => {
+    screenWith({}, { initialSection: "agente-calidad", model: MODEL });
     expect(screen.getByRole("button", { name: /Más ajustes/ })).toHaveAttribute("aria-expanded", "true");
-    const line = document.getElementById("agente-calidad") as HTMLElement;
-    expect(line).toHaveTextContent("El modelo de este agente lo gestiona Auphere.");
-    expect(line).toBeVisible();
+    const block = document.getElementById("agente-calidad") as HTMLElement;
+    expect(within(block).getByRole("heading", { name: "Modelo" })).toBeVisible();
+    expect(block).not.toHaveTextContent("El modelo de este agente lo gestiona Auphere.");
+  });
+
+  it("si el modelo no se pudo leer, Avanzado lo dice con «Reintentar»", async () => {
+    screenWith({}, { advanced, model: null });
+    await openMore();
+    const block = document.getElementById("agente-calidad") as HTMLElement;
+    expect(within(block).getByRole("alert")).toHaveTextContent("No se pudo leer el modelo de este agente");
+    expect(within(block).getByRole("button", { name: "Reintentar" })).toBeInTheDocument();
   });
 });
 

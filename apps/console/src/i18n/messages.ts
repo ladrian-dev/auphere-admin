@@ -19,6 +19,7 @@ import { builderChannelsMessages } from "./lanes/builder-channels";
 import { builderConnectorsMessages } from "./lanes/builder-connectors";
 import { builderKnowledgeMessages } from "./lanes/builder-knowledge";
 import { builderLifeMessages } from "./lanes/builder-life";
+import { builderModelMessages } from "./lanes/builder-model";
 import { builderModelQualityMessages } from "./lanes/builder-model-quality";
 import { builderQualityMessages } from "./lanes/builder-quality";
 import { businessMessages } from "./lanes/business";
@@ -608,6 +609,8 @@ const messages = {
   ...builderConnectorsMessages,
   ...connectorToolsMessages,
   ...builderModelQualityMessages,
+  // Spec 065: Agente › Avanzado › Modelo.
+  ...builderModelMessages,
   ...clientsProtoMessages,
   ...agentProtoMessages,
   ...accountProtoMessages,

@@ -13,6 +13,7 @@
  * del cable; la puerta la prueban la API y `tests/isolation/`.
  */
 import { createServer } from "node:http";
+import { agentModelFixture } from "./agent-model-fixture.mjs";
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8712);
 const REF = "panaderia-la-espiga";
@@ -185,6 +186,8 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", `http://127.0.0.1:${PORT}`);
   const route = `${req.method} ${url.pathname}`;
   process.stderr.write(`[agent-draft-mock] ${route}${url.search}\n`);
+  const agentModel = agentModelFixture(route);
+  if (agentModel) return send(res, 200, agentModel);
   switch (route) {
     case "GET /health":
       return send(res, 200, { status: "ok" });

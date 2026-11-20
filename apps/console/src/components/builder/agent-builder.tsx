@@ -25,6 +25,7 @@ import type { AgentSpec, BuilderDraft, EditableBlock, Proposal, SpecProblem } fr
 import type { AgentConnector } from "@/lib/backend/agent-connectors-types";
 import type { AgentAgenda } from "@/lib/backend/agenda-types";
 import type { AgentChannels, ChannelChange, ChannelPage } from "@/lib/backend/channel-config-types";
+import type { AgentModel } from "@/lib/backend/models";
 import type { Currency, Money } from "@/lib/backend/money-types";
 import { agentHref } from "@/components/shell/routes-v2";
 import { ShellBackButton } from "@/components/shell/shell-back-button";
@@ -37,6 +38,7 @@ import { AgentHistory, type HistoryActions } from "./agent-history";
 import { AgentImprovementsPanel, type ImprovementsActions } from "./agent-improvements";
 import { AgentKnowledgePanel, type AgentKnowledgeActions } from "./agent-knowledge";
 import { AgentMenu, type AgentLifeActions } from "./agent-menu";
+import { AgentModelSelect, type AgentModelActions } from "./agent-model-select";
 import { AgentPerformancePanel, type PerformanceActions } from "./agent-performance";
 import { AgentPlayground, type PlaygroundActions } from "./agent-playground";
 import { inMore, rowOfBlock, rowOfSection, type AgentRow } from "./agent-proto-model";
@@ -82,6 +84,8 @@ export type AgentQualityActions = {
   improvements?: ImprovementsActions;
   connectors?: AgentConnectorsActions;
   channelPage?: ChannelPageActions;
+  /** Spec 065: el modelo del agente, en Avanzado. */
+  model?: AgentModelActions;
   wait?: (ms: number) => Promise<void>;
 };
 
@@ -203,6 +207,7 @@ export function AgentBuilder({
   knowledge,
   channels,
   advanced,
+  model,
   performance,
   improvements,
   connectors,
@@ -231,6 +236,11 @@ export function AgentBuilder({
   channels?: AgentChannelsView;
   /** Spec 047 (44.1): «Avanzado», con el tope mensual del agente. */
   advanced?: AgentAdvancedView;
+  /**
+   * Spec 065 (9.2): el modelo del agente y lo que el partner puede elegir, en
+   * Avanzado. `null`: no se pudo leer (lo dice, con «Reintentar»). Sin él, no se pinta.
+   */
+  model?: AgentModel | null;
   /** Spec 047 (historia 31): la pestaña Rendimiento. Sin ella, no se pinta. */
   performance?: AgentPerformanceView;
   /** Spec 047 (historias 31 y 32): las Mejoras. Sin ellas, no se pintan. */
@@ -885,15 +895,21 @@ export function AgentBuilder({
                       canWrite={advanced.canWrite}
                     />
                   ) : null}
-                  {/* Spec 047 (64.1; D55): sin «Calidad» ni «Fijar un modelo» mientras
-                      Auphere gestiona los modelos. Un aviso viejo (`?tab=quality`) llega aquí. */}
-                  <p
-                    id="agente-calidad"
-                    className="min-w-0 scroll-mt-24 border-t border-border pt-4 text-sm text-pretty text-muted-foreground first:border-t-0 first:pt-0"
-                    data-slot="model-managed"
-                  >
-                    {t("modelQuality.managed")}
-                  </p>
+                  {/* Spec 065 (9.1 y 9.2): el modelo del agente, en lugar de la línea «lo
+                      gestiona Auphere», y sin «Calidad» ni «Fijar un modelo». Un aviso viejo
+                      (`?tab=quality`) llega aquí. */}
+                  <div id="agente-calidad" className="min-w-0 scroll-mt-24 border-t border-border pt-4 empty:hidden first:border-t-0 first:pt-0">
+                    {model !== undefined ? (
+                      <AgentModelSelect
+                        refId={refId}
+                        agentId={draft.agent_id}
+                        agentName={header?.name ?? draft.agent_name}
+                        model={model}
+                        canWrite={canWrite}
+                        actions={qualityActions.model}
+                      />
+                    ) : null}
+                  </div>
                 </ScreenSection>
                 {quality && spec ? (
                   <div id="agente-copiloto" className="min-w-0 scroll-mt-24 rounded-lg border border-border bg-card p-4 sm:p-6">
