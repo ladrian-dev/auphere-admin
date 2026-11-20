@@ -7173,6 +7173,11 @@
       },
       "WindowOut": {
         "properties": {
+          "agent_open": {
+            "default": false,
+            "title": "Agent Open",
+            "type": "boolean"
+          },
           "closes_at": {
             "anyOf": [
               {
