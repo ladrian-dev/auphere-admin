@@ -210,7 +210,7 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 #### Criterios de aceptación
 
 1. IF el canal no tiene la plantilla de aviso aprobada AND Auphere no tiene un número de avisos que pueda enviar THEN la página del canal DEBE decir que los avisos por WhatsApp no pueden salir y que llegan por correo y por la Bandeja, y NO DEBE decir que salen del número de avisos de Auphere. Vale para WhatsApp, Instagram y Messenger: enmienda el requisito 33.3 de la spec 047.
-2. WHILE la consola espera a la ventana de Meta para conectar un canal THEN DEBE ofrecer «Cancelar», también con Escape. WHEN se cancela THEN la consola DEBE volver al paso anterior sin crear nada, y IF Meta devuelve después la autorización THEN la consola NO DEBE conectar el canal con ella.
+2. WHILE la consola espera a la ventana de Meta para conectar una cuenta de Instagram o una Página THEN DEBE ofrecer «Cancelar», también con Escape. Solo mientras la ventana está abierta: el canje del código con la API no se cancela. El alta de WhatsApp queda fuera, porque su librería junta la ventana y el alta en un paso. WHEN se cancela THEN la consola DEBE volver al paso anterior sin crear nada, y IF Meta devuelve después la autorización THEN la consola NO DEBE conectar el canal con ella.
 3. WHEN una persona abre en la Bandeja una conversación de Instagram o Messenger que atiende el agente AND han pasado más de 24 horas desde el último mensaje del contacto AND Human Agent está activo AND faltan menos de 7 días THEN la Bandeja DEBE decir que el agente ya no puede responder, que una persona puede hacerlo tomando el control, y hasta cuándo.
 4. WHEN se pasa un canal de Instagram o Messenger a otro agente THEN el diálogo DEBE nombrarlo como canal, no como número.
 

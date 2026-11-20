@@ -34,14 +34,15 @@ Terraform se lanza siempre desde el checkout principal, `/Users/lmatos/Workspace
 
 ### 1. Commits y subida a `develop`
 
-Desde el worktree `.claude/worktrees/049-apertura-meta-social`, con `develop` todavía en `9c836f31` (la base de la rama), así que entra por avance directo:
+Dos ramas, una detrás de otra: `049-apertura-meta-social` (sus tres commits ya están hechos) y `049-requisito-7`, sacada de la anterior, con el requisito 7 (T067 y T068). Se sube **solo desde la segunda**: lleva los seis commits.
 
 ```bash
-bash /Users/lmatos/Workspace/nexus/.claude/commits/2026-11-20-049-apertura-meta-social.sh
-git push origin HEAD:develop
+bash /Users/lmatos/Workspace/nexus/.claude/commits/2026-11-20-049-requisito-7.sh
+cd /Users/lmatos/Workspace/nexus/.claude/worktrees/049-requisito-7
+git fetch origin && git rebase origin/develop && git push origin HEAD:develop
 ```
 
-`deploy-staging` despliega los servicios y Vercel publica la consola de `develop` en `console.staging.auphere.com`. Las task definitions no cambian hasta el paso 2.
+`develop` se mueve a menudo (la sesión de la 065 sube a la vez). Los commits que llegaron el 2026-11-20 por la tarde no tocan ningún fichero de estas dos ramas, así que el `rebase` es limpio. `deploy-staging` despliega los servicios y Vercel publica la consola de `develop` en `console.staging.auphere.com`. Las task definitions no cambian hasta el paso 2.
 
 ### 2. Staging: aplicar las variables
 
@@ -57,11 +58,11 @@ El plan solo debe cambiar las task definitions y los servicios que las usan. Si 
 
 Comprobar:
 - Panel de staging → Partners → cualquier partner → Módulos: «Meta ya aprobó Instagram y Messenger: todos los partners los tienen».
-- Consola de staging → un canal de Instagram: los textos nuevos (sin modo de prueba, borrado a los 30 días al desconectar).
+- Consola de staging → un canal de Instagram: los textos nuevos (sin modo de prueba, borrado a los 30 días al desconectar, «Pasar el canal», y que los avisos por WhatsApp no pueden salir si staging no tiene número de avisos de Auphere).
 
 ### 3. Staging: conectar con un Facebook sin rol
 
-Con una cuenta de Facebook que no sea administradora, desarrolladora ni evaluadora de la app, conectar una cuenta de Instagram profesional y una Página desde la consola de staging. La app de Meta y sus dos configuraciones son las mismas que usa producción, así que es la prueba de que el acceso avanzado funciona, y la puerta del paso 6. Si Meta no muestra los permisos o la conexión acaba sin cuentas, mirar `meta_social.connect.source` en los registros.
+Con una cuenta de Facebook que no sea administradora, desarrolladora ni evaluadora de la app, conectar una cuenta de Instagram profesional y una Página desde la consola de staging. Antes, una vez: abrir la conexión, pulsar «Cancelar» en la consola sin cerrar la ventana de Meta, y volver a conectar hasta el final (requisito 7.2: el SDK de Meta real todavía tiene abierto el primer intento, y eso solo se ve en vivo). La app de Meta y sus dos configuraciones son las mismas que usa producción, así que es la prueba de que el acceso avanzado funciona, y la puerta del paso 6. Si Meta no muestra los permisos o la conexión acaba sin cuentas, mirar `meta_social.connect.source` en los registros.
 
 ### 4. Meta: webhooks de Página e Instagram a producción
 
@@ -98,7 +99,7 @@ El plan debe cambiar solo las task definitions y sus servicios, con las dos vari
 
 ### 7. Human Agent
 
-Primero en staging y después en producción. Hace falta una conversación cuyo último mensaje del contacto tenga entre 24 horas y 7 días: un DM hoy desde una cuenta de prueba a la cuenta y la Página de staging deja la prueba lista para después del paso 2. «Tomar el control», responder y ver que llega. Si sale «No se envió: Meta todavía no permite responder pasadas 24 horas…», la bandera `NEXUS_META_HUMAN_AGENT_APPROVED` no está aplicada en el servicio que envía. En producción, igual, después del paso 6.
+Primero en staging y después en producción. Hace falta una conversación cuyo último mensaje del contacto tenga entre 24 horas y 7 días: un DM hoy desde una cuenta de prueba a la cuenta y la Página de staging deja la prueba lista para después del paso 2. Antes de tomarla, el compositor dice que el agente ya no puede responder y que tú sí, con la fecha límite (requisito 7.3). «Tomar el control», responder y ver que llega. Si sale «No se envió: Meta todavía no permite responder pasadas 24 horas…», la bandera `NEXUS_META_HUMAN_AGENT_APPROVED` no está aplicada en el servicio que envía. En producción, igual, después del paso 6.
 
 ## Vuelta atrás
 
@@ -107,9 +108,9 @@ Primero en staging y después en producción. Hace falta una conversación cuyo 
 
 ## Enmiendas que van en el paso 5
 
-Escritas el 2026-11-20 como requisito 7 de [spec.md](spec.md), con sus tareas en [tasks.md](tasks.md). Se codifican con el sí del owner, en esta misma rama, para que lleguen a `main` con los textos:
+Requisito 7 de [spec.md](spec.md), hecho el 2026-11-20 en la rama `049-requisito-7` (T067 y T068 en [tasks.md](tasks.md)). Llega a `main` con los textos:
 
 - **T067 (7.1):** la página no promete avisos por WhatsApp si Auphere no tiene número de avisos. Enmienda también la 047 (requisito 33.3).
-- **T068 (7.2 a 7.4):** cancelar la espera de la ventana de Meta, la Bandeja entre 24 horas y 7 días con Human Agent, y «canal» al pasar un canal de Instagram o Messenger.
+- **T068 (7.2 a 7.4):** «Cancelar» mientras la ventana de Meta está abierta, la Bandeja entre 24 horas y 7 días con Human Agent, y «Pasar el canal».
 
 Las respuestas rápidas de Instagram se mantienen (decisión del owner, T066): queda actualizar su descripción en Meta.
