@@ -97,6 +97,12 @@ locals {
       value = "base2_exponential_bucket_histogram"
     },
     { name = "NEXUS_LANGFUSE_ENVIRONMENT", value = local.nexus_environment },
+    # Spec 065 (T001, T091): LiteLLM con el mapa de modelos que viaja en la imagen, más las
+    # entradas de los seis modelos que registra ``nexus_api.core.litellm_map``. Sin esto,
+    # cada arranque descargaba el mapa de internet y el mismo código se comportaba distinto
+    # según el día. Los ``__init__`` de la API y del worker ya lo fijan con ``setdefault``;
+    # esto lo deja escrito en la taskdef.
+    { name = "LITELLM_LOCAL_MODEL_COST_MAP", value = "True" },
     # /health/workers en la API espera exactamente estos servicios (WP-07).
     { name = "NEXUS_EXPECTED_WORKER_SERVICES", value = "nexus-runner,nexus-scheduler,nexus-egress" },
     # En Fargate no hay access keys: las credenciales de S3 vienen del task
