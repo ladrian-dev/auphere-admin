@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
@@ -22,6 +23,8 @@ import {
 import { useT } from "@/i18n/client";
 import { signInAction } from "@/lib/auth-actions";
 
+import { rememberEmailForForgot } from "../forgot/handoff";
+
 type Values = { email: string; password: string };
 
 export function LoginForm({ redirectTo }: { redirectTo: string }) {
@@ -29,6 +32,8 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
   const router = useRouter();
   const [pending, startTransition] = React.useTransition();
   const [submitting, setSubmitting] = React.useState(false);
+  const [show, setShow] = React.useState(false);
+  const passwordRef = React.useRef<HTMLInputElement | null>(null);
   const schema = React.useMemo(
     () =>
       z.object({
@@ -81,9 +86,41 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>{t("login.password")}</FormLabel>
-              <FormControl>
-                <Input type="password" autoComplete="current-password" {...field} />
-              </FormControl>
+              {/* Spec 066 (R4.1): mostrar/ocultar sin perder el foco ni el
+                  cursor. El botón va fuera de `FormControl` para que el
+                  `aria-describedby` del error siga en el campo. */}
+              <div className="relative">
+                <FormControl>
+                  <Input
+                    type={show ? "text" : "password"}
+                    autoComplete="current-password"
+                    className="pr-11"
+                    {...field}
+                    ref={(el) => {
+                      field.ref(el);
+                      passwordRef.current = el;
+                    }}
+                  />
+                </FormControl>
+                <button
+                  type="button"
+                  className="absolute inset-y-0 right-0 grid w-10 place-items-center rounded-r-md text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+                  aria-label={show ? t("auth.password.hide") : t("auth.password.show")}
+                  aria-pressed={show}
+                  onClick={() => {
+                    setShow((v) => !v);
+                    const el = passwordRef.current;
+                    if (el) {
+                      requestAnimationFrame(() => {
+                        el.focus();
+                        el.setSelectionRange(el.value.length, el.value.length);
+                      });
+                    }
+                  }}
+                >
+                  {show ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
+                </button>
+              </div>
               <FormMessage />
             </FormItem>
           )}
@@ -94,7 +131,13 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
         {/* Spec 011: la salida existe. Era una frase sin destino a dos
             centímetros del botón de Google, y luego una que decía honestamente
             que no había forma de restablecer; ahora la hay y es un enlace. */}
-        <Link href="/forgot" className="text-sm text-muted-foreground underline underline-offset-4">
+        {/* Spec 066 (R4.3): el correo ya escrito pasa a Recuperar la cuenta
+            por `sessionStorage`, nunca por la URL. */}
+        <Link
+          href="/forgot"
+          onClick={() => rememberEmailForForgot(form.getValues("email"))}
+          className="text-sm text-muted-foreground underline underline-offset-4"
+        >
           {t("login.forgot")}
         </Link>
       </form>
