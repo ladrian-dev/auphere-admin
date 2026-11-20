@@ -2,3 +2,77 @@
 @import "tw-animate-css";
 @import "@nexus/ui/tokens.css";
 @source "../../../../packages/ui/src";
+
+/* ── Spec 068: la base visual de la consola de partners ───────────────────
+   Solo esta app: el Super Admin comparte `@nexus/ui` y no cambia. Lo que manda
+   está en la memoria del owner (2026-11-20): solo Helvena, de 400 a 600, y una
+   escala de escritorio compacta (título de página 26, cifras 22, títulos de
+   tarjeta 15, filas 13,5, ayuda 12). Un `@theme` posterior pisa los tokens del
+   paquete, así que cada utilidad (`text-sm`, `text-display`…) ya sale con la
+   medida nueva sin tocar ningún componente. */
+@theme {
+  --font-sans: var(--font-helvena), "Helvena", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display: var(--font-helvena), "Helvena", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: var(--font-helvena), "Helvena", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* Nunca más gruesa que 600, aunque alguien escriba `font-bold`. */
+  --font-weight-bold: 600;
+  --font-weight-extrabold: 600;
+  --font-weight-black: 600;
+
+  /* Helvena ya es estrecha: el interletrado negativo pensado para Inter la
+     apelmazaba. Los mismos valores que la demo aprobada. */
+  --tracking-tightest: -0.02em;
+  --tracking-tighter: -0.015em;
+  --tracking-tight: -0.01em;
+
+  --text-display: 26px;
+  --text-display--line-height: 1.2;
+  --text-display--letter-spacing: -0.015em;
+  --text-3xl: 28px;
+  --text-3xl--line-height: 1.15;
+  --text-2xl: 22px;
+  --text-2xl--line-height: 1.2;
+  --text-xl: 18px;
+  --text-xl--line-height: 1.3;
+  --text-lg: 16px;
+  --text-lg--line-height: 1.4;
+  --text-md: 15px;
+  --text-md--line-height: 1.4;
+  --text-sm: 13.5px;
+  --text-sm--line-height: 1.5;
+  --text-xs: 12px;
+  --text-xs--line-height: 1.45;
+}
+
+/* Las variantes de letra que `@nexus/ui` enciende son de Inter («ss01» son sus
+   cifras abiertas, «cv11» su «a» de un piso). En Helvena «ss01» cambia la «m» y
+   la «n» por una forma decorativa, así que en la consola van apagadas. */
+html,
+body {
+  font-feature-settings: normal;
+}
+
+/* El cuerpo baja a 15 px en escritorio. En el teléfono se queda en 16: por
+   debajo, iOS amplía la página al tocar un campo. */
+@media (min-width: 48rem) {
+  :root {
+    --text-base: 15px;
+  }
+}
+
+/* Pulsar: el botón baja al 97 % en 80 ms, en lugar de desplazarse 1 px. Los que
+   abren un menú no se mueven, como hasta ahora. Con Reducir movimiento, nada. */
+[data-slot="button"] {
+  transition-property: background-color, color, border-color, box-shadow, transform, translate, scale;
+}
+[data-slot="button"]:active:not(:disabled):not([aria-haspopup]) {
+  translate: none;
+  scale: 0.97;
+  transition-duration: var(--duration-instant);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="button"]:active:not(:disabled) {
+    scale: none;
+  }
+}
