@@ -46,7 +46,9 @@ EXPECTED = {
     "console.get_wallet",
     "console.list_allocations",
     "console.list_models",
-    "console.get_client_model",
+    # Spec 065: el modelo es de cada agente.
+    "console.list_agents",
+    "console.get_agent_model",
     "console.get_workflow",
     "console.list_workflow_runs",
     "console.get_prompt_library",

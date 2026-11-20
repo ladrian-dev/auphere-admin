@@ -404,7 +404,7 @@ VERIFY_READS: dict[str, str] = {
     "channel_role": "/console/clients/{client_ref}/channels",
     "usage_alerts": "/console/usage/alerts",
     "allocation": "/console/clients/{client_ref}/allocation",
-    "model": "/console/clients/{client_ref}/model",
+    "model": "/console/clients/{client_ref}/agents/{agent_id}/model",
     "knowledge": "/console/knowledge",
     "pack": "/console/clients/{client_ref}/workflow",
     # Spec 003: ejecutar no deja un recurso que releer — deja un **asiento**.
@@ -440,7 +440,11 @@ async def verify_action(read: Any, action: CompanionAction) -> dict[str, Any]:
     if template is None or not expectations:  # pragma: no cover - todo kind tiene ambos
         return {"action_id": str(action.id), "checks": [], "ok": True}
 
-    path = template.format(client_ref=client_ref) if client_ref else template
+    # Spec 065: la relectura de un agente lleva también su id, el de la propuesta.
+    agent_id = (payload.get("propose_args") or {}).get("agent_id")
+    path = (
+        template.format(client_ref=client_ref, agent_id=agent_id or "") if client_ref else template
+    )
     try:
         response = await read(path, {})
         fresh = response.json() if response.status_code < 400 else None
@@ -514,7 +518,8 @@ def _observed(kind: str, fresh: Any, payload: dict[str, Any]) -> dict[str, str]:
         cap = (fresh or {}).get("cap_cents")
         return {"allocation_cap": str(cap) if cap is not None else "missing"}
     if kind == "model":
-        mid = (fresh or {}).get("model_id")
+        # Spec 065: lo que eligió el agente (la vista de ``…/agents/{id}/model``).
+        mid = ((fresh or {}).get("choice") or {}).get("model_id")
         return {"model_id": str(mid) if mid else ""}
     if kind == "pack":
         steps = (fresh or {}).get("steps") or []

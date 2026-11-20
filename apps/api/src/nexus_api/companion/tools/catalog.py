@@ -25,8 +25,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from nexus_api.core.respond_catalog import RESPOND_MODEL_IDS
-
 #: Referencia del cliente. Es el ``external_client_ref`` del partner —su
 #: propio nombre para el cliente—, **jamás** un ``tenant_id``. Lo resuelve
 #: el router bajo el principal, y un ref de otro partner devuelve el mismo
@@ -185,6 +183,20 @@ def _ref_param(what: str) -> ToolParam:
             "nombrar a su cliente, la que devuelve console.list_clients. Si el "
             "usuario nombra al cliente de otra forma, resuélvela antes; no la "
             "adivines."
+        ),
+        required=True,
+        in_path=True,
+    )
+
+
+def _agent_param(what: str) -> ToolParam:
+    """Spec 065: el agente de un cliente, en la ruta. Uno de console.list_agents."""
+    return ToolParam(
+        name="agent_id",
+        type="string",
+        description=(
+            f"Id del agente ({what}). Uno de los que devuelve console.list_agents para "
+            "ese cliente; no lo adivines."
         ),
         required=True,
         in_path=True,
@@ -656,27 +668,42 @@ READ_TOOLS: tuple[ToolSpec, ...] = (
             "pregunte qué modelos hay, cuál usar, o antes de proponer un "
             "cambio de modelo. Es un catálogo cerrado: no hay alias "
             "gpt-5.6 y no aparecen classify, Companion ni whisper. No lo "
-            "uses para el modelo actual de un cliente — eso es "
-            "console.get_client_model — ni para el cupo."
+            "uses para el modelo actual de un agente — eso es "
+            "console.get_agent_model — ni para el cupo."
         ),
         max_chars=2_000,
     ),
     ToolSpec(
-        name="console.get_client_model",
-        path="/console/clients/{client_ref}/model",
-        label="Modelo del cliente",
+        name="console.list_agents",
+        path="/console/clients/{client_ref}/agents",
+        label="Agentes del cliente",
         description=(
-            "Devuelve el modelo de respuesta (rol respond) de un cliente: "
-            "el model_id, el nombre y si hay fila de binding. Llama a esto "
-            "cuando el usuario pregunte en qué modelo corre un cliente, "
-            "antes de proponer un cambio, y para enseñar el antes y el "
-            "después. Si no hay fila, before queda vacío: el cliente aún "
-            "no tiene binding. Un ref de otro partner es el mismo 404 "
-            "opaco que uno inexistente. No lo uses para listar el catálogo "
-            "— eso es console.list_models — ni para classify o whisper."
+            "Lista los agentes de un cliente con su id, nombre y estado. Llama a esto "
+            "antes de leer o proponer algo de un agente concreto, para tener su "
+            "agent_id; un cliente puede tener varios agentes y cada uno responde con "
+            "su propio modelo. Un ref de otro partner es el mismo 404 opaco que uno "
+            "inexistente. No lo uses para leer el prompt ni los ajustes de un agente."
         ),
-        params=(_ref_param("el cliente cuyo modelo quieres leer"),),
-        max_chars=2_000,
+        params=(_ref_param("el cliente cuyos agentes quieres ver"),),
+        max_chars=4_000,
+    ),
+    ToolSpec(
+        name="console.get_agent_model",
+        path="/console/clients/{client_ref}/agents/{agent_id}/model",
+        label="Modelo de un agente",
+        description=(
+            "Spec 065: devuelve con qué modelo responde un agente (effective), si lo "
+            "eligió (choice) y qué modelos puede elegir ese agente con lo que costaría "
+            "cada respuesta (options, del más barato al más caro). Llama a esto cuando "
+            "el usuario pregunte en qué modelo corre un agente o cuánto costaría otro, "
+            "y antes de proponer un cambio. Un cliente o agente de otro partner es el "
+            "mismo 404 opaco que uno inexistente. No lo uses para classify ni whisper."
+        ),
+        params=(
+            _ref_param("el cliente del agente"),
+            _agent_param("el agente cuyo modelo quieres leer"),
+        ),
+        max_chars=4_000,
     ),
     ToolSpec(
         name="console.get_prompt_library",
@@ -1121,35 +1148,32 @@ PROPOSE_TOOLS: tuple[ToolSpec, ...] = (
         kind="model",
         tool_class="propose",
         permission_policy="always_ask",
-        path="/console/clients/{client_ref}/model",
-        label="Proponer el modelo de un cliente",
+        path="/console/clients/{client_ref}/agents/{agent_id}/model",
+        label="Proponer el modelo de un agente",
         description=(
-            "Calcula el cambio de modelo de respuesta de un cliente "
-            "(Sol, Terra o Luna) y lo deja pendiente de confirmación. No "
-            "escribe: aplicar usa PUT /console/clients/{ref}/model con "
-            "solo model_id, bajo el partner del principal. Llama a esto "
-            "cuando el usuario quiera elegir o cambiar el modelo con el "
-            "que responde el agente. Lee console.list_models y "
-            "console.get_client_model antes. El cuerpo de aplicación solo "
-            "lleva model_id: el partner no viaja. No lo uses para "
-            "classify, Companion, whisper, el cupo ni el prompt. No "
-            "aceptes gpt-5.6 suelto: no es una fila del catálogo. Guía: "
-            "Sol es el más capaz, Terra el día a día, Luna volumen."
+            "Spec 065: calcula el cambio del modelo con el que responde UN agente y lo "
+            "deja pendiente de confirmación; los demás agentes del cliente no cambian. "
+            "No escribe: aplicar usa PUT /console/clients/{ref}/agents/{agent_id}/model "
+            "con solo model_id, bajo el partner del principal. Llama a esto cuando el "
+            "usuario quiera elegir o cambiar el modelo de un agente. Lee antes "
+            "console.list_agents (para el agent_id) y console.get_agent_model: "
+            "model_id tiene que ser uno de sus options. No lo uses para classify, "
+            "Companion, whisper, el cupo ni el prompt. No aceptes gpt-5.6 suelto."
         ),
         params=(
-            _propose_ref("cuyo modelo vas a cambiar"),
+            _propose_ref("del agente cuyo modelo vas a cambiar"),
+            _agent_param("el agente cuyo modelo vas a cambiar"),
             ToolParam(
                 name="model_id",
                 type="string",
                 description=(
-                    "Id LiteLLM verbatim del catálogo cerrado. Uno de "
-                    "openai/gpt-5.6-sol, openai/gpt-5.6-terra, "
-                    "openai/gpt-5.6-luna. No gpt-5.6."
+                    "Id verbatim de uno de los options de console.get_agent_model para "
+                    "ese agente (p. ej. openai/gpt-5.6-luna, anthropic/claude-haiku-5-5). "
+                    "No gpt-5.6 suelto."
                 ),
                 required=True,
-                # Spec 047 (T139): la oferta sale de los datos; el esquema de la
-                # herramienta la congela al construirse el catálogo.
-                enum=tuple(RESPOND_MODEL_IDS),
+                # Spec 065: lo que el agente puede elegir depende del entorno y de la lista
+                # del partner; la propuesta lo valida contra su GET, no un enum congelado.
             ),
         ),
         max_chars=4_000,

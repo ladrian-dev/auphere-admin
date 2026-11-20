@@ -145,6 +145,7 @@ async def test_the_resolver_only_returns_the_active_tenants_bindings(db_session)
             sa.text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(a)}
         )
         await _bind(session, a, "respond", "anthropic/claude-sonnet-4-6")
+        await _bind(session, a, "classify", "anthropic/claude-sonnet-4-6")
         await session.execute(
             sa.text("SELECT set_config('app.tenant_id', :t, false)"), {"t": str(b)}
         )
@@ -152,15 +153,16 @@ async def test_the_resolver_only_returns_the_active_tenants_bindings(db_session)
         await _bind(session, b, "classify", "anthropic/claude-haiku-4-5")
         await session.commit()
 
+    # Spec 065 (requisito 12.4): el rol ``respond`` ya no sale; el de cada agente decide.
     async with sm() as session, tenant_scoped_session(session, a):
         bindings = await load_bindings(session, a)
-    assert set(bindings) == {"respond"}
-    assert bindings["respond"].model_id == "anthropic/claude-sonnet-4-6"
+    assert set(bindings) == {"classify"}
+    assert bindings["classify"].model_id == "anthropic/claude-sonnet-4-6"
 
     async with sm() as session, tenant_scoped_session(session, b):
         bindings = await load_bindings(session, b)
-    assert set(bindings) == {"respond", "classify"}
-    assert bindings["respond"].model_id == "anthropic/claude-haiku-4-5"
+    assert set(bindings) == {"classify"}
+    assert bindings["classify"].model_id == "anthropic/claude-haiku-4-5"
 
 
 # ── spec 016 (garantía 1): el modelo de un cliente no cruza partners ──────────
@@ -180,56 +182,19 @@ async def _binding_of(db_session, tenant_id: uuid.UUID) -> str | None:
     return None if row is None else str(row[0])
 
 
-async def test_console_put_model_never_touches_another_partners_binding(
-    client, console_world, db_session
-) -> None:
+async def test_the_retired_client_model_route_is_still_an_opaque_404(client, console_world) -> None:
+    """Spec 065 (requisito 12.4): la ruta del modelo por cliente se retiró (410), pero el
+    cliente de otro partner sigue siendo el mismo 404 que uno que no existe, y nada se escribe."""
     a, b = console_world["a"], console_world["b"]
-    sol, luna = "openai/gpt-5.6-sol", "openai/gpt-5.6-luna"
-    ok_b = await client.put(
-        "/console/clients/{}/model".format(b["ref"]),
-        headers=b["headers"](),
-        json={"model_id": luna},
-    )
-    assert ok_b.status_code == 200, ok_b.text
-    # A escribe el suyo; con el ref de B es el 404 opaco y B no cambia.
-    ok_a = await client.put(
-        "/console/clients/{}/model".format(a["ref"]), headers=a["headers"](), json={"model_id": sol}
-    )
-    assert ok_a.status_code == 200, ok_a.text
     foreign = await client.put(
-        "/console/clients/{}/model".format(b["ref"]), headers=a["headers"](), json={"model_id": sol}
+        f"/console/clients/{b['ref']}/model", headers=a["headers"](), json={"model_id": "x"}
     )
-    assert foreign.status_code == 404
-    assert await _binding_of(db_session, a["tenant_id"]) == sol
-    assert await _binding_of(db_session, b["tenant_id"]) == luna
-
-
-async def test_reconciling_one_partners_allowlist_leaves_the_other_partners_bindings(
-    client, console_world, db_session, admin_headers
-) -> None:
-    from nexus_api.db.models import ConsoleNotification
-
-    a, b = console_world["a"], console_world["b"]
-    sol = "openai/gpt-5.6-sol"
-    for w in (a, b):
-        ok = await client.put(
-            "/console/clients/{}/model".format(w["ref"]),
-            headers=w["headers"](),
-            json={"model_id": sol},
-        )
-        assert ok.status_code == 200, ok.text
-    shrink = await client.put(
-        f"/admin/partners/{a['partner_id']}/models",
-        headers=admin_headers,
-        json={"model_ids": ["openai/gpt-5.6-luna"]},
+    missing = await client.put(
+        "/console/clients/no-existe/model", headers=a["headers"](), json={"model_id": "x"}
     )
-    assert shrink.status_code == 200, shrink.text
-    assert await _binding_of(db_session, a["tenant_id"]) is None
-    assert await _binding_of(db_session, b["tenant_id"]) == sol
-    assert (
-        await db_session.scalar(
-            sa.select(sa.func.count())
-            .select_from(ConsoleNotification)
-            .where(ConsoleNotification.partner_id == b["partner_id"])
-        )
-    ) == 0
+    assert foreign.status_code == missing.status_code == 404
+    assert foreign.json() == missing.json()
+    own = await client.put(
+        f"/console/clients/{a['ref']}/model", headers=a["headers"](), json={"model_id": "x"}
+    )
+    assert own.status_code == 410

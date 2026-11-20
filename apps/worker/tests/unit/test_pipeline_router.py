@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
+from nexus_api.core.respond_catalog import agent_respond_default
 from nexus_api.services.router_catalog import CatalogSnapshot
 from nexus_mcp import MCPRegistry
 from nexus_mcp.base import ToolError
@@ -397,9 +398,11 @@ async def test_an_agent_of_today_calls_its_provider_exactly_as_before(
     assert _wire(after) == _wire(before)
     assert len(after.calls) >= 2
     assert all("deployment" not in c.extra and "task" not in c.extra for c in after.calls)
+    # Spec 065 (T025): sin elección, el agente responde con el modelo por defecto de Auphere,
+    # no con el de responder del router (``llm_respond_model``).
     assert {c.model for c in after.calls} <= {
         "legacy/classify",
-        "legacy/respond",
+        agent_respond_default(),
         "anthropic/claude-haiku-4-5",
     }
     for key in ("response", "intent", "tool_calls", "turn_failure", "response_model"):
@@ -423,7 +426,7 @@ async def test_the_classifier_of_every_agent_moves_to_the_cheapest_certified(
     assert out["classification"] == _CLASSIFIED
     assert out["intent"] == "info"
     [answer] = [c for c in provider.calls if c.role == "info"]
-    assert answer.model == "legacy/respond" and "deployment" not in answer.extra
+    assert answer.model == agent_respond_default() and "deployment" not in answer.extra
     assert "pinned_model" not in out
 
 

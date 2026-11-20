@@ -48,3 +48,24 @@ async def test_la_oferta_es_subconjunto_del_catalogo(db_session) -> None:
     in_db = {row[0] for row in rows}
     assert RESPOND_MODEL_ID_SET <= HOP_MODEL_ID_SET
     assert in_db >= RESPOND_MODEL_ID_SET
+
+
+async def test_lo_ofrecible_y_lo_ofrecido_salen_de_la_base(db_session) -> None:
+    """Spec 065 (T008): la semilla de arranque coincide con lo que dejan las migraciones."""
+    from nexus_api.core import respond_catalog
+    from nexus_api.core.respond_profiles import profile_for
+
+    rows = (
+        await db_session.execute(
+            sa.text(
+                "SELECT model_id, respond_enabled_at FROM model_profiles "
+                "WHERE offer_label IS NOT NULL AND status = 'active'"
+            )
+        )
+    ).all()
+    offerable = {r[0] for r in rows if profile_for(r[0]) is not None}
+    offered = {r[0] for r in rows if r[0] in offerable and r[1] is not None}
+    assert offerable == {m for m, _ in respond_catalog.BOOT_OFFERABLE}
+    assert offered == {m for m, _ in respond_catalog.BOOT_OFFER}
+    default = await respond_catalog.read_agent_default(db_session)
+    assert default == respond_catalog.SOL_MODEL_ID, "al desplegar, Sol (CE-005)"

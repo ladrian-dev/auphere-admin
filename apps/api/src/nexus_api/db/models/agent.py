@@ -96,6 +96,18 @@ class Agent(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):
     tests_pass_returned_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    #: Spec 065 (requisito 2.1): el modelo elegido para responder. Nulo = el modelo por
+    #: defecto de Auphere. Ajuste vivo: no pasa por una versión (0237).
+    respond_model_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("model_profiles.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    #: ``partner`` u ``operator``; nulo sin elección.
+    respond_model_set_by: Mapped[str | None] = mapped_column(Text, nullable=True)
+    respond_model_set_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class AgentConfig(UUIDPrimaryKey, TimestampMixin, TenantScopedMixin, Base):

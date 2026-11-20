@@ -87,6 +87,8 @@ class ModelPrice:
     residency: str = "global"
     zero_retention: bool = False
     offer_label: str | None = None
+    #: Spec 065 (0238): habilitado para responder en este entorno.
+    respond_enabled: bool = False
 
 
 # Medidor → (atributo de tarifa, unidad). ``mtok`` divide entre un millón;
@@ -117,7 +119,8 @@ _CATALOG_SQL = sa.text(
            supports_tools,
            residency,
            zero_retention,
-           offer_label
+           offer_label,
+           respond_enabled_at
       FROM model_profiles
     """
 )
@@ -176,6 +179,7 @@ async def load_catalog() -> dict[str, ModelPrice]:
     sm = get_sessionmaker()
     async with sm() as session:
         rows = (await session.execute(_CATALOG_SQL)).all()
+        agent_default = await respond_catalog.read_agent_default(session)
 
     catalog: dict[str, ModelPrice] = {}
     for (
@@ -196,6 +200,7 @@ async def load_catalog() -> dict[str, ModelPrice]:
         residency,
         zero_retention,
         offer_label,
+        respond_enabled_at,
     ) in rows:
         catalog[model_id] = ModelPrice(
             model_id=model_id,
@@ -215,18 +220,23 @@ async def load_catalog() -> dict[str, ModelPrice]:
             residency=residency,
             zero_retention=bool(zero_retention),
             offer_label=offer_label,
+            respond_enabled=respond_enabled_at is not None,
         )
     # Spec 047 (T139): la oferta y lo ejecutable por un hop salen de estas mismas
     # filas. Se refrescan aquí porque esta es la lectura periódica del catálogo
     # en el worker; así el hop no consulta la base y tampoco se queda viejo.
     respond_catalog.refresh_from_rows(
-        {
-            "model_id": p.model_id,
-            "status": p.status,
-            "offer_label": p.offer_label,
-            "price_input_per_mtok": p.input_per_mtok,
-        }
-        for p in catalog.values()
+        [
+            {
+                "model_id": p.model_id,
+                "status": p.status,
+                "offer_label": p.offer_label,
+                "price_input_per_mtok": p.input_per_mtok,
+                "respond_enabled_at": True if p.respond_enabled else None,
+            }
+            for p in catalog.values()
+        ],
+        agent_default=agent_default,
     )
     return catalog
 

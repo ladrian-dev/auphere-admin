@@ -465,17 +465,31 @@ async def test_allocation_for_another_partners_client_is_the_opaque_404(belt_for
     assert not belt.pending
 
 
+async def _agent_of(tenant_id):
+    """Spec 065: el modelo es de cada agente."""
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import Agent
+
+    async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
+        agent = Agent(tenant_id=tenant_id, name="Recepción")
+        session.add(agent)
+        await session.commit()
+        return str(agent.id)
+
+
 async def test_a_model_proposal_writes_nothing(belt_for, console_world):
     a = console_world["a"]
+    agent_id = await _agent_of(a["tenant_id"])
     belt = await belt_for(_actor(a), principal_id=a["user_id"])
-    before = await belt.call("console.get_client_model", {"client_ref": a["ref"]})
-    out = await belt.call(
-        "console.propose_model",
-        {"client_ref": a["ref"], "model_id": "openai/gpt-5.6-sol"},
-    )
+    args = {"client_ref": a["ref"], "agent_id": agent_id}
+    before = await belt.call("console.get_agent_model", args)
+    assert before.ok, before.content
+    out = await belt.call("console.propose_model", {**args, "model_id": "openai/gpt-5.6-luna"})
+    assert out.ok, out.content
     other = await belt_for(_actor(a), principal_id=a["user_id"])
-    after = await other.call("console.get_client_model", {"client_ref": a["ref"]})
-    assert after.content == before.content
+    after = await other.call("console.get_agent_model", args)
+    assert json.loads(after.content)["choice"] == json.loads(before.content)["choice"]
     if out.ok:
         assert "litellm" not in (out.content or "").lower()
         assert "/key/update" not in (out.content or "")
@@ -484,13 +498,14 @@ async def test_a_model_proposal_writes_nothing(belt_for, console_world):
 async def test_model_for_another_partners_client_is_the_opaque_404(belt_for, console_world):
     a, b = console_world["a"], console_world["b"]
     belt = await belt_for(_actor(a), principal_id=a["user_id"])
+    b_agent = await _agent_of(b["tenant_id"])
     foreign = await belt.call(
         "console.propose_model",
-        {"client_ref": b["ref"], "model_id": "openai/gpt-5.6-sol"},
+        {"client_ref": b["ref"], "agent_id": b_agent, "model_id": "openai/gpt-5.6-luna"},
     )
     missing = await belt.call(
         "console.propose_model",
-        {"client_ref": "no-existe-jamas", "model_id": "openai/gpt-5.6-sol"},
+        {"client_ref": "no-existe-jamas", "agent_id": b_agent, "model_id": "openai/gpt-5.6-luna"},
     )
     assert foreign.ok is False and missing.ok is False
     assert foreign.content == missing.content

@@ -14,7 +14,7 @@ from nexus_api.api.admin.partners import _admin_actor, _get_partner_or_404
 from nexus_api.api.deps import get_db_session, get_redis
 from nexus_api.core.partner_allowlist import read_allowlist, reconcile_bindings, replace_allowlist
 from nexus_api.core.partner_context import apply_partner_to_session
-from nexus_api.core.respond_catalog import RESPOND_MODEL_ID_SET, RESPOND_MODELS
+from nexus_api.core.respond_catalog import OFFERABLE_MODEL_ID_SET, OFFERABLE_MODELS
 from nexus_api.core.security import require_admin_token
 from nexus_api.repositories import AuditRepository
 from nexus_api.schemas.admin_models import AdminModelItemOut, AdminModelsIn, AdminModelsOut
@@ -39,7 +39,7 @@ def _models_out(allowed: frozenset[str]) -> AdminModelsOut:
                 display_name=display,
                 allowed=model_id in allowed,
             )
-            for model_id, display in RESPOND_MODELS
+            for model_id, display in OFFERABLE_MODELS
         ]
     )
 
@@ -78,7 +78,7 @@ async def put_partner_models(
     turno— y el partner recibe ``client.model_reset`` por cada uno.
     """
     for model_id in body.model_ids:
-        if model_id not in RESPOND_MODEL_ID_SET:
+        if model_id not in OFFERABLE_MODEL_ID_SET:
             raise _unknown_catalog(model_id)
 
     async with session.begin():

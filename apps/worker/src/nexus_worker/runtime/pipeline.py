@@ -65,6 +65,8 @@ import structlog
 from langgraph.graph import END, START, StateGraph
 from nexus_api.core.admin_gate import ROLE_READONLY, sender_role
 from nexus_api.core.llm_proxy import current_llm_proxy_partner
+from nexus_api.core.respond_catalog import agent_respond_default
+from nexus_api.core.respond_model import AgentChoice, Resolved, resolve
 from nexus_api.core.tenant_context import (
     customer_context,
     tenant_context,
@@ -1424,6 +1426,38 @@ def _intents(state: AgentState) -> int:
     return raw if isinstance(raw, int) and raw > 0 else 1
 
 
+def agent_respond_model(bundle: AgentBundle) -> Resolved:
+    """Spec 065 (T025; requisito 2.2): the agent's respond model, by the one resolution.
+
+    Its own choice; else its version's ``policies.llm.respond_model``; else Auphere's
+    default for this environment (``platform_settings.agent_respond_default``), skipping
+    what the agent cannot run. The client's ``respond`` binding and ``llm_respond_model``
+    no longer decide an agent's model."""
+    llm_policy = bundle.policies.get("llm")
+    override = llm_policy.get("respond_model") if isinstance(llm_policy, dict) else None
+    version_override = override if isinstance(override, str) and override else None
+    choice = None
+    if bundle.respond_model:
+        set_by = "operator" if bundle.respond_model_set_by == "operator" else "partner"
+        choice = AgentChoice(bundle.respond_model, set_by)
+    return resolve(
+        choice, version_override, agent_respond_default(), agent_needs=bundle.agent_needs
+    )
+
+
+def turn_respond_model(
+    bundle: AgentBundle, *, degrade_to: str | None
+) -> tuple[str, tuple[str, ...]]:
+    """The model and extra fallbacks the turn answers with.
+
+    WP-20: a soft budget with ``downgrade`` goes to the cheapest model above any choice;
+    that is explicitly worse quality to keep answering. Spec 065 (requisito 11.4): no own
+    fallbacks of a client's binding any more; the reserve comes from the model's profile."""
+    if degrade_to:
+        return degrade_to, ()
+    return agent_respond_model(bundle).model_id, ()
+
+
 def _route_state_update(route: _ConversationRoute, state: AgentState) -> dict[str, Any]:
     """What the handler leaves in the thread: the affinity (per agent), the
     escalations of the hour and what the turn spent."""
@@ -2075,38 +2109,14 @@ def make_handler_node(
                     base_extra=skills_extra or None,
                 )
 
-            # Per-tenant respond-model override (agent_config
-            # ``policies.llm.respond_model``): lets a latency-sensitive agent
-            # (e.g. the WooCommerce sales agent) run on a faster model like
-            # Haiku without changing the global default (Mouna stays on
-            # Sonnet). Empty / missing → the router's global respond model.
-            _llm_pol = bundle.policies.get("llm")
-            respond_model_override = (
-                _llm_pol.get("respond_model") if isinstance(_llm_pol, dict) else None
+            # Spec 065 (T025): the agent's model by the one resolution (its choice → its
+            # version → Auphere's default), with the WP-20 budget downgrade above all.
+            degrade_to = await cheapest_model() if state.get("budget_degrade_model") else None
+            respond_model_override: str | None
+            respond_fallbacks: tuple[str, ...]
+            respond_model_override, respond_fallbacks = turn_respond_model(
+                bundle, degrade_to=degrade_to
             )
-            if not isinstance(respond_model_override, str) or not respond_model_override:
-                respond_model_override = None
-
-            # WP-19 — ``tenant_model_bindings`` gana sobre la policy del
-            # agent_config: la tabla es la fuente de verdad de la elección
-            # de modelo, la policy es el mecanismo antiguo que sobrevive
-            # para los tenants que aún no tienen binding.
-            _respond_binding = bundle.model_bindings.get("respond")
-            respond_fallbacks: tuple[str, ...] = ()
-            if _respond_binding is not None:
-                respond_model_override = _respond_binding.model_id
-                respond_fallbacks = _respond_binding.fallback_chain
-
-            # WP-20 — presupuesto blando con acción ``downgrade``: se pasa
-            # al modelo más barato del catálogo (WP-19) por encima de
-            # cualquier elección. Es explícitamente peor calidad a cambio
-            # de seguir atendiendo, y esa es la decisión correcta cuando
-            # la alternativa es acercarse al corte duro.
-            if state.get("budget_degrade_model"):
-                cheapest = await cheapest_model()
-                if cheapest:
-                    respond_model_override = cheapest
-                    respond_fallbacks = ()
 
             _turn_started = time.perf_counter()
             # Why the fallback text was used, if it was. See ``AgentState.turn_failure``.

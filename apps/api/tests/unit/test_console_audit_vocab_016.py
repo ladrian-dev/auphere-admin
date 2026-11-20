@@ -28,7 +28,7 @@ pytestmark = pytest.mark.asyncio
 
 ACTIONS = (
     "console.allocation.move",
-    "console.model.update",
+    "console.agent.model.update",
     "console.connector.connect",
     "console.channel.connect",
 )
@@ -39,12 +39,14 @@ SECRETS = ("ck_secret_016", "cs_secret_016", "META-CODE-016", "EAA-bisuat")
 async def test_the_actions_leave_a_trail_without_secrets(
     client, console_world, db_session, monkeypatch
 ) -> None:
+    from tests.integration.models.test_agent_model_console import agent_of
     from tests.integration.test_console_wallet import _add_unallocated_client
 
     a = console_world["a"]
     h = a["headers"]
     base = f"/console/clients/{a['ref']}"
     other = "client-a-trail"
+    agent = await agent_of(a["tenant_id"])
     await _add_unallocated_client(db_session, partner_id=a["partner_id"], ref=other)
 
     r = await client.post(
@@ -53,7 +55,10 @@ async def test_the_actions_leave_a_trail_without_secrets(
         json={"from_ref": a["ref"], "to_ref": other, "amount_cents": 1},
     )
     assert r.status_code == 200, r.text
-    r = await client.put(f"{base}/model", headers=h(), json={"model_id": "openai/gpt-5.6-luna"})
+    # Spec 065: el modelo se elige por agente (la ruta del cliente se retiró).
+    r = await client.put(
+        f"{base}/agents/{agent}/model", headers=h(), json={"model_id": "openai/gpt-5.6-luna"}
+    )
     assert r.status_code == 200, r.text
     r = await client.post(
         f"{base}/connectors/woocommerce/api-key",

@@ -28,6 +28,7 @@ from nexus_api.api.console import (
     agent_integrations,
     agent_knowledge,
     agent_lifecycle_routes,
+    agent_model,
     agent_playground,
     agent_publish,
     agent_quality,
@@ -104,6 +105,8 @@ router.include_router(agents.router)
 # Spec 047 (T080): before ``agents_list`` so ``agents/draft-options`` is not an agent id.
 router.include_router(agent_builder.router)
 router.include_router(agent_lifecycle_routes.router)
+# Spec 065: el modelo de cada agente.
+router.include_router(agent_model.router)
 router.include_router(agent_playground.router)
 router.include_router(agent_tests.router)
 router.include_router(agent_review.router)

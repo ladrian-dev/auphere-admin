@@ -12,7 +12,6 @@ cambiarlo deja ``console.model.update`` en la auditoría del cliente.
 
 from __future__ import annotations
 
-import json
 import uuid
 
 import sqlalchemy as sa
@@ -22,23 +21,20 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.admin.agent_configs import PROMOTE_CHANNEL
-from nexus_api.api.deps import get_db_session, get_redis
+from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.core.partner_allowlist import read_allowlist
 from nexus_api.core.partner_context import apply_partner_to_session
 from nexus_api.core.respond_catalog import (
-    RESPOND_MODEL_ID_SET,
     RESPOND_MODEL_IDS,
     RESPOND_MODELS,
-    RESPOND_ROLE,
     SOL_MODEL_ID,
 )
-from nexus_api.core.tenant_context import apply_tenant_to_session
-from nexus_api.db.models import AuditLog
 from nexus_api.db.models.model_profile import ModelProfile
+from nexus_api.services.agent_model import LINES
 
 from .deps import ClientRef, resolve_mapping
-from .schemas_models import ClientModelOut, ConsoleModelOut, ModelIn, ModelWeightsOut
+from .schemas_models import ConsoleModelOut, ModelWeightsOut
 
 router = APIRouter()
 log = structlog.get_logger(__name__)
@@ -128,158 +124,30 @@ async def list_console_models(
             else _catalog_display()[model_id],
             relative_cost=costs[model_id],
             weights=weights[model_id],
+            provider=model_id.split("/", 1)[0],
+            line=LINES.get(model_id),
         )
         for model_id in listed
     ]
 
 
-@router.get(
-    "/clients/{ref}/model",
-    response_model=ClientModelOut,
-    responses={404: {"description": "Unknown client reference."}},
-)
-async def get_client_model(
-    ref: str = ClientRef,
-    principal: ConsolePrincipal = Depends(require_console_principal("agents:read")),
-    session: AsyncSession = Depends(get_db_session),
-) -> ClientModelOut:
-    """Binding ``respond`` de un cliente propio. El de otro partner es 404."""
-    mapping = await resolve_mapping(session, principal, ref)
-    async with session.begin():
-        await apply_partner_to_session(session, principal.partner.id)
-        allowed = await read_allowlist(session, principal.partner.id)
-        await apply_tenant_to_session(session, mapping.tenant_id)
-        row = (
-            (
-                await session.execute(
-                    sa.text(
-                        """
-                        SELECT p.model_id, p.display_name
-                          FROM tenant_model_bindings b
-                          JOIN model_profiles p ON p.id = b.model_profile_id
-                         WHERE b.role = :role
-                        """
-                    ),
-                    {"role": RESPOND_ROLE},
-                )
-            )
-            .mappings()
-            .first()
-        )
-    if row is None:
-        return ClientModelOut(
-            client_ref=ref,
-            role=RESPOND_ROLE,
-            is_bound=False,
-            fallback_model_id=FALLBACK_MODEL_ID,
-            fallback_display_name=_fallback_display(),
-        )
-    return ClientModelOut(
-        client_ref=ref,
-        role=RESPOND_ROLE,
-        model_id=str(row["model_id"]),
-        display_name=str(row["display_name"]),
-        is_bound=True,
-        allowed=str(row["model_id"]) in allowed,
-        fallback_model_id=FALLBACK_MODEL_ID,
-        fallback_display_name=_fallback_display(),
-    )
-
-
 @router.put(
     "/clients/{ref}/model",
-    response_model=ClientModelOut,
     responses={
         404: {"description": "Unknown client reference."},
-        422: {"description": "model_id is not in the closed catalog, or extra keys."},
+        410: {"description": "client_model_retired: the model is chosen per agent (spec 065)."},
     },
 )
 async def put_client_model(
-    body: ModelIn,
     ref: str = ClientRef,
     principal: ConsolePrincipal = Depends(require_console_principal("agents:write")),
     session: AsyncSession = Depends(get_db_session),
-    redis: Redis = Depends(get_redis),
-) -> ClientModelOut:
-    """Fija el modelo ``respond`` de un cliente propio. No llama a LiteLLM."""
-    if body.model_id not in RESPOND_MODEL_ID_SET:
-        raise _unknown_model(body.model_id)
-    mapping = await resolve_mapping(session, principal, ref)
-    async with session.begin():
-        await apply_partner_to_session(session, principal.partner.id)
-        allowed = await read_allowlist(session, principal.partner.id)
-        if body.model_id not in allowed:
-            raise _unknown_model(body.model_id)
-        await apply_tenant_to_session(session, mapping.tenant_id)
-        profile = (
-            (
-                await session.execute(
-                    sa.text(
-                        "SELECT id, model_id, display_name FROM model_profiles "
-                        "WHERE model_id = :m AND status = 'active'"
-                    ),
-                    {"m": body.model_id},
-                )
-            )
-            .mappings()
-            .first()
-        )
-        if profile is None:
-            raise _unknown_model(body.model_id)
-        previous = await session.scalar(
-            sa.text(
-                """
-                SELECT p.model_id
-                  FROM tenant_model_bindings b
-                  JOIN model_profiles p ON p.id = b.model_profile_id
-                 WHERE b.role = :role
-                """
-            ),
-            {"role": RESPOND_ROLE},
-        )
-        await session.execute(
-            sa.text(
-                """
-                INSERT INTO tenant_model_bindings
-                    (tenant_id, role, model_profile_id, fallback_chain)
-                VALUES (:t, :r, :p, CAST(:fc AS jsonb))
-                ON CONFLICT (tenant_id, role) DO UPDATE
-                   SET model_profile_id = EXCLUDED.model_profile_id,
-                       updated_at = now()
-                """
-            ),
-            {
-                "t": str(mapping.tenant_id),
-                "r": RESPOND_ROLE,
-                "p": profile["id"],
-                "fc": json.dumps([]),
-            },
-        )
-        # Spec 016 (R5.2): quién cambió el modelo de qué cliente, y desde cuál.
-        session.add(
-            AuditLog(
-                tenant_id=mapping.tenant_id,
-                actor=principal.actor,
-                action="console.model.update",
-                target=f"tenant:{mapping.tenant_id}",
-                before_json={"model_id": str(previous) if previous is not None else None},
-                after_json={
-                    "model_id": str(profile["model_id"]),
-                    "previous": str(previous) if previous is not None else None,
-                },
-            )
-        )
-    await _invalidate(redis, mapping.tenant_id)
-    return ClientModelOut(
-        client_ref=ref,
-        role=RESPOND_ROLE,
-        model_id=str(profile["model_id"]),
-        display_name=str(profile["display_name"]),
-        is_bound=True,
-        allowed=True,
-        fallback_model_id=FALLBACK_MODEL_ID,
-        fallback_display_name=_fallback_display(),
-    )
+) -> None:
+    """Spec 065 (requisito 12.4): retirado. El modelo de respuesta es de cada agente
+    (``PUT …/agents/{agent_id}/model``). El cliente se resuelve antes, para que el de otro
+    partner siga siendo el 404 opaco."""
+    await resolve_mapping(session, principal, ref)
+    raise HTTPException(status_code=status.HTTP_410_GONE, detail={"code": "client_model_retired"})
 
 
 async def _invalidate(redis: Redis, tenant_id: uuid.UUID) -> None:

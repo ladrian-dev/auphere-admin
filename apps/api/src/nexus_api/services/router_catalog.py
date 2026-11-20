@@ -796,7 +796,7 @@ _DEPLOYMENTS_SQL = sa.text(
            contract_dpa, subprocessor_listed, status, retire_after, capabilities, quota,
            supports_tools, supports_vision, max_context, cache_min_tokens,
            quota_weight_input, quota_weight_cache_read, quota_weight_output,
-           offer_label, price_input_per_mtok
+           offer_label, price_input_per_mtok, respond_enabled_at
       FROM model_profiles
     """
 )
@@ -893,7 +893,9 @@ async def load_snapshot(session: AsyncSession, *, refresh_hop: bool = True) -> C
     if refresh_hop:
         from nexus_api.core import respond_catalog
 
-        respond_catalog.refresh_from_rows(rows)
+        respond_catalog.refresh_from_rows(
+            rows, agent_default=await respond_catalog.read_agent_default(session)
+        )
     return CatalogSnapshot(
         taxonomy=taxonomy,
         deployments=deployments,

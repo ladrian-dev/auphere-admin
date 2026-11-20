@@ -37,11 +37,10 @@ integraciones y observa lo que pasa. La API decide; la consola pinta y dice
    en `services/console_notifications.py`). El cliente final no recibe nada
    distinto. Mover cupo es
    **una** llamada transaccional (`POST /console/wallet/allocations/move`).
-3. **Agente**: ajustes estructurados, herramientas, habilidades, conocimiento y
-   la tarjeta **Modelo** (`GET /console/models` con `relative_cost`, «×N
-   créditos»). Cambiar el modelo se aplica en el siguiente turno y se audita
-   (`console.model.update`); si el plan deja de incluirlo, el binding se borra
-   y llega `client.model_reset`.
+3. **Agente**: ajustes estructurados, herramientas, habilidades y conocimiento.
+   El modelo ya no se elige por cliente (spec 065, requisito 12.4: `PUT
+   /console/clients/{ref}/model` responde `410 client_model_retired`): se elige
+   por agente en Agente › Avanzado › Modelo (abajo).
 4. **Canales**: «Conectar WhatsApp» es el Embedded Signup real cuando el entorno
    tiene `NEXUS_META_APP_ID` y un `NEXUS_META_CONFIG_ID_*`; sin ellos, la nota
    «lo conecta Auphere» (sin botón). Al volver, el cliente se activa si puede
@@ -423,8 +422,8 @@ separa). El vocabulario de las acciones de la 047 está en la migración 0197; l
 abren su pantalla con `?tab=`, que `sectionForTab` (`builder-model.ts`) lleva a su
 sección, y `tabOfSection` abre la pestaña que la tiene (un enlace `#agente-…` hace lo
 mismo): `performance` a Rendimiento, `improvements` a Mejoras, `tests` a Pruebas,
-`advanced` a Avanzado, `quality` a la línea de Avanzado que dice que el modelo lo
-gestiona Auphere (`#agente-calidad`), `channels` a Canales e `integrations` a
+`advanced` a Avanzado, `quality` al bloque «Modelo» de Avanzado
+(`#agente-calidad`), `channels` a Canales e `integrations` a
 Conectores (`#agente-conectores`). Cada tipo de aviso de la 047 tiene sus
 palabras en `i18n/lanes/notices.ts` (`render.test.ts` comprueba que ninguno queda
 «desconocido»); si el aviso trae el nombre del agente (`agent`), la variante
@@ -524,14 +523,23 @@ Lo que apaga una persona se queda apagado: ni guardar «Ajustes» ni volver a au
 lo traen de vuelta (`connector_service.enable_booking_once`,
 `switched_off_by_a_person`, que lee `console.capability.update` con su `agent_id`).
 
-**Avanzado: el modelo lo gestiona Auphere** (spec 047, requisito 64, D55): mientras
-no exista la gestión de modelos en el panel de operador, Avanzado no enseña
-«Calidad» ni «Fijar un modelo»; dice en una línea que el modelo de este agente lo
-gestiona Auphere (`#agente-calidad`, adonde siguen llegando los avisos
-`model.retirement` y `model.price_change`). `agent-model-quality.tsx` y sus pruebas
-se quedan, sin montar, para cuando vuelva (64.4). La API lo sostiene: un cambio de
-política pedido desde la consola (`PATCH …/draft` con otra `model_policy`, `POST
-…/quality/check`) responde `409 model_policy_managed` (D64).
+**Avanzado › Modelo** (spec 065; retira el requisito 64 de la 047 solo para el modelo
+de respuesta): quien tiene `agents:write` elige con qué modelo responde cada agente
+(`agent-model-select.tsx`, `GET/PUT /console/clients/{ref}/agents/{agent_id}/model`).
+Es un ajuste vivo: vale desde el siguiente mensaje, sin publicar versión ni lanzar
+pruebas, y se audita (`console.agent.model.update`). La lista es lo que el partner
+paga: los modelos de su cuenta que el agente puede ejecutar, del más barato al más
+caro, con un precio estimado por cada 1.000 respuestas (con lo que gastó el agente la
+última semana o, sin consumo, con una conversación típica). El que responde sale
+elegido y lleva «Ahora»; no se dice de dónde sale ni se ofrece «el de Auphere». Si
+responde con uno fuera de la lista, una línea lo dice («Auphere eligió…» o «ya no se
+ofrece») y no se puede volver a él. Si el elegido no puede usar las Skills del agente,
+un aviso dice con cuál responde mientras tanto, y guardar ese lo deja como elegido.
+Con `agents:read`, la lista se ve apagada. Sigue en `#agente-calidad`, adonde llegan
+los avisos `model.retirement` y `model.price_change`. «Calidad» y «Fijar un modelo»
+siguen sin montar (`agent-model-quality.tsx`), y un cambio de política desde la
+consola (`PATCH …/draft` con otra `model_policy`, `POST …/quality/check`) sigue
+respondiendo `409 model_policy_managed` (D64).
 
 **Solo lo que tenemos** (spec 047, enmienda del 2026-10-30, T228; requisitos 65.3,
 65.4, 65.7, 65.8 y 65.9; contrato en `contracts/console-api.md` §11). Un agente

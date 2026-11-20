@@ -175,8 +175,10 @@ async def test_playground_scrubs_vendor_stack_from_the_stream() -> None:
 
 
 def _rows(*extra: dict[str, object]) -> list[dict[str, object]]:
-    """Lo que hoy siembran las migraciones (0072, 0076, 0095, 0180), como filas."""
-    labels = dict(respond_catalog.BOOT_OFFER)
+    """Lo que siembran las migraciones (0072, 0076, 0095, 0180, 0238), como filas: Sol,
+    Terra y Luna habilitados; los de Anthropic, ofrecibles sin habilitar."""
+    labels = dict(respond_catalog.BOOT_OFFERABLE)
+    enabled = {m for m, _ in respond_catalog.BOOT_OFFER}
     prices = {"openai/gpt-5.6-sol": 4, "openai/gpt-5.6-terra": 2, "openai/gpt-5.6-luna": 0.2}
     seeded: list[dict[str, object]] = [
         {
@@ -184,6 +186,7 @@ def _rows(*extra: dict[str, object]) -> list[dict[str, object]]:
             "status": "active",
             "offer_label": labels.get(m),
             "price_input_per_mtok": prices.get(m),
+            "respond_enabled_at": "2026-11-20" if m in enabled else None,
         }
         for m in respond_catalog.BOOT_HOP_MODEL_IDS
     ]
@@ -191,23 +194,30 @@ def _rows(*extra: dict[str, object]) -> list[dict[str, object]]:
 
 
 def test_the_offer_and_the_hop_catalog_are_read_from_model_profiles() -> None:
-    """Una fila nueva se ofrece y se ejecuta sin desplegar; una retirada deja de
+    """Un modelo habilitado se ofrece y se ejecuta sin desplegar; una retirada deja de
     ejecutarse. Y los nombres que ya importaron los llamadores lo ven: son vistas
-    del catálogo, no copias."""
+    del catálogo, no copias. Spec 065: sin perfil de llamada no se ofrece."""
     new = {
         "model_id": "prov/modelo-nuevo",
         "status": "active",
         "offer_label": "Nuevo",
         "price_input_per_mtok": 0.1,
+        "respond_enabled_at": "2026-11-20",
     }
     rows = [
         {**r, "status": "retired"} if r["model_id"] == "anthropic/claude-sonnet-4-6" else r
         for r in _rows(new)
     ]
+    rows = [
+        {**r, "respond_enabled_at": "2026-11-20", "price_input_per_mtok": 0.1}
+        if r["model_id"] == "anthropic/claude-haiku-5-5"
+        else r
+        for r in rows
+    ]
     try:
         respond_catalog.refresh_from_rows(rows)
-        assert ("prov/modelo-nuevo", "Nuevo") in RESPOND_MODELS
-        assert "prov/modelo-nuevo" in RESPOND_MODEL_ID_SET
+        assert ("anthropic/claude-haiku-5-5", "Claude Haiku 5.5") in RESPOND_MODELS
+        assert "prov/modelo-nuevo" not in RESPOND_MODEL_ID_SET, "sin perfil no se ofrece"
         assert require_hop_model("prov/modelo-nuevo") == "prov/modelo-nuevo"
         assert "anthropic/claude-sonnet-4-6" not in HOP_MODEL_ID_SET
         assert "anthropic/claude-sonnet-4-6" not in HOP_MODEL_IDS
@@ -218,7 +228,7 @@ def test_the_offer_and_the_hop_catalog_are_read_from_model_profiles() -> None:
             "openai/gpt-5.6-sol",
             "openai/gpt-5.6-terra",
             "openai/gpt-5.6-luna",
-            "prov/modelo-nuevo",
+            "anthropic/claude-haiku-5-5",
         ]
         assert dict(RESPOND_MODELS)["openai/gpt-5.6-terra"] == "Terra"
     finally:
@@ -234,7 +244,14 @@ def test_only_active_rows_are_offered_and_retiring_ones_still_run() -> None:
         {**r, "status": "retiring"} if r["model_id"] == "openai/gpt-5.6-luna" else r
         for r in _rows()
     ]
-    rows.append({"model_id": "prov/en-pruebas", "status": "certifying", "offer_label": "Pruebas"})
+    rows.append(
+        {
+            "model_id": "prov/en-pruebas",
+            "status": "certifying",
+            "offer_label": "Pruebas",
+            "respond_enabled_at": "2026-11-20",
+        }
+    )
     rows.append({"model_id": "prov/borrador", "status": "draft", "offer_label": None})
     rows.append({"model_id": "prov/fuera", "status": "unavailable", "offer_label": None})
     try:
@@ -266,3 +283,62 @@ def test_the_boot_lists_are_the_seeded_rows_and_only_a_fallback() -> None:
     respond_catalog.reset()
     assert set(RESPOND_MODEL_ID_SET) == {m for m, _ in respond_catalog.BOOT_OFFER}
     assert set(HOP_MODEL_ID_SET) == set(respond_catalog.BOOT_HOP_MODEL_IDS)
+
+
+# ── spec 065, T008: ofrecible y ofrecido (requisitos 1.2, 1.3, 7.4) ──────────
+
+
+def test_claude_is_offerable_but_not_offered_until_enabled() -> None:
+    try:
+        respond_catalog.refresh_from_rows(_rows())
+        claude = {
+            "anthropic/claude-opus-5-5",
+            "anthropic/claude-sonnet-5-5",
+            "anthropic/claude-haiku-5-5",
+        }
+        assert claude <= set(respond_catalog.OFFERABLE_MODEL_ID_SET)
+        assert not claude & set(RESPOND_MODEL_ID_SET)
+        assert set(RESPOND_MODEL_ID_SET) == {m for m, _ in respond_catalog.BOOT_OFFER}
+        assert claude <= set(HOP_MODEL_ID_SET), "sin habilitar, sigue siendo ejecutable"
+    finally:
+        respond_catalog.reset()
+
+
+def test_enabling_a_model_offers_it() -> None:
+    rows = [
+        {**r, "respond_enabled_at": "2026-11-21"}
+        if r["model_id"] == "anthropic/claude-sonnet-5-5"
+        else r
+        for r in _rows()
+    ]
+    try:
+        respond_catalog.refresh_from_rows(rows)
+        assert "anthropic/claude-sonnet-5-5" in RESPOND_MODEL_ID_SET
+        assert "anthropic/claude-opus-5-5" not in RESPOND_MODEL_ID_SET
+    finally:
+        respond_catalog.reset()
+
+
+def test_a_reader_that_forgets_the_gate_offers_nothing() -> None:
+    """Falla cerrado: una lectura sin ``respond_enabled_at`` no ofrece nada."""
+    rows = [{k: v for k, v in r.items() if k != "respond_enabled_at"} for r in _rows()]
+    try:
+        respond_catalog.refresh_from_rows(rows)
+        assert set(RESPOND_MODEL_ID_SET) == set()
+        assert set(respond_catalog.OFFERABLE_MODEL_ID_SET), "lo ofrecible no depende de la puerta"
+    finally:
+        respond_catalog.reset()
+
+
+def test_the_agent_default_travels_with_the_catalog() -> None:
+    try:
+        assert respond_catalog.agent_respond_default() == SOL_MODEL_ID
+        respond_catalog.refresh_from_rows(_rows(), agent_default="anthropic/claude-haiku-5-5")
+        assert respond_catalog.agent_respond_default() == "anthropic/claude-haiku-5-5"
+        respond_catalog.refresh_from_rows(_rows())
+        assert respond_catalog.agent_respond_default() == "anthropic/claude-haiku-5-5", (
+            "una lectura sin el ajuste deja el que había"
+        )
+    finally:
+        respond_catalog.reset()
+    assert respond_catalog.agent_respond_default() == SOL_MODEL_ID

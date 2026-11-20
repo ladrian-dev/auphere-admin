@@ -88,7 +88,18 @@ async def eval_world(db_session, console_world, belt_for) -> dict[str, Any]:
 
     builder = await add_console_member(db_session, partner_id=a["partner_id"], role="builder")
 
-    side_a = {**a, "twin_ref": twin_ref, "twin_tenant_id": twin_tenant}
+    # Spec 065: el modelo es de cada agente; los casos lo nombran con ``$a.agent_id``.
+    from nexus_api.core.tenant_context import tenant_scoped_session
+    from nexus_api.db.base import get_sessionmaker
+    from nexus_api.db.models import Agent
+
+    async with get_sessionmaker()() as scoped, tenant_scoped_session(scoped, a["tenant_id"]):
+        agent = Agent(tenant_id=a["tenant_id"], name="Recepción")
+        scoped.add(agent)
+        await scoped.commit()
+        agent_id = str(agent.id)
+
+    side_a = {**a, "twin_ref": twin_ref, "twin_tenant_id": twin_tenant, "agent_id": agent_id}
     catalogue = await _catalogue_names(await belt_for(side_a, max_calls=8), a["ref"])
 
     world = {

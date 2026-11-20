@@ -81,6 +81,10 @@ EXCLUDED_SOURCES: Final[dict[str, str]] = {
         "reserva). No elige modelo para ninguna tarea; las reservas habilitadas entran en "
         "el registro como usos (T056)"
     ),
+    "nexus_api/services/agent_model.py": (
+        "spec 065: la gama de cada modelo para la consola y el turno típico de la "
+        "estimación. No elige modelo para ninguna tarea"
+    ),
 }
 
 
