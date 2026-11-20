@@ -201,6 +201,19 @@ El equipo puede demostrar, permiso por permiso, que Auphere usa lo que pide, y e
 4. El kit DEBE incluir la comprobación previa de las direcciones de privacidad, condiciones y eliminación de datos, y de las instrucciones de prueba de la app.
 5. IF alguna llamada de prueba sale con credenciales o secretos visibles THEN el vídeo NO DEBE publicarse.
 
+### Requisito 7 — Lo que dice la consola al abrir a todos *(enmienda del 2026-11-20)*
+
+**Historia de usuario:** Como partner que conecta Instagram o Messenger por primera vez, quiero que la consola me diga lo que de verdad va a pasar, para no descubrirlo con un cliente.
+
+**Origen:** auditoría de la consola en staging del 2026-11-20, antes de abrir los canales a todos los partners (fase 7 de `tasks.md`). Decisión del owner del mismo día: se hacen antes de abrir.
+
+#### Criterios de aceptación
+
+1. IF el canal no tiene la plantilla de aviso aprobada AND Auphere no tiene un número de avisos que pueda enviar THEN la página del canal DEBE decir que los avisos por WhatsApp no pueden salir y que llegan por correo y por la Bandeja, y NO DEBE decir que salen del número de avisos de Auphere. Vale para WhatsApp, Instagram y Messenger: enmienda el requisito 33.3 de la spec 047.
+2. WHILE la consola espera a la ventana de Meta para conectar un canal THEN DEBE ofrecer «Cancelar», también con Escape. WHEN se cancela THEN la consola DEBE volver al paso anterior sin crear nada, y IF Meta devuelve después la autorización THEN la consola NO DEBE conectar el canal con ella.
+3. WHEN una persona abre en la Bandeja una conversación de Instagram o Messenger que atiende el agente AND han pasado más de 24 horas desde el último mensaje del contacto AND Human Agent está activo AND faltan menos de 7 días THEN la Bandeja DEBE decir que el agente ya no puede responder, que una persona puede hacerlo tomando el control, y hasta cuándo.
+4. WHEN se pasa un canal de Instagram o Messenger a otro agente THEN el diálogo DEBE nombrarlo como canal, no como número.
+
 ### Entidades clave
 
 - **Canal de Instagram / de Messenger**: una cuenta profesional o una Página conectada a **un** cliente. Pertenece al tenant del cliente (columna de tenant, RLS). Guarda su estado, su acceso cifrado y la última comprobación.

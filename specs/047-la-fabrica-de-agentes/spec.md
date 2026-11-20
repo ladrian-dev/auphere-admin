@@ -1727,6 +1727,8 @@ _Enmendado por la spec 063 (2.6): un agente publicado cuyo único número está 
 5. Los disparadores del escalado (cuándo pasa a una persona) DEBEN seguir en el agente. La página del canal DEBE mostrarlos en solo lectura, con un enlace al agente.
 6. IF un canal no tiene destinatarios THEN la revisión del agente DEBE avisarlo.
 
+> **Enmienda del 2026-11-20 (spec 049, requisito 7.1, decisión de Luis):** 33.3 cuenta con que Auphere siempre tiene número de avisos, y en producción no lo tiene a propósito. Cuando el canal no tiene la plantilla aprobada y Auphere no tiene un número de avisos que pueda enviar, la página del canal dice que los avisos por WhatsApp no pueden salir y que llegan por correo y por la Bandeja. Vale también para Instagram y Messenger, que nunca tienen plantilla. Ver `specs/049-meta-instagram-messenger/spec.md`, requisito 7.
+
 ### Requisito 34 — Pasar un número, pausar y desconectar
 
 **Historia de usuario:** Como partner, quiero mover un número de un agente a otro, pausarlo o desconectarlo desde su menú, para reorganizar la atención sin perder el historial.
