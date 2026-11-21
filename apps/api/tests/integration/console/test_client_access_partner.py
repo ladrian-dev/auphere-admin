@@ -142,7 +142,8 @@ async def test_the_owner_opens_panel_and_reservas_and_signs_the_audit(
     assert row.actor == "console:owner-a@example.com"
     items = (await client.get("/console/audit?lang=es", headers=a["headers"]())).json()["items"]
     (line,) = [i for i in items if i["action"] == "client_access.updated"]
-    assert line["summary"].startswith("owner-a@example.com cambió el acceso de")
+    # Spec 073 (1.4): con su nombre, no con su correo.
+    assert line["summary"].startswith("Owner A cambió el acceso de")
     assert "Auphere" not in line["summary"]
 
 

@@ -467,6 +467,10 @@ export type AuditEntry = {
   actor: string;
   /** Spec 029: who wrote it, so the row draws a face or an icon. */
   actor_kind?: "person" | "companion" | "auphere" | "api_key" | "machine" | "system";
+  /** Spec 073 (1.4): la persona por su nombre (o su correo, si no se sabe). `actor` es lo que usa el filtro. */
+  actor_name?: string | null;
+  /** Spec 073 (1.3): del equipo del partner o de un cliente. */
+  actor_scope?: "partner" | "client" | null;
   action: string;
   category?: string | null;
   /** `critical` marks what cannot be undone: deleting a client, revoking a key. */

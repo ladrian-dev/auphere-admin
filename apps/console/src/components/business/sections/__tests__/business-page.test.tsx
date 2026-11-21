@@ -345,4 +345,81 @@ describe("BusinessSectionsView", () => {
     expect(screen.queryByRole("button", { name: /^Guardar/ })).toBeNull();
     expect(screen.getAllByText("Solo lectura").length).toBeGreaterThan(0);
   });
+
+  // ── Spec 073 (§4): Negocio que se lee ────────────────────────────────────
+  const web = (review: "pending" | "confirmed", translated: string | null = null) => ({
+    source: "web" as const,
+    by: null,
+    origin: "system" as const,
+    at: "2026-11-20T10:00:00Z",
+    source_url: "https://cultorbarber.com",
+    translated_from: translated,
+    review,
+  });
+  const readRecord = () =>
+    ok({
+      spec: {},
+      valid: true,
+      problems: [],
+      sections: [],
+      provenance: { "/services/0": web("pending", "en"), "/services/1": web("pending", "en"), "/locations/0": web("confirmed") },
+      suggestions: [],
+      allowed: ["edit" as const],
+    });
+  const withServices = (names: string[]) =>
+    ok({
+      ...SERVICES,
+      items: names.map((name, i) => ({
+        id: `s${i}`,
+        name,
+        description: null,
+        category: null,
+        bookable: false,
+        duration_min: null,
+        price: { kind: "amount" as const, amount_minor: 1000 + i },
+        currency: "EUR",
+        staff: "all" as const,
+        agents: { mode: "all_agents" as const, agent_ids: [] },
+        used_by: [],
+        archived: false,
+      })),
+    });
+
+  it("spec 073 (4.1): el buscador filtra Servicios y dice cuántos encuentra", async () => {
+    const user = userEvent.setup();
+    page({ services: withServices(["Corte clásico", "Afeitado", "Corte niño"]) });
+    await user.type(screen.getByRole("searchbox", { name: "Buscar en Negocio" }), "corte");
+    expect(screen.getByRole("status", { name: "Resultados de la búsqueda" })).toHaveTextContent("2 servicios");
+    const services = screen.getByRole("region", { name: "Servicios" });
+    expect(within(services).getByText("Corte clásico")).toBeVisible();
+    expect(within(services).queryByText("Afeitado")).toBeNull();
+  });
+
+  it("spec 073 (4.5): la barra dice cuánto falta por revisar y el índice, cuántos en cada sección", () => {
+    page({ record: readRecord() });
+    expect(screen.getByRole("status", { name: "Revisión de lo leído" })).toHaveTextContent("1 de 3 datos revisados");
+    const index = screen.getByRole("navigation", { name: "Secciones de Negocio" });
+    expect(within(index).getByRole("link", { name: /Servicios.*2 por revisar/ })).toBeVisible();
+  });
+
+  it("spec 073 (4.5): «Marcar todo como correcto» pregunta y confirma cada sección leída", async () => {
+    const user = userEvent.setup();
+    page({ record: readRecord() });
+    await user.click(screen.getByRole("button", { name: "Marcar todo como correcto" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("1 sección");
+    await user.click(within(dialog).getByRole("button", { name: "Marcar como correcto" }));
+    expect(confirmSection).toHaveBeenCalledWith({ ref: "barberia-cultor", section: "services" });
+    expect(await screen.findByText("Revisado: ya es tuyo.")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Servicios" })).queryByText("Leído de la web · revísalo")).toBeNull();
+  });
+
+  it("spec 073 (4.6): la zona horaria y la moneda, cada una con su etiqueta; lo leído en inglés lo dice", () => {
+    page({ record: readRecord() });
+    const basics = screen.getByRole("region", { name: "Datos básicos" });
+    expect(within(basics).getByText("Europe/Madrid")).toBeVisible();
+    expect(within(basics).getByText("Moneda de los precios")).toBeVisible();
+    expect(within(basics).getByText("EUR")).toBeVisible();
+    expect(within(screen.getByRole("region", { name: "Servicios" })).getByText("Leído en inglés")).toBeVisible();
+  });
 });

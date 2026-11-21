@@ -7,7 +7,7 @@ import * as React from "react";
 
 import { Button, StatusBadge, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, cn } from "@nexus/ui";
 
-import { actorName, initials, splitActor, whenLabel } from "@/components/audit/audit-model";
+import { actorName, dayLabel, groupByDay, initials, splitActor, timeLabel } from "@/components/audit/audit-model";
 import { moreLikeThisQuery } from "@/components/audit/audit-query";
 import { RowActions, type RowAction } from "@/components/row-actions";
 import { useLocale, useT } from "@/i18n/client";
@@ -32,6 +32,8 @@ type Props = {
   query: Record<string, string>;
   people: Record<string, string>;
   categories: Record<string, string>;
+  /** Spec 073 (1.3): el correo de quien mira, para decir «tú». */
+  me?: string;
 };
 
 /**
@@ -45,17 +47,19 @@ type Props = {
  * (49.1, «{n} más como esta» en una fila hija). La consola las volvía a juntar
  * encima y salía «2 más como esta1 más como esta».
  */
-export function AuditTable({ first, query, people, categories }: Props) {
+export function AuditTable({ first, query, people, categories, me }: Props) {
   const t = useT();
   const locale = useLocale();
   const timeZone = useTimeZone();
   const [items, setItems] = React.useState<AuditEntry[]>(first.items);
   const [cursor, setCursor] = React.useState<string | null>(first.next_cursor);
   const [state, setState] = React.useState<"idle" | "loading" | "error">("idle");
-  const when = React.useCallback(
-    (at: string) => whenLabel(at, new Date(), timeZone, locale, { today: t("hu.audit.today"), yesterday: t("hu.audit.yesterday") }),
-    [timeZone, locale, t],
-  );
+  // Spec 073 (1.2): el día va en su fila de grupo; cada fila, solo la hora.
+  const when = React.useCallback((at: string) => timeLabel(at, timeZone, locale), [timeZone, locale]);
+  const day = (at: string) => {
+    const label = dayLabel(at, new Date(), timeZone, locale, { today: t("hu.audit.today"), yesterday: t("hu.audit.yesterday") });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  };
 
   async function older() {
     if (!cursor) return;
@@ -75,13 +79,15 @@ export function AuditTable({ first, query, people, categories }: Props) {
 
   return (
     <div className="overflow-hidden rounded-lg bg-card ring-1 ring-foreground/10" data-slot="audit-card">
-      <Table aria-label={t("audit.title")}>
+      {/* Spec 073 (1.1): tabla fija. «Qué pasó» toma lo que queda y lo demás se corta
+          con su texto entero en `title`: a 1280 px no se desplaza de lado. */}
+      <Table aria-label={t("audit.title")} className="table-fixed">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <Head className="w-20 md:w-36">{t("hu.audit.col.when")}</Head>
+            <Head className="w-16 md:w-20">{t("hu.audit.col.when")}</Head>
             <Head className="hidden w-44 md:table-cell">{t("hu.audit.col.who")}</Head>
             <Head>{t("hu.audit.col.what")}</Head>
-            <Head className="hidden w-40 md:table-cell">{t("hu.audit.col.client")}</Head>
+            <Head className="hidden w-36 md:table-cell">{t("hu.audit.col.client")}</Head>
             <Head className="hidden w-32 md:table-cell">{t("hu.audit.col.category")}</Head>
             <Head className="w-12 text-right">
               <span className="sr-only">{t("hu.audit.col.actions")}</span>
@@ -89,8 +95,17 @@ export function AuditTable({ first, query, people, categories }: Props) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {items.map((item) => (
-            <Row key={item.id} item={item} when={when} people={people} categories={categories} />
+          {groupByDay(items, timeZone).map((group) => (
+            <React.Fragment key={group.key}>
+              <TableRow className="bg-muted/50 hover:bg-muted/50" data-slot="audit-day">
+                <TableHead scope="colgroup" colSpan={6} className="h-9 px-4 text-xs font-medium text-muted-foreground">
+                  {day(group.items[0]!.at)}
+                </TableHead>
+              </TableRow>
+              {group.items.map((item) => (
+                <Row key={item.id} item={item} when={when} people={people} categories={categories} me={me} />
+              ))}
+            </React.Fragment>
           ))}
         </TableBody>
       </Table>
@@ -127,9 +142,9 @@ function personFilter(item: AuditEntry): string | null {
   return null;
 }
 
-type Cells = { item: AuditEntry; when: (at: string) => string; people: Record<string, string>; categories: Record<string, string> };
+type Cells = { item: AuditEntry; when: (at: string) => string; people: Record<string, string>; categories: Record<string, string>; me?: string };
 
-function Row({ item, when, people, categories }: Cells) {
+function Row({ item, when, people, categories, me }: Cells) {
   const t = useT();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -150,38 +165,59 @@ function Row({ item, when, people, categories }: Cells) {
   return (
     <>
       <TableRow>
-        <EntryCells item={item} when={when} people={people} categories={categories} />
+        <EntryCells item={item} when={when} people={people} categories={categories} me={me} />
         <TableCell className="px-4 py-2 text-right">
           {actions.length > 0 ? <RowActions actions={actions} menu ariaLabel={t("hu.audit.rowMenu")} /> : null}
         </TableCell>
       </TableRow>
-      {item.more_like_this ? <MoreLikeThis item={item} when={when} people={people} categories={categories} /> : null}
+      {item.more_like_this ? <MoreLikeThis item={item} when={when} people={people} categories={categories} me={me} /> : null}
     </>
   );
 }
 
 /** Las cinco celdas de un registro: la fila principal y sus hijas («más como esta») las comparten. */
-function EntryCells({ item, when, people, categories, sub = false }: Cells & { sub?: boolean }) {
+/**
+ * Spec 073 (1.3): qué es quien lo hizo, en la segunda línea de «Persona»: «tú ·
+ * partner», «partner», «cliente · Flor y Encanto» o «plataforma» para Auphere.
+ */
+function roleOf(t: ReturnType<typeof useT>, item: AuditEntry, me?: string): string | null {
+  if (item.actor_kind === "auphere") return t("audit.v2.role.auphere");
+  if (item.actor_scope === "client") return item.client_name ? t("audit.v2.role.client", { client: item.client_name }) : t("audit.v2.role.client.none");
+  if (item.actor_scope === "partner") return me && item.actor.toLowerCase() === me.toLowerCase() ? t("audit.v2.role.me") : t("audit.v2.role.partner");
+  return null;
+}
+
+function EntryCells({ item, when, people, categories, me, sub = false }: Cells & { sub?: boolean }) {
   const t = useT();
-  const name = actorName(item.actor, people);
+  const name = actorName(item.actor, people, item.actor_name);
   const kind = item.actor_kind ?? "system";
-  const { rest } = splitActor(item.summary, item.actor);
+  const role = roleOf(t, item, me);
+  // La frase empieza por el nombre (spec 073) o, en filas de antes, por el correo.
+  const byName = splitActor(item.summary, name);
+  const { rest } = byName.lead ? byName : splitActor(item.summary, item.actor);
   const category = item.category ? categories[item.category] : undefined;
   const mono = kind === "api_key" || kind === "machine";
   return (
     <>
-      <TableCell className={cn("py-3 pr-2 pl-4 text-xs whitespace-normal tabular-nums md:px-4 md:text-sm md:whitespace-nowrap", sub && "text-muted-foreground")}>
+      <TableCell className={cn("py-3 pr-2 pl-4 text-xs whitespace-nowrap tabular-nums md:px-4 md:text-sm", sub && "text-muted-foreground")}>
         <time dateTime={item.at}>{when(item.at)}</time>
       </TableCell>
       <TableCell className="hidden px-4 py-3 md:table-cell">
         <span className="flex min-w-0 items-center gap-2">
           <Who kind={kind} name={name} />
-          <span className={cn("truncate", mono && "font-mono")} title={item.actor}>
-            {name}
+          <span className="grid min-w-0">
+            <span className={cn("truncate", mono && "font-mono")} title={name === item.actor ? name : `${name} · ${item.actor}`}>
+              {name}
+            </span>
+            {role ? (
+              <span className="truncate text-xs text-muted-foreground" data-slot="audit-role" title={role}>
+                {role}
+              </span>
+            ) : null}
           </span>
         </span>
       </TableCell>
-      <TableCell className="px-4 py-3 whitespace-normal md:min-w-80">
+      <TableCell className="px-4 py-3 whitespace-normal">
         {/* On a phone the person, client and category columns fold in here:
             a 950 px table scrolled sideways is not readable. */}
         <span className="font-medium md:hidden">{name} </span>
@@ -199,7 +235,8 @@ function EntryCells({ item, when, people, categories, sub = false }: Cells & { s
         {item.external_client_ref && item.client_name ? (
           <Link
             href={`/clients/${encodeURIComponent(item.external_client_ref)}`}
-            className="font-medium text-primary-text underline decoration-primary-text/40 underline-offset-4 hover:decoration-primary-text"
+            title={item.client_name}
+            className="block truncate font-medium text-primary-text underline decoration-primary-text/40 underline-offset-4 hover:decoration-primary-text"
           >
             {item.client_name}
           </Link>
@@ -222,9 +259,16 @@ function EntryCells({ item, when, people, categories, sub = false }: Cells & { s
 function Category({ item, label }: { item: AuditEntry; label: string | undefined }) {
   const t = useT();
   const sensitive = Boolean(item.sensitive) || item.severity === "critical";
-  if (!sensitive) return label ? <StatusBadge tone="muted">{label}</StatusBadge> : null;
+  if (!sensitive)
+    return label ? (
+      <span title={label} className="inline-flex max-w-full">
+        <StatusBadge tone="muted" className="max-w-full truncate">
+          {label}
+        </StatusBadge>
+      </span>
+    ) : null;
   return (
-    <span title={t("hu.audit.sensitive")} className="inline-flex">
+    <span title={t("hu.audit.sensitive")} className="inline-flex max-w-full">
       <StatusBadge tone="danger" dot={false} className="text-status-danger-text">
         <CircleAlert aria-hidden="true" className="size-3" />
         <span data-slot="audit-sensitive">{label ?? t("audit.v2.sensitive")}</span>
@@ -259,7 +303,7 @@ function Who({ kind, name }: { kind: NonNullable<AuditEntry["actor_kind"]>; name
  * la tabla (prototipo). Al abrirla se piden sin juntar (`group=false`) y se
  * enseñan como filas, sin «⋯», con «Ocultar» debajo.
  */
-function MoreLikeThis({ item, when, people, categories }: Cells) {
+function MoreLikeThis({ item, when, people, categories, me }: Cells) {
   const t = useT();
   const locale = useLocale();
   const id = React.useId();
@@ -314,7 +358,7 @@ function MoreLikeThis({ item, when, people, categories }: Cells) {
       ) : (
         (rows ?? []).map((r, i) => (
           <TableRow key={r.id} id={i === 0 ? id : undefined} className={sub} data-slot="audit-subrow">
-            <EntryCells item={r} when={when} people={people} categories={categories} sub />
+            <EntryCells item={r} when={when} people={people} categories={categories} me={me} sub />
             <TableCell className="px-4 py-2" />
           </TableRow>
         ))

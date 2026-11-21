@@ -279,7 +279,7 @@ export function ClientsListV2({
                           <BagCell bag={row.bag} />
                         </td>
                         <td className="px-3 py-4 text-right">
-                          <ClientMenu refId={row.external_client_ref} name={row.name} allowed={row.allowed} afterDelete={null} />
+                          <ClientMenu refId={row.external_client_ref} name={row.name} allowed={row.allowed} deleteBlocked={row.delete_blocked ?? null} afterDelete={null} />
                         </td>
                       </tr>
                     );

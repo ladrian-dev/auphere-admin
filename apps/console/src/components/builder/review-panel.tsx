@@ -14,6 +14,7 @@ import type { MessageKey } from "@/i18n/messages";
 import type { AgentReview, ReviewCheck, ReviewFinding } from "@/lib/backend/agent-quality-types";
 
 import { NotReadyList } from "./agenda-row";
+import { groupNoPrice } from "./agent-proto-model";
 import { blockTitleKey } from "./block-view";
 import { blockOfPointer, type Result } from "./builder-model";
 import type { DecideProposal } from "./proposals";
@@ -220,7 +221,7 @@ function ReviewView({
             </h3>
             {review.findings.length ? (
               <ul aria-labelledby="review-findings" className="grid min-w-0 gap-2" data-slot="review-findings">
-                {review.findings.map((finding, i) => (
+                {groupNoPrice(review.findings).findings.map((finding, i) => (
                   <FindingRow
                     key={`${finding.code}-${i}`}
                     refId={refId}
@@ -233,6 +234,18 @@ function ReviewView({
                     onApply={(id) => void apply(id)}
                   />
                 ))}
+                {/* Spec 073 (3b.4): muchos servicios sin precio, una línea. */}
+                {groupNoPrice(review.findings).noPrice ? (
+                  <li className="flex min-w-0 items-start gap-2 text-sm" data-slot="no-price">
+                    <TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0 text-warning" />
+                    <span className="min-w-0 text-pretty">
+                      {t("builder.review.noPrice.many", { n: groupNoPrice(review.findings).noPrice })}{" "}
+                      <Link href={`/clients/${encodeURIComponent(refId)}/business#business-services`} className="font-medium text-primary-text underline underline-offset-4 hover:no-underline">
+                        {t("builder.review.noPrice.fix")}
+                      </Link>
+                    </span>
+                  </li>
+                ) : null}
               </ul>
             ) : (
               <p className="text-sm text-muted-foreground">{t("builder.review.none")}</p>

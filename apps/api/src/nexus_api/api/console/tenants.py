@@ -464,6 +464,7 @@ def _row_v2(
         agents_summary=_agents_summary(detail),
         bag=_bag_out(bag),
         allowed=blocks.client_actions(principal.permissions, archived=archived),  # type: ignore[arg-type]
+        delete_blocked=blocks.client_delete_blocked(principal.permissions, archived=archived),  # type: ignore[arg-type]
     )
 
 
@@ -561,6 +562,10 @@ async def _detail_v2(scope: ClientScope) -> ClientDetailOut:
         lifecycle=lifecycle_of(scope.tenant.status),
         revision=revision,
         allowed=blocks.client_actions(  # type: ignore[arg-type]
+            scope.principal.permissions,
+            archived=scope.tenant.status is TenantStatus.ARCHIVED,
+        ),
+        delete_blocked=blocks.client_delete_blocked(  # type: ignore[arg-type]
             scope.principal.permissions,
             archived=scope.tenant.status is TenantStatus.ARCHIVED,
         ),
@@ -1313,6 +1318,9 @@ async def get_client_panel(
             networks=networks,  # type: ignore[arg-type]
         ),
         allowed=blocks.client_actions(  # type: ignore[arg-type]
+            scope.principal.permissions, archived=tenant.status is TenantStatus.ARCHIVED
+        ),
+        delete_blocked=blocks.client_delete_blocked(  # type: ignore[arg-type]
             scope.principal.permissions, archived=tenant.status is TenantStatus.ARCHIVED
         ),
     )

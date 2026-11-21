@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.api.deps import get_db_session
 from nexus_api.core.console_auth import ConsolePrincipal, require_console_principal
 from nexus_api.db.models import AuditLog, Connector, PartnerMembership, PartnerTenant
+from nexus_api.db.models.client_access import ClientMembership
 from nexus_api.services.console_reporting import csv_safe, partner_mappings, reporting_transaction
 
 from . import audit_words
@@ -181,6 +182,92 @@ async def partner_member_emails(session: AsyncSession, partner_id: uuid.UUID) ->
     return {str(user_id): str(email) for user_id, email in rows if email}
 
 
+ActorScope = Literal["partner", "client"]
+
+
+@dataclass(frozen=True)
+class AuditPeople:
+    """Spec 073 (1.3, 1.4): quién es quién en la Auditoría de **un** partner.
+
+    ``emails``: ``user_id`` → correo de su equipo (lo de siempre). ``names``:
+    correo (en minúsculas) → nombre, de su equipo y de las personas de **sus**
+    clientes. Se lee por ``partner_id`` explícito: por construcción no puede
+    traer a nadie de otro partner (garantía 1), aunque un correo coincida.
+    """
+
+    emails: dict[str, str]
+    names: dict[str, str]
+
+
+async def audit_people(session: AsyncSession, partner_id: uuid.UUID) -> AuditPeople:
+    async with session.begin():
+        team = (
+            await session.execute(
+                sa.select(
+                    PartnerMembership.user_id,
+                    PartnerMembership.email,
+                    PartnerMembership.display_name,
+                ).where(PartnerMembership.partner_id == partner_id)
+            )
+        ).all()
+        clients = (
+            await session.execute(
+                sa.select(ClientMembership.email, ClientMembership.display_name).where(
+                    ClientMembership.partner_id == partner_id
+                )
+            )
+        ).all()
+    names: dict[str, str] = {}
+    for email, name in clients:
+        if email and name and name.strip():
+            names[str(email).lower()] = name.strip()
+    # El equipo del partner manda si un correo estuviera en los dos sitios.
+    for _uid, email, name in team:
+        if email and name and name.strip():
+            names[str(email).lower()] = name.strip()
+    return AuditPeople(
+        emails={str(uid): str(email) for uid, email, _n in team if email},
+        names=names,
+    )
+
+
+def actor_scope(actor: str) -> ActorScope | None:
+    """Spec 073 (1.3): del equipo del partner o de un cliente; ``None`` si no es una persona."""
+    if actor.startswith(("console:", "companion:")):
+        return "partner"
+    if actor.startswith("client:"):
+        return "client"
+    return None
+
+
+def actor_display(actor: str, people: AuditPeople) -> str:
+    """Spec 073 (1.4): una persona, un nombre. El nombre si se conoce; si no, el
+    correo, como hasta ahora. Lo que no es una persona se dice como siempre."""
+    human = _human_actor(actor, people.emails)
+    if actor.startswith(("console:", "client:")):
+        return people.names.get(human.lower(), human)
+    if actor.startswith("companion:") and " · " in human:
+        companion, email = human.split(" · ", 1)
+        return f"{companion} · {people.names.get(email.lower(), email)}"
+    return human
+
+
+#: Spec 073 (1.6, D3): los accesos (entrar, salir, cerrar la sesión). «Solo cambios»
+#: los deja fuera. Renovar la sesión y los intentos fallidos no se escriben en la
+#: Auditoría; si un día se escriben, van aquí. ``client_phone.revoked`` (quitar un
+#: teléfono) y ``client_account.deletion_requested`` son cambios, aunque su
+#: categoría sea ``auth``: por eso es una lista de acciones y no una categoría.
+ACCESS_ACTIONS: tuple[str, ...] = (
+    "console.auth.login",
+    "console.auth.logout",
+    "client_phone.signed_in",
+    "client_phone.signed_out",
+    "client_phone.closed",
+)
+
+AuditView = Literal["changes", "all"]
+
+
 #: El valor del filtro «Auphere» de la Auditoría.
 AUPHERE_FILTER = "admin:"
 
@@ -306,6 +393,10 @@ def origin_of(row: AuditLog) -> Origin:
     said = (row.after_json or {}).get("origin")
     if isinstance(said, str) and said in _ORIGINS:
         return said  # type: ignore[return-value]
+    # Spec 073 (1.5): el teléfono del cliente es la app, también en las filas
+    # escritas antes de que lo dijeran.
+    if row.action.startswith("client_phone.") and row.actor.startswith("client:"):
+        return "app"
     kind = actor_kind(row.actor)
     if row.actor.startswith("client:"):
         return "lite_web"
@@ -387,8 +478,11 @@ def _base_stmt(
     after: datetime | None,
     before: datetime | None,
     actions: list[str] | None = None,
+    view: AuditView = "all",
 ) -> sa.Select[tuple[AuditLog]]:
     stmt = sa.select(AuditLog).where(scope, AuditLog.action.notin_(INTERNAL_ACTIONS))
+    if view == "changes":
+        stmt = stmt.where(AuditLog.action.notin_(ACCESS_ACTIONS))
     if actions is not None:
         # Spec 029: «filtrar por categoría» (spec 017 R11.5). An unknown
         # category is an empty list, and an empty IN matches nothing.
@@ -508,6 +602,9 @@ async def list_audit(
     person: str | None = Query(default=None, max_length=255, description="Spec 047: = actor"),
     days: Literal["7", "30", "90", "all"] | None = Query(default=None),
     group: bool = Query(default=True, description="«{n} más como esta»"),
+    view: AuditView = Query(
+        default="all", description="Spec 073: «changes» deja fuera los accesos"
+    ),
 ) -> AuditPageOut:
     actor = actor or person
     after = _since(days) or after
@@ -516,7 +613,8 @@ async def list_audit(
     by_tenant = {m.tenant_id: m for m in mappings}
     names_by_ref = {m.external_client_ref: m.client_name for m in mappings if m.client_name}
     vocab = await load_vocabulary(session)
-    emails = await partner_member_emails(session, partner_id)
+    people = await audit_people(session, partner_id)
+    emails = people.emails
     connectors = await connector_display_names(session)
     stmt = _base_stmt(
         _scope_filter(partner_id, mappings, client),
@@ -525,6 +623,7 @@ async def list_audit(
         after=after,
         before=before,
         actions=_actions_of(vocab, category),
+        view=view,
     )
     if cursor:
         c_ts, c_id = _decode_cursor(cursor)
@@ -562,6 +661,8 @@ async def list_audit(
                 at=row.created_at,
                 actor=_human_actor(row.actor, emails),
                 actor_kind=actor_kind(row.actor),
+                actor_name=actor_display(row.actor, people),
+                actor_scope=actor_scope(row.actor),
                 origin=origin_of(row),
                 action=row.action,
                 category=entry.category if entry else None,
@@ -579,6 +680,7 @@ async def list_audit(
                     names_by_ref=names_by_ref,
                     connector_names=connectors,
                     partner_name=principal.partner.name,
+                    actor_label=actor_display(row.actor, people),
                 ),
             )
         )
@@ -617,6 +719,7 @@ async def export_audit_csv(
     limit: int = Query(default=10_000, ge=1, le=100_000),
     person: str | None = Query(default=None, max_length=255),
     days: Literal["7", "30", "90", "all"] | None = Query(default=None),
+    view: AuditView = Query(default="all"),
 ) -> StreamingResponse:
     actor = actor or person
     after = _since(days) or after
@@ -630,7 +733,8 @@ async def export_audit_csv(
     # Se carga ENTERO antes de abrir el flujo: dentro del generador no hay
     # sesión libre para una consulta más, y resolver fila a fila sería un
     # N+1 sobre una exportación de hasta cien mil filas.
-    emails = await partner_member_emails(session, partner_id)
+    people = await audit_people(session, partner_id)
+    emails = people.emails
     stmt = (
         _base_stmt(
             _scope_filter(partner_id, mappings, client),
@@ -639,6 +743,7 @@ async def export_audit_csv(
             after=after,
             before=before,
             actions=_actions_of(vocab, category),
+            view=view,
         )
         .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
         .limit(limit)
@@ -661,7 +766,7 @@ async def export_audit_csv(
                         csv_safe(v)
                         for v in [
                             row.created_at.isoformat(),
-                            _human_actor(row.actor, emails),
+                            actor_display(row.actor, people),
                             row.action,
                             mapping.external_client_ref if mapping else "",
                             client_name or "",
@@ -675,6 +780,7 @@ async def export_audit_csv(
                                 names_by_ref=names_by_ref,
                                 connector_names=connectors,
                                 partner_name=partner_name,
+                                actor_label=actor_display(row.actor, people),
                             ),
                         ]
                     ]

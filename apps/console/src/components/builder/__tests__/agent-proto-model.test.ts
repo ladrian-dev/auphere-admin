@@ -9,6 +9,7 @@ import {
   checkOfFinding,
   editableBlocks,
   findingsByCheck,
+  groupNoPrice,
   inMore,
   rowOfBlock,
   rowOfSection,
@@ -168,13 +169,31 @@ describe("la barra flotante (§4.5)", () => {
     });
   });
 
-  it("sin ejecutar: «Borrador completo» y «Ejecutar pruebas»", () => {
+  it("sin ejecutar: «Borrador completo»; ejecutarlas se pide en la tarjeta de pruebas, no aquí (spec 073, 3b.3)", () => {
     expect(barState({ canWrite: true, preview: preview(), tests: { summary: pending, running: false, canRun: true } })).toEqual({ kind: "pending", draft: true });
+    // Sin borrador no hay nada que guardar: la barra no repite «Pruebas sin ejecutar».
+    expect(barState({ canWrite: true, preview: preview({ has_draft: false }), tests: { summary: pending, running: false, canRun: true } })).toEqual({ kind: "plain" });
   });
 
   it("sin datos de pruebas o sin poder ejecutarlas, la barra de siempre", () => {
     expect(barState({ canWrite: true, preview: preview(), tests: null })).toEqual({ kind: "plain" });
     expect(barState({ canWrite: true, preview: preview(), tests: { summary: pending, running: false, canRun: false } })).toEqual({ kind: "plain" });
     expect(barState({ canWrite: true, preview: preview(), tests: { summary: summary(), running: false, canRun: true } })).toEqual({ kind: "plain" });
+  });
+});
+
+describe("los servicios sin precio, en una línea (spec 073, 3b.4)", () => {
+  const noPrice = (name: string) => ({ code: "service_without_price", severity: "warn" as const, message: `«${name}» no tiene precio.`, fix: { kind: "link" as const, target: "business/services" } });
+  const other = { code: "hours_missing", severity: "warn" as const, message: "Sin horario." };
+
+  it("con dos o más se juntan; lo demás queda igual y en su orden", () => {
+    const { findings, noPrice: grouped } = groupNoPrice([noPrice("Tinte"), other, noPrice("Corte")]);
+    expect(grouped).toBe(2);
+    expect(findings).toEqual([other]);
+  });
+
+  it("con uno solo se deja su línea, que ya lo nombra", () => {
+    const one = [noPrice("Tinte"), other];
+    expect(groupNoPrice(one)).toEqual({ findings: one, noPrice: 0 });
   });
 });

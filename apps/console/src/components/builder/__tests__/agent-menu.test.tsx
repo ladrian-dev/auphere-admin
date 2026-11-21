@@ -11,6 +11,8 @@ import { AGENTS, CH1, CH2, COBROS, RECEPCION, REF, VENTAS, agent, fail, header, 
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
+const nav = vi.hoisted(() => ({ refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => nav }));
 vi.mock("@/app/(console)/clients/[ref]/agents/life-actions", () => ({}));
 
 const { AgentMenu } = await import("../agent-menu");
@@ -79,7 +81,35 @@ describe("el ⋯ del agente", () => {
     await user.click(within(dialog).getByRole("button", { name: "Pausar igualmente" }));
     expect(pause).toHaveBeenLastCalledWith({ ref: REF, agent: COBROS, confirm: true });
     await waitFor(() => expect(onHeader).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "paused" })));
-    expect(toast.success).toHaveBeenCalledWith("Cobros está en pausa. Los mensajes se guardan y van a la Bandeja.");
+    expect(toast.success).toHaveBeenCalledWith(
+      "Cobros está en pausa. Los mensajes se guardan y van a la Bandeja.",
+      expect.objectContaining({ action: expect.anything() }),
+    );
+  });
+
+  it("pausar trae «Deshacer», que lo reanuda (spec 073, 3.1)", async () => {
+    const user = userEvent.setup();
+    const { actions, onHeader } = menuWith(header());
+    await user.click(within(await open(user)).getByRole("menuitem", { name: "Pausar" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    const [, options] = toast.success.mock.calls[0] as [string, { action: { label: string; onClick: () => void } }];
+    expect(options.action.label).toBe("Deshacer");
+    options.action.onClick();
+    await waitFor(() => expect(actions.resume).toHaveBeenCalledWith({ ref: REF, agent: COBROS }));
+    await waitFor(() => expect(onHeader).toHaveBeenLastCalledWith(expect.objectContaining({ id: COBROS })));
+  });
+
+  it("si «Deshacer» falla lo dice y no toca la cabecera (spec 073, 3.3)", async () => {
+    const user = userEvent.setup();
+    const resume = vi.fn<Actions["resume"]>().mockResolvedValue(fail(409, "conflict"));
+    const { onHeader } = menuWith(header(), { resume });
+    await user.click(within(await open(user)).getByRole("menuitem", { name: "Pausar" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    const calls = onHeader.mock.calls.length;
+    const [, options] = toast.success.mock.calls[0] as [string, { action: { onClick: () => void } }];
+    options.action.onClick();
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(onHeader.mock.calls.length).toBe(calls);
   });
 
   it("reanudar y hacerlo agente por defecto", async () => {
@@ -138,6 +168,13 @@ describe("el ⋯ del agente", () => {
       ],
     });
     await waitFor(() => expect(onArchived).toHaveBeenCalledWith(expect.objectContaining({ lifecycle: "archived" })));
+    // Spec 073 (3.2): el aviso trae «Deshacer», que lo restaura y recarga la página.
+    const [message, options] = toast.success.mock.calls.at(-1) as [string, { action: { label: string; onClick: () => void } }];
+    expect(message).toBe("Cobros está archivado.");
+    expect(options.action.label).toBe("Deshacer");
+    options.action.onClick();
+    await waitFor(() => expect(actions.restore).toHaveBeenCalledWith({ ref: REF, agent: COBROS }));
+    await waitFor(() => expect(nav.refresh).toHaveBeenCalled());
   });
 
   it("el agente por defecto pide elegir otro antes de archivarlo (28.4)", async () => {

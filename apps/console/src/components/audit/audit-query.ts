@@ -6,7 +6,10 @@
  */
 export const PERIODS = [7, 30, 90] as const;
 
-export type AuditFilterState = { client: string; actor: string; category: string; days: string; after: string; before: string };
+/** Spec 073 (1.6): «Solo cambios» (sin los accesos) o «Todo, con accesos». */
+export type AuditView = "changes" | "all";
+
+export type AuditFilterState = { client: string; actor: string; category: string; days: string; after: string; before: string; view: AuditView };
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -19,6 +22,8 @@ export function readFilters(sp: Partial<Record<keyof AuditFilterState | "person"
     days: sp.days === "custom" || PERIODS.some((d) => String(d) === sp.days) ? (sp.days ?? "") : "",
     after: sp.after && DAY.test(sp.after) ? sp.after : "",
     before: sp.before && DAY.test(sp.before) ? sp.before : "",
+    // Spec 073 (1.6): «Solo cambios» por defecto; los accesos, al pedirlos.
+    view: sp.view === "all" ? "all" : "changes",
   };
 }
 
@@ -35,6 +40,8 @@ export function auditQuery(state: AuditFilterState, now?: Date): Record<string, 
   const before = custom && state.before ? `${state.before}T23:59:59Z` : "";
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries({ client: state.client, person: state.actor, category: state.category, days, after, before })) if (v) out[k] = v;
+  // La API, sin `view`, lo da todo: la consola siempre dice cuál quiere.
+  out.view = state.view;
   return out;
 }
 

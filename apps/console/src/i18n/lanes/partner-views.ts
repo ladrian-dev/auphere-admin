@@ -43,6 +43,12 @@ export const partnerViewsMessages = {
   "panel.v2.conversations.empty": { es: "Sin conversaciones en estos 7 días.", en: "No conversations in these 7 days." },
 
   // ── Auditoría (49.1) ──
+  // Spec 073 (1.3): qué es quien lo hizo.
+  "audit.v2.role.me": { es: "tú · partner", en: "you · partner" },
+  "audit.v2.role.partner": { es: "partner", en: "partner" },
+  "audit.v2.role.client": { es: "cliente · {client}", en: "client · {client}" },
+  "audit.v2.role.client.none": { es: "cliente", en: "client" },
+  "audit.v2.role.auphere": { es: "plataforma", en: "platform" },
   "audit.v2.origin.lite_web": { es: "Desde la web", en: "From the web" },
   "audit.v2.origin.app": { es: "Desde la app", en: "From the app" },
   "audit.v2.origin.admin": { es: "Auphere", en: "Auphere" },

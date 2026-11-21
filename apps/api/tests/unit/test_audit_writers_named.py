@@ -47,8 +47,8 @@ async def test_the_owner_sees_who_revoked_whose_access(client, console_world, db
     ).json()["items"]
     row = next(i for i in items if i["action"] == "principal.access_revoked")
     assert row["summary"] == (
-        "owner-a@example.com retiró el acceso de builder-x@example.com: "
-        "sus sesiones y sus máquinas."
+        # Spec 073 (1.4): quien lo hizo, por su nombre.
+        "Owner A retiró el acceso de builder-x@example.com: sus sesiones y sus máquinas."
     )
     assert row["actor_kind"] == "person"
     # Partner B does not see A's team.

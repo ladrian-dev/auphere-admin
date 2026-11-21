@@ -13,6 +13,8 @@ const query = z.object({
   client: z.string().max(255).optional(),
   category: z.string().max(40).optional(),
   days: z.enum(["7", "30", "90", "all"]).optional(),
+  // Spec 073 (1.6): «Solo cambios» o «Todo, con accesos».
+  view: z.enum(["changes", "all"]).optional(),
   group: z.enum(["true", "false"]).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
   after: z.string().datetime({ offset: true }).optional(),

@@ -372,8 +372,9 @@ describe("Negocio · Preguntas frecuentes (60.4, 60.5)", () => {
   it("enseña las confirmadas y las sugeridas aparte, con su marca", () => {
     page();
     const faqs = region("Preguntas frecuentes");
-    expect(within(faqs).getByText("¿Hay aparcamiento?")).toBeVisible();
-    expect(within(faqs).getByText("Sí, en la calle de atrás.")).toBeVisible();
+    // Spec 073 (4.4): la confirmada, plegada; su respuesta, al abrirla.
+    expect(within(faqs).getByRole("button", { name: "¿Hay aparcamiento?" })).toBeVisible();
+    expect(within(faqs).queryByText("Sí, en la calle de atrás.")).toBeNull();
     const fromRow = within(faqs).getByRole("listitem", { name: "¿Aceptáis niños?" });
     expect(within(fromRow).getByText("Sugerido · confirma")).toBeVisible();
     const fromWeb = within(faqs).getByRole("listitem", { name: "¿Se puede pagar con tarjeta?" });
@@ -436,20 +437,37 @@ describe("Negocio · Preguntas frecuentes (60.4, 60.5)", () => {
     expect(await within(faqs).findByText("¿Abrís en agosto?")).toBeVisible();
   });
 
+  it("spec 073 (4.4): las preguntas se pliegan; la respuesta se abre al pulsar la pregunta", async () => {
+    const user = userEvent.setup();
+    page();
+    const faqs = region("Preguntas frecuentes");
+    const question = within(faqs).getByRole("button", { name: "¿Hay aparcamiento?" });
+    expect(question).toHaveAttribute("aria-expanded", "false");
+    expect(within(faqs).queryByText(FAQS.items[0]!.a)).toBeNull();
+    await user.click(question);
+    expect(question).toHaveAttribute("aria-expanded", "true");
+    expect(within(faqs).getByText(FAQS.items[0]!.a)).toBeVisible();
+    expect(within(faqs).queryByRole("button", { name: "Editar ¿Hay aparcamiento?" })).toBeNull();
+  });
+
   it("una confirmada se edita y se quita", async () => {
     const user = userEvent.setup();
     biz.updateFaqAction.mockResolvedValue(ok({ ...FAQS, revision: 6, items: [{ ...FAQS.items[0]!, a: "Sí, gratis." }, FAQS.items[1]!] }));
     biz.archiveFaqAction.mockResolvedValue(ok({ ...FAQS, revision: 7, items: [FAQS.items[1]!] }));
     page();
     const faqs = region("Preguntas frecuentes");
-    await user.click(within(faqs).getByRole("button", { name: "Editar ¿Hay aparcamiento?" }));
+    // Spec 073 (4.4): «Editar» y «Quitar» viven en el ⋯ de cada pregunta.
+    await user.click(within(faqs).getByRole("button", { name: "Acciones de ¿Hay aparcamiento?" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Editar" }));
     const answer = within(faqs).getByRole("textbox", { name: /^Respuesta/ });
     await user.clear(answer);
     await user.type(answer, "Sí, gratis.");
     await user.click(within(faqs).getByRole("button", { name: "Guardar pregunta" }));
     expect(biz.updateFaqAction).toHaveBeenCalledWith({ ref: REF, revision: 5, id: FAQS.items[0]!.id, body: { q: "¿Hay aparcamiento?", a: "Sí, gratis." } });
+    await user.click(await within(faqs).findByRole("button", { name: "¿Hay aparcamiento?" }));
     expect(await within(faqs).findByText("Sí, gratis.")).toBeVisible();
-    await user.click(within(faqs).getByRole("button", { name: "Quitar ¿Hay aparcamiento?" }));
+    await user.click(within(faqs).getByRole("button", { name: "Acciones de ¿Hay aparcamiento?" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Quitar" }));
     expect(biz.archiveFaqAction).toHaveBeenCalledWith({ ref: REF, revision: 6, id: FAQS.items[0]!.id });
   });
 });

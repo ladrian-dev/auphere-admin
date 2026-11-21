@@ -107,6 +107,12 @@ export const builderQualityMessages = {
     en: "This run would cost about {amount} and the client’s bag has {left}. It needs some margin so the agents serving customers keep their balance.",
   },
   "builder.suite.noBag.confirm": { es: "Ver el saldo del cliente", en: "See the client’s balance" },
+  // Spec 073 (3b.4): un aviso por servicio sin precio se vuelve una línea.
+  "builder.review.noPrice.many": {
+    es: "{n} servicios no tienen precio: el agente dirá que lo confirma el equipo.",
+    en: "{n} services have no price: the agent will say the team confirms it.",
+  },
+  "builder.review.noPrice.fix": { es: "Poner precios", en: "Add prices" },
   "builder.suite.noPrice.title": { es: "No se puede calcular el coste", en: "The cost cannot be worked out" },
   "builder.suite.noPrice.body": {
     es: "Falta el precio de un modelo, y no se cobra a un cliente sin decirle cuánto. Avisa a Auphere. Repetir las pruebas que no pasan sigue disponible.",

@@ -79,6 +79,14 @@ export const agentProtoMessages = {
     en: "Simulated calendar and time · no real effects · running them all again comes out of the client’s bag",
   },
   "agentProto.tests.runAll": { es: "Ejecutar todas", en: "Run all" },
+  // Spec 073 (3b.1): la palabra del botón de cada fila; su nombre accesible sigue nombrando el bloque.
+  "agentProto.rowAction.edit": { es: "Editar", en: "Edit" },
+  "agentProto.rowAction.close": { es: "Cerrar", en: "Close" },
+  "agentProto.rowAction.view": { es: "Ver", en: "View" },
+  // Spec 073 (3b.3): cuántas ejecuta y lo que costarían.
+  "agentProto.tests.runAll.one": { es: "Ejecutar la prueba", en: "Run the test" },
+  "agentProto.tests.runAll.other": { es: "Ejecutar las {n} pruebas", en: "Run the {n} tests" },
+  "agentProto.tests.cost": { es: "Costarían unos {amount}.", en: "They would cost about {amount}." },
   "agentProto.tests.again": { es: "Repetir", en: "Run again" },
   "agentProto.tests.againAll": { es: "Repetir todas", en: "Run all again" },
   "agentProto.tests.progress": { es: "Avance de las pruebas", en: "Test progress" },
@@ -111,8 +119,6 @@ export const agentProtoMessages = {
   "agentProto.bar.passing.saved": { es: "{passed} de {total} pruebas pasan · guardado", en: "{passed} of {total} tests pass · saved" },
   "agentProto.bar.complete": { es: "Borrador completo", en: "Draft complete" },
   "agentProto.bar.completeNoTests": { es: "Borrador completo · guardar no repite las pruebas", en: "Draft complete · saving does not run the tests again" },
-  "agentProto.bar.notRun": { es: "Pruebas sin ejecutar", en: "Tests not run" },
-  "agentProto.bar.run": { es: "Ejecutar pruebas", en: "Run tests" },
   "agentProto.bar.connect": { es: "Conectar un canal", en: "Connect a channel" },
   "agentProto.bar.why": { es: "Ver por qué", en: "See why" },
   "agentProto.gate.title": { es: "Por qué no se guardó", en: "Why it was not saved" },

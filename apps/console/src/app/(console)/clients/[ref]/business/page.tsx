@@ -32,8 +32,10 @@ export async function generateMetadata() {
  * `GET /business` y se deciden en su sección. Sigue sin haber «Completar con el
  * constructor» ni nada que lo nombre (Andrés, 2026-10-28).
  */
-export default async function BusinessPage({ params }: { params: Promise<{ ref: string }> }) {
+export default async function BusinessPage({ params, searchParams }: { params: Promise<{ ref: string }>; searchParams?: Promise<{ q?: string }> }) {
   const { ref } = await params;
+  // Spec 073 (4.1): lo buscado vive en la URL.
+  const q = ((await searchParams)?.q ?? "").slice(0, 120);
   const principal = await requirePartnerPrincipal(`/clients/${ref}/business`);
   if (!can(principal.role, "clients:read")) redirect("/");
   if ((await getConsoleVersionCached(principal)) !== "v2") redirect(`/clients/${encodeURIComponent(ref)}`);
@@ -59,6 +61,7 @@ export default async function BusinessPage({ params }: { params: Promise<{ ref: 
   return (
     <div className="grid min-w-0 gap-6">
       <BusinessSectionsView
+        initialQuery={q}
         refId={ref}
         canWrite={canWrite}
         data={{ basics, locations, hours, specialDates, services, policies, faqs, sectors, sources, record }}

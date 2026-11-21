@@ -225,6 +225,8 @@ export type AuditQuery = {
   person?: string;
   days?: "7" | "30" | "90" | "all";
   group?: boolean;
+  /** Spec 073 (1.6): «changes» deja fuera los accesos (entrar y salir). La API, sin él, lo da todo. */
+  view?: "changes" | "all";
 };
 
 export type AuditFilterOption = { value: string; label: string };
