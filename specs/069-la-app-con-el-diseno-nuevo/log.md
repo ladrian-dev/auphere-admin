@@ -312,6 +312,16 @@ Con texto grande, las tarjetas de Inicio pasan a una columna y «Conversaciones�
 - Test: `version`, «every build carries Helvena».
 - **Ojo al probar en local:** si `ios/` o `android/` ya existían, `expo run` no los regenera y el build sale sin la fuente. Hay que pasar antes `npx expo prebuild`. Pasó aquí la primera vez.
 
+## Builds de staging y tiendas (tarde del 2026-11-21)
+
+- Los dos builds salen del commit 31eb8856 de esta rama. Lo que `develop` tiene además es de la consola, nada de `apps/mobile`.
+- **iOS:** build 4 del perfil `staging`, terminado en EAS y enviado a TestFlight. Dentro del `.ipa`: las tres caras de Helvena en `UIAppFonts` y el `PrivacyInfo.xcprivacy` de la app (razones de `UserDefaults`, marcas de tiempo y hora de arranque; `NSPrivacyTracking: false`), con la lista de datos recogidos vacía.
+- **Android:** el build de `staging` falló dos veces en EAS (builds 6 y 7; el segundo, `eb255a27-…`), las dos en «Run gradlew» con «Gradle build daemon disappeared unexpectedly». En el segundo, Gradle murió durante `:app:minifyReleaseWithR8`, con la compilación nativa de react-native-screens y react-native-worklets en paralelo para cuatro arquitecturas y `-Xmx4g`: es memoria de la máquina por defecto. Sin AAB de la 1.3.0, no hay prueba interna en Play. Las salidas y lo que decide Luis, en `apps/mobile/store/README.md`.
+- **Precios en dólares**, por la excepción de cambio trivial de `docs/spec-driven-development.md`: solo cambia el negocio de ejemplo, que ningún build de tienda lleva (test `version`, 23.2). El negocio de ejemplo cobraba en pesos chilenos y en euros. Luis: «todo debe estar en usd, todavia no manejamos multimoneda». Los servicios de Reservas, la seña de Lucía, el presupuesto de Valentina y el precio del blanqueamiento pasan a dólares (`reservas-demo.ts`, `demo/data.ts`; test `demo-router`).
+- **Fichas y capturas** en `apps/mobile/store/`: App Store y Play en español e inglés, notas para App Review, privacidad de las dos tiendas con el mismo inventario, y siete capturas por tienda, las de Android ya del emulador. `check_limits.py` comprueba los límites de longitud; encontró la descripción breve de Play en 83 de 80 y una palabra clave repetida del nombre, ya corregidas.
+- La imagen destacada de Play pasa de SF Pro a Helvena: la licencia de SF Pro solo cubre maquetas de software de Apple.
+- Visto al hacer las capturas, sin tocar: la razón de la espera sale dos veces en la conversación (H03); Reservas enseña servicios de barbería bajo el nombre de una clínica; y el negocio de ejemplo suena a España («podéis», «os paso», «23,91 US$» con la app en es-ES) mientras las fichas son para Latinoamérica.
+
 ## Pruebas que dependen de la fecha
 
 Dos suites construyen el negocio de ejemplo con la fecha real: `reservas-demo` y `v13-reservas-fuente`. Se pasaron con el reloj desplazado a domingo al mediodía, a lunes de madrugada, a sábado de noche y a domingo de madrugada (hora de Chile), con un parche de `Date` temporal. Las cuatro en verde. Las demás fijan la fecha.

@@ -1,8 +1,8 @@
 # «Contenido de la app» en Play Console — Auphere Customers
 
-Estado el 2026-10-22 (Play Console › Política y programas › Contenido de la app).
+Play Console › Política y programas › Contenido de la app. Las declaraciones de 2026-10-22 siguen valiendo para la 1.3.0 salvo lo que se marca. Revisado el 2026-11-21.
 
-## Hecho
+## Hecho (2026-10-22)
 
 | Declaración | Respuesta |
 |---|---|
@@ -12,57 +12,43 @@ Estado el 2026-10-22 (Play Console › Política y programas › Contenido de la
 | Apps de gobierno | No |
 | Funciones financieras | Ninguna |
 | Apps de salud | Ninguna |
-| ID de publicidad | No lo usa (el manifiesto del AAB 1.1.0 (3) no trae `AD_ID`) |
+| ID de publicidad | No lo usa. Comprobado en el manifiesto del AAB 1.1.0 (3), que no trae `AD_ID`; **falta comprobarlo en el AAB 1.3.0** cuando exista |
 
 ## Te toca (Luis)
 
-### Datos de inicio de sesión («Sign in details»)
+### Datos de inicio de sesión
 
-Toda la app pide una cuenta. Play quiere unas credenciales que funcionen para su
-revisión. Hace falta una persona de un cliente de prueba **en el entorno al que
-apunta el build** (staging hoy, producción cuando se publique), con los módulos
-que quieras enseñar. Texto propuesto para las instrucciones:
+Toda la app pide una cuenta, y Play quiere una que funcione para su revisión: la misma cuenta de revisión que Apple (ver `../README.md`, «Antes de enviar»). Instrucciones, en inglés, para pegar:
 
-> La app es para los negocios clientes de Auphere. Entra con el correo y la
-> contraseña de prueba. Verás Inicio, la Bandeja (conversaciones de WhatsApp de
-> los clientes del negocio), Reservas y Consumo. No hace falta ningún código
-> adicional.
+> Auphere Customers is the companion app for businesses that use Auphere. Accounts are issued by Auphere; the app has no sign-up. Sign in with the email and password provided. You will see Home, the Inbox (the business's WhatsApp, Instagram and Messenger conversations), Bookings and Usage. No other code or step is needed.
 
-El público objetivo (siguiente punto) no se puede empezar hasta guardar esta.
+El público objetivo no se puede empezar hasta guardar esta declaración.
 
 ### Público objetivo y contenido
 
-Edad: **18 y más** solamente. No está dirigida a niños. (Se habilita tras los
-datos de inicio de sesión.)
+Edad: **18 y más** solamente. No está dirigida a niños.
 
 ### Seguridad de los datos («Data safety») — borrador para revisar
 
-Es una declaración legal: revísala antes de enviarla.
+Es una declaración legal: revísala antes de enviarla. Es el mismo inventario que la privacidad del App Store (`../app-store/revision.md`); si cambia uno, cambia el otro.
 
 - ¿Recoge o comparte datos? **Sí**. ¿Cifrados en tránsito? **Sí** (HTTPS).
-  ¿Se puede pedir el borrado? **Sí**: Ajustes › «Solicitar el borrado de la
-  cuenta» (y por correo a contacto@auphere.com).
-- Datos recogidos (ninguno se «comparte» en el sentido de Play: lo que va a
-  WhatsApp es el envío que pide el propio usuario):
+- ¿Se puede pedir el borrado? **Sí**: Ajustes › «Solicitar el borrado de la cuenta», o por correo a contacto@auphere.com. La app no crea cuentas; **por verificar en la consola** si Play pide de todos modos una URL web para el borrado. Si la pide, hace falta una página en auphere.com que explique cómo solicitarlo.
+- Ningún dato se «comparte» en el sentido de Play: lo que sale hacia WhatsApp, Instagram o Messenger es el envío que pide la propia persona, y Play no lo cuenta como compartir.
 
 | Tipo (Play) | Qué es en la app | ¿Obligatorio? | Para qué |
 |---|---|---|---|
-| Información personal › Nombre | Nombre de la persona que entra; nombres de clientes finales al crear una reserva | Sí | Funcionalidad, gestión de la cuenta |
-| Información personal › Correo | Correo con el que entra | Sí | Gestión de la cuenta |
-| Información personal › Teléfono | Teléfono del cliente final en una reserva | No | Funcionalidad |
-| Mensajes › Otros mensajes en la app | Lo que se escribe a un cliente desde la Bandeja | No | Funcionalidad |
-| Fotos y vídeos › Fotos | Imagen adjunta a un mensaje (galería o cámara) | No | Funcionalidad |
-| Archivos y documentos | Documento adjunto a un mensaje | No | Funcionalidad |
-| ID del dispositivo u otros | Token de avisos (APNs/FCM) del teléfono | No | Funcionalidad (avisos) |
+| Información personal › Nombre | El nombre de quien entra y el de los clientes a los que reserva | Sí | Funcionalidad, gestión de la cuenta |
+| Información personal › Dirección de correo | El correo con el que entra | Sí | Gestión de la cuenta |
+| Información personal › ID de usuario | El identificador de su cuenta de Auphere | Sí | Funcionalidad, gestión de la cuenta |
+| Información personal › Número de teléfono | El teléfono del cliente al crear una reserva | No | Funcionalidad |
+| Mensajes › Otros mensajes en la app | Lo que escribe a un cliente desde la Bandeja | No | Funcionalidad |
+| Fotos y vídeos › Fotos | Una imagen enviada a un cliente (galería o cámara) | No | Funcionalidad |
+| Archivos y documentos | Un documento enviado a un cliente | No | Funcionalidad |
+| ID del dispositivo u otros | El token de avisos (FCM) y el identificador del servicio de actualizaciones de Expo | No | Funcionalidad (avisos y actualizaciones) |
 
-Sin analítica ni informes de errores de terceros en la app (el proyecto de
-Firebase se creó sin Google Analytics).
+Sin analítica ni informes de errores de terceros: la app no los lleva y el proyecto de Firebase se creó sin Google Analytics.
 
-### A revisar en el manifiesto
+### Permisos del AAB
 
-El AAB pide `SYSTEM_ALERT_WINDOW`, `READ_EXTERNAL_STORAGE` y
-`WRITE_EXTERNAL_STORAGE`, que vienen de dependencias. `SYSTEM_ALERT_WINDOW` no lo
-usa la app; los de almacenamiento pueden hacer falta para elegir fotos en
-Android antiguo. No bloquean la prueba interna; antes de producción conviene
-revisarlos y quitar los que sobren con `android.blockedPermissions` en
-`app.config.ts` (es un cambio de la app: con su spec).
+La 1.3.0 bloquea `RECORD_AUDIO` y `ACCESS_FINE_LOCATION` (`android.blockedPermissions` en `app.config.ts`). El AAB 1.1.0 pedía además `SYSTEM_ALERT_WINDOW`, `READ_EXTERNAL_STORAGE` y `WRITE_EXTERNAL_STORAGE`, que vienen de dependencias. Hay que mirar el manifiesto del AAB 1.3.0 cuando el build salga: lo que sobre se bloquea con su spec, porque es un cambio de la app.
