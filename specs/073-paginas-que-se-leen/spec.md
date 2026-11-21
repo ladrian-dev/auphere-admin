@@ -1,11 +1,13 @@
 # Especificación: Páginas que se leen
 
-**Rama**: `073-paginas-que-se-leen` · **Creada**: 2026-11-21 · **Estado**: Borrador, pendiente de las decisiones del owner (P1–P3) y de la revisión de Luis
+**Rama**: `073-paginas-que-se-leen` · **Creada**: 2026-11-21 · **Estado**: Borrador, decisiones del owner cerradas el 2026-11-21 (D1–D3); pendiente de la revisión de Luis
 
 **Entrada**: el owner dio paso al lote 5 del roadmap de la consola (`[[nexus/UX-CONSOLA-PARTNERS-2026-11-20]]`) mientras el lote 3 sigue con sus pruebas: «vamos a continuar con el lote 5 mientras el lote 3 sigue con sus pruebas». El lote dice:
 - Auditoría como tabla;
 - los menús del cliente y del agente;
 - Negocio.
+
+Por decisión del owner (D2) entran también dos hallazgos de la página del agente que el roadmap no ponía en ningún lote: la configuración que no se lee (A01) y los avisos repetidos (A04).
 
 El roadmap dejaba una duda abierta: si la API sabe pausar y archivar un agente. **Ya sabe.** `agent-menu.tsx` llama a renombrar, pausar, reanudar, archivar, restaurar y «por defecto», y todas esas acciones existen. Lo que falta es «Deshacer» (§3).
 
@@ -17,7 +19,7 @@ El roadmap dejaba una duda abierta: si la API sabe pausar y archivar un agente. 
 |---|---|
 | **Superficie de confianza** | `0`: la consola de partners y la API de la consola, que ya existen. No se abre ninguna superficie. |
 | **Garantías de aislamiento tocadas** | **1 (RLS / partner)**, rozada. Auditoría pasa a nombrar a cada persona por lo que es («cliente · Meta Review Demo»), y para eso lee a las personas de los clientes del partner. Plan: un test que barre la auditoría de dos partners y comprueba que ninguno ve el nombre de una persona del otro, ni de un cliente que no es suyo. |
-| **Nota de KB que la justifica** | `[[nexus/UX-CONSOLA-PARTNERS-2026-11-20]]`, lote 5. Hallazgos del recorrido de staging del 2026-11-20: D01 y D02 (Auditoría), C02 y F02 (menú del cliente), B01, B02 y T01 (Negocio). Decisiones de la demo v4 y v6. |
+| **Nota de KB que la justifica** | `[[nexus/UX-CONSOLA-PARTNERS-2026-11-20]]`, lote 5. Hallazgos del recorrido de staging del 2026-11-20: D01 y D02 (Auditoría), C02 y F02 (menú del cliente), A01 y A04 (página del agente), B01, B02 y T01 (Negocio). Decisiones de la demo v4 y v6. |
 | **Qué se mide** | **Nada nuevo.** No llama a modelos ni a herramientas de pago. |
 
 ## Qué hay hoy (2026-11-21, `develop` en c4c44def)
@@ -60,6 +62,14 @@ Lo que falla:
 
 `components/builder/agent-menu.tsx` ya tiene todas las acciones: renombrar, pausar, reanudar, archivar, restaurar y «por defecto». Pero al pausar y al archivar solo sale un aviso de éxito («… pausado», «… archivado»), sin Deshacer. La demo aprobada (v6) lo pide en las dos.
 
+### 3b. La configuración del agente no se lee
+
+En `components/builder/agent-builder.tsx`:
+- **A01**: cada bloque de la configuración va en tres columnas (etiqueta · texto · lápiz) dentro de media página. A 1280 px el texto queda en una columna de unos 110 px, a unos 22 caracteres por línea. A 820 px, en una sola columna, se lee mejor que en escritorio.
+- **A01**: la columna de pruebas, a la derecha, es `sticky` con su propio `overflow-y-auto` y `max-h`. Mide unos 3.615 px y se desplaza por su cuenta, así que la rueda mueve una columna u otra según dónde esté el puntero.
+- **A04**: «18 sin ejecutar» sale tres veces: en la cabecera, en el bloque «Pruebas» de la columna derecha y en la barra pegajosa de abajo («Pruebas sin ejecutar · Ejecutar pruebas»).
+- **A04**: después sale un aviso por servicio sin precio, 56 veces: «X no tiene precio: el agente dirá que lo confirma el equipo. Ir a Servicios».
+
 ### 4. Negocio es una página de 25 pantallas
 
 En staging: 18.661 px, con 56 servicios y 60 preguntas, todo desplegado (B01).
@@ -84,12 +94,16 @@ En staging: 18.661 px, con 56 servicios y 60 preguntas, todo desplegado (B01).
   - el ⋯ siempre está, en la ficha y en la lista;
   - la regla de eliminar se dice antes y no después: en un cliente activo, «Eliminar…» explica que primero hay que archivarlo y ofrece «Archivar ahora».
 - **El menú del agente**: Deshacer al pausar y al archivar, como ya hace el cliente al archivar.
+- **La configuración del agente**:
+  - la etiqueta encima del texto, que va a unos 70 caracteres por línea, y un «Editar» por bloque;
+  - las pruebas se mueven con la página;
+  - cada aviso sale una vez.
 - **Negocio**:
   - un buscador arriba;
   - los grupos de servicios se pliegan;
   - las columnas que nadie usa se resumen en una línea;
   - las preguntas se pliegan;
-  - revisar lo leído se puede hacer y se ve cuánto falta (P1).
+  - revisar lo leído se puede hacer, por sección, y se ve cuánto falta (D1).
 
 ## Requisitos
 
@@ -119,7 +133,7 @@ Un evento sin origen conocido no lleva etiqueta.
 
 1.6 **«Solo cambios» por defecto.**
 - Una cápsula de vidrio (`SegmentedControl`) con «Solo cambios» y «Todo, con accesos» va junto a los filtros.
-- Qué cuenta como acceso, según P3.
+- Son accesos (D3): iniciar sesión, cerrar sesión, renovar la sesión y los intentos fallidos. Todo lo demás es un cambio.
 - La elección va en la URL, y «Descargar CSV» respeta la misma vista.
 
 1.7 «Más como esta», las acciones de cada fila («Solo este cliente», «Solo esta persona»…) y «Ver anteriores» siguen como hoy.
@@ -155,6 +169,26 @@ Un evento sin origen conocido no lleva etiqueta.
 
 3.4 El menú es el mismo desplegable que el del cliente (2.5). Las acciones no cambian.
 
+### 3b. La configuración del agente (D2)
+
+3b.1 **Cada bloque se lee en una columna**:
+- la etiqueta va encima del texto;
+- el texto tiene una medida de unos 70 caracteres por línea (`max-w-prose` o equivalente);
+- cada bloque lleva un solo «Editar», en lugar del lápiz en una tercera columna.
+
+3b.2 **La columna de pruebas se mueve con la página.** Deja de tener scroll propio: sin `max-h` ni `overflow-y-auto`. Por debajo de 1060 px pasa bajo la configuración, como hoy.
+
+3b.3 **«Pruebas sin ejecutar» sale una vez**, en el bloque «Pruebas»:
+- «18 pruebas sin ejecutar»;
+- con «Ejecutar las 18 pruebas» y lo que cuestan («unos 0,40 USD»), con el mismo cálculo de coste que ya usa la consola;
+- la cabecera y la barra pegajosa de abajo dejan de repetirlo. La barra se queda solo para guardar o publicar.
+
+Si el coste no se puede calcular, el botón no inventa una cifra: dice lo que ya dice hoy («No se puede calcular el coste»).
+
+3b.4 **Los servicios sin precio se resumen en una línea**: «56 servicios no tienen precio: el agente dirá que lo confirma el equipo», con «Poner precios», que lleva a Servicios en Negocio. Si es uno solo, la línea lo nombra.
+
+3b.5 Lo que no cambia: las pestañas del agente, lo que se puede editar y cómo se guarda.
+
 ### 4. Negocio
 
 4.1 **Un buscador** arriba de Negocio:
@@ -177,7 +211,7 @@ Un evento sin origen conocido no lleva etiqueta.
 4.5 **Revisar lo leído:**
 - arriba de Negocio, una barra dice cuánto queda: «0 de 13 datos revisados»;
 - el índice de secciones enseña cuántos faltan en cada una, no un globo;
-- «Es correcto», por sección o dato a dato según P1;
+- «Es correcto» por sección, en la cabecera de cada sección, con la API de hoy (`POST /sections/{section}/confirm`). Dato a dato no entra (D1);
 - «Marcar todo como correcto», con Deshacer;
 - el botón sale siempre que haya algo leído sin revisar y la persona pueda editar Negocio. Hoy, en staging, no salía; el plan averigua por qué.
 
@@ -188,37 +222,30 @@ Un evento sin origen conocido no lleva etiqueta.
 5.1 Los tests de unidad cubren:
 - la agrupación por día (1.2);
 - `client_actions` y `delete_blocked` (2.2);
-- el resumen de columnas vacías (4.3);
+- el resumen de columnas vacías (4.3) y de servicios sin precio (3b.4);
+- que «pruebas sin ejecutar» sale una sola vez (3b.3);
 - el buscador (4.1).
 
-5.2 Un e2e de Auditoría a 1280 px comprueba que la tabla no se desplaza de lado (`scrollWidth <= clientWidth`), y axe (serious/critical) sobre Auditoría y Negocio, en claro y en oscuro.
+5.2 Un e2e de Auditoría a 1280 px comprueba que la tabla no se desplaza de lado (`scrollWidth <= clientWidth`). Otro, en la configuración del agente, comprueba que la columna de pruebas no tiene scroll propio. Axe (serious/critical) sobre Auditoría, Negocio y la configuración del agente, en claro y en oscuro.
 
 5.3 El test de aislamiento de la Garantía 1 (encabezado).
 
 5.4 El e2e del marco (`e2e/shell.spec.ts`) sigue verde. Se comprueba en staging, contra el recorrido del estudio, antes de pasar al lote 6.
 
-## Preguntas para el owner
+## Decisiones (owner, 2026-11-21)
 
-- **P1 · Revisar lo leído: por sección o dato a dato.** La demo aprobada pone «Es correcta» en cada dato.
-  - Hoy la API confirma por sección. Dato a dato es un endpoint nuevo y una migración (guardar qué dato se revisó).
-  - **Propuesta:** por sección en esta spec, con «Es correcto» en la cabecera de cada sección y la barra contando datos. Dato a dato, si hace falta, en otra spec.
-- **P2 · Las páginas del agente y el Resumen de la ficha.** El estudio también encontró:
-  - la configuración del agente a 22 caracteres por línea (A01);
-  - el mismo aviso tres veces y 56 avisos de «no tiene precio» (A04);
-  - 6 s de esqueleto al abrir un agente (A05);
-  - conectores con filtros que se salen (A06);
-  - conversaciones «En curso» tras 47 h (A07);
-  - la tarea del cliente escondida en el Resumen (F01).
-
-  El roadmap no las pone en ningún lote.
-  - **Propuesta:** A01 y A04 entran aquí, porque son «páginas que se leen» y tocan la misma pantalla que el menú del agente. A05, A06, A07 y F01 van a una spec aparte.
-- **P3 · Qué cuenta como acceso en «Solo cambios».**
-  - **Propuesta:** iniciar sesión, cerrar sesión, renovar la sesión y los intentos fallidos. Todo lo demás es un cambio.
-  - Los intentos fallidos podrían quedarse en «Solo cambios», porque pueden importar.
+- **D1 · Revisar lo leído**: como ya está en la API, **por sección**. «Es correcto» va en la cabecera de cada sección y la barra cuenta datos. Revisar dato a dato, con su endpoint nuevo y su migración, no entra.
+- **D2 · La página del agente**: entran la configuración que no se lee (A01) y los avisos repetidos (A04), en §3b. Van a una spec aparte:
+  - el esqueleto de 6 s (A05);
+  - los filtros de conectores (A06);
+  - las conversaciones «En curso» tras 47 h (A07);
+  - la tarea escondida en el Resumen de la ficha (F01).
+- **D3 · Qué es un acceso en Auditoría**: iniciar sesión, cerrar sesión, renovar la sesión y los intentos fallidos. Quedan en «Todo, con accesos»; lo demás sale en «Solo cambios».
 
 ## Fuera de alcance
 
 - El Panel, Consumo, la campana y el dinero: son de las specs 071 y 072.
+- El esqueleto del agente, sus conectores, el estado de sus conversaciones y el Resumen de la ficha (A05, A06, A07, F01): van a otra spec (D2).
 - Clientes en el teléfono: hoy esconde el saldo y el menú ⋯. Es del lote 6 (cierre).
 - Qué se borra al eliminar un cliente: es de la spec 062.
 - La tipografía y la escala: son de la spec 068 (base visual).
