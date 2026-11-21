@@ -7,22 +7,23 @@ import { join } from "node:path";
  * update over the air may ever reach it — and the builds for TestFlight and
  * Play's internal track. Spec 047 (T171, 50.8): Agentes, Negocio and the
  * corrections are new screens and new data, so they come as 1.2.0 through the
- * stores; over the air only fixes.
+ * stores; over the air only fixes. Spec 069 (Requisito 22.1): the new design and its
+ * native modules (SVG, Skia) come as 1.3.0, through the stores only.
  */
 const ROOT = join(__dirname, "..");
 const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 const eas = JSON.parse(read("eas.json")) as {
-  build: Record<string, { android?: { buildType?: string }; channel?: string; env?: Record<string, string> }>;
+  build: Record<string, { android?: { buildType?: string }; channel?: string; extends?: string; env?: Record<string, string> }>;
   submit: Record<string, { ios?: { ascAppId?: string }; android?: { track?: string } }>;
 };
 
 describe("the app's version (R19.1)", () => {
-  it("is 1.2.0 in the app config and in package.json (spec 047, T171)", () => {
-    expect(read("app.config.ts")).toMatch(/version: "1\.2\.0"/);
-    expect((JSON.parse(read("package.json")) as { version: string }).version).toBe("1.2.0");
+  it("is 1.3.0 in the app config and in package.json (spec 069, R22.1)", () => {
+    expect(read("app.config.ts")).toMatch(/version: "1\.3\.0"/);
+    expect((JSON.parse(read("package.json")) as { version: string }).version).toBe("1.3.0");
   });
 
-  it("the native runtime follows the version, so an older install gets nothing of 1.2.0 over the air", () => {
+  it("the native runtime follows the version, so an older install gets nothing of 1.3.0 over the air", () => {
     expect(read("app.config.ts")).toMatch(/runtimeVersion: \{ policy: "appVersion" \}/);
   });
 });
@@ -35,8 +36,19 @@ describe("the builds (R19.2)", () => {
     expect(eas.submit.staging?.android?.track).toBe("internal");
   });
 
-  it("no store build carries the example data of Reservas (R18.2)", () => {
-    for (const p of ["preview", "staging", "production"]) expect(eas.build[p]?.env?.EXPO_PUBLIC_RESERVAS_DEMO).toBeUndefined();
+  it("no store build carries the example data of Reservas (R18.2) or of the whole app (069 R23.2), nor Helvena", () => {
+    // What a profile inherits counts too (`extends`, /cso L3).
+    const envOf = (p: string): Record<string, string> => {
+      const b = eas.build[p];
+      return b ? { ...(b.extends ? envOf(b.extends) : {}), ...(b.env ?? {}) } : {};
+    };
+    for (const p of ["preview", "staging", "production"]) {
+      const env = envOf(p);
+      expect(env.EXPO_PUBLIC_RESERVAS_DEMO).toBeUndefined();
+      expect(env.EXPO_PUBLIC_DEMO).toBeUndefined();
+      // The font's licence is not confirmed (spec 069, T004): no profile switches it on.
+      expect(env.APP_HELVENA).toBeUndefined();
+    }
   });
 });
 

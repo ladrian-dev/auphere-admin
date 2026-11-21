@@ -1,4 +1,4 @@
-import { icons, type IconName } from "@/ui/icon";
+import { icons, type IconName, type SymbolName } from "@/ui/icon";
 
 /**
  * The client's modules as tabs (spec 031, R3). The list and its order come
@@ -14,7 +14,7 @@ export const MODULES = {
   // Spec 044, R1.1: the calendar of each platform; SF Symbols has no filled calendar, so it stays the same when selected.
   reservas: { route: "reservas", label: "app.tab.reservas", icon: icons.calendar, selected: icons.calendar },
   usage: { route: "consumo", label: "app.tab.usage", icon: icons.usage, selected: { ios: "chart.bar.fill", android: "bar_chart" } },
-} as const satisfies Record<string, { route: Route; label: string; icon: IconName; selected: IconName }>;
+} as const satisfies Record<string, { route: Route; label: string; icon: IconName; selected: SymbolName }>;
 
 export type KnownModule = keyof typeof MODULES;
 

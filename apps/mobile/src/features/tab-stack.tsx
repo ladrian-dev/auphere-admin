@@ -4,6 +4,7 @@ import { Platform, useWindowDimensions } from "react-native";
 
 import { useT } from "@/i18n/t";
 import { glassAvailable } from "@/theme/glass";
+import { DISPLAY_FONT } from "@/theme/fonts";
 import { useTheme } from "@/theme/theme";
 import { headerSize, type } from "@/theme/type";
 import { IconButton } from "@/ui/button";
@@ -32,14 +33,22 @@ export function useHeaderOptions(): Options {
   const base: Options = {
     headerShadowVisible: false,
     headerTintColor: colors.primaryText,
-    headerTitleStyle: { color: colors.foreground },
-    headerLargeTitleStyle: { color: colors.foreground, ...(Platform.OS === "ios" ? { fontSize: headerSize("largeTitle", fontScale) } : {}) },
+    // Spec 069 (D3, R1.4, R1.6): the design's titles, in the display family when the build carries it, at 600.
+    headerTitleStyle: { color: colors.foreground, fontWeight: "600", ...(DISPLAY_FONT ? { fontFamily: DISPLAY_FONT } : {}) },
+    headerLargeTitleStyle: {
+      color: colors.foreground,
+      fontWeight: "600",
+      ...(DISPLAY_FONT ? { fontFamily: DISPLAY_FONT } : {}),
+      ...(Platform.OS === "ios" ? { fontSize: headerSize("largeTitle", fontScale) } : {}),
+    },
   };
   if (glassAvailable()) return base;
   return {
     ...base,
     // Android's toolbar sizes its title in sp only when told a size (R4.6, D14).
-    ...(Platform.OS === "android" ? { headerTitleStyle: { color: colors.foreground, fontSize: type.title.fontSize } } : {}),
+    ...(Platform.OS === "android"
+      ? { headerTitleStyle: { color: colors.foreground, fontSize: type.title.fontSize, fontWeight: "600", ...(DISPLAY_FONT ? { fontFamily: DISPLAY_FONT } : {}) } }
+      : {}),
     headerStyle: { backgroundColor: colors.background },
     headerLargeStyle: { backgroundColor: colors.background },
     contentStyle: { backgroundColor: colors.background },

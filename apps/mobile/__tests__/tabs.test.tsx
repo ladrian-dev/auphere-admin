@@ -107,7 +107,7 @@ describe("tabs from /me.nav", () => {
     expect(knownModules(["panel", "inbox", "reservas", "usage"])).toEqual(["panel", "inbox", "reservas", "usage"]);
     expect(firstRoute(["reservas"])).toBe("/reservas");
     const { MODULES } = require("@/lib/modules") as typeof import("@/lib/modules");
-    expect(MODULES.reservas.icon).toEqual({ ios: "calendar", android: "event" });
+    expect(MODULES.reservas.icon).toMatchObject({ ios: "calendar", android: "event" }); // 069: plus its Lucide glyph
     expect(MODULES.reservas.label).toBe("app.tab.reservas");
   });
 

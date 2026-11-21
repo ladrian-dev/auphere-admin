@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
 import { tokens } from "./src/theme/tokens.gen.ts";
@@ -28,6 +30,22 @@ const owner = process.env.EAS_OWNER ?? "lmatos";
 const variant = process.env.APP_VARIANT ?? "production";
 const dev = variant === "development";
 
+/**
+ * Spec 069 (D3, R1.4–R1.5): Helvena, the brand's face, in titles and figures —
+ * only when a build asks for it (`APP_HELVENA=1`) AND its static faces are in
+ * `assets/fonts/helvena/` (not versioned). No build carries it until its app
+ * licence is confirmed; without it the titles use the system font. Embedded by
+ * the expo-font plugin at build time: nothing loads at run time.
+ */
+const HELVENA_DIR = "./assets/fonts/helvena";
+const HELVENA_FACES = [
+  { file: "Helvena-Regular.ttf", weight: 400 },
+  { file: "Helvena-Medium.ttf", weight: 500 },
+  { file: "Helvena-Semibold.ttf", weight: 600 },
+] as const;
+const helvena =
+  process.env.APP_HELVENA === "1" && HELVENA_FACES.every((f) => existsSync(`${__dirname}/assets/fonts/helvena/${f.file}`));
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: dev ? "Customers Dev" : "Auphere Customers",
@@ -38,7 +56,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   // Spec 047 (T171, 50.8): 1.2.0 brings Agentes, Negocio and «Corregir esta respuesta» through the stores —
   // new screens and new data shown are never sent over the air (D19). `runtimeVersion` follows it, so no
   // 1.1.0 install gets 1.2.0's code. Spec 044 (D14): 1.1.0 carried spec 042's native module.
-  version: "1.2.0",
+  // Spec 069 (R22.1): the new design, with SVG and Skia, comes as 1.3.0 through the stores only.
+  version: "1.3.0",
   orientation: "portrait",
   icon: "./assets/images/icon.png",
   scheme: "auphere-customers",
@@ -109,10 +128,28 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
         ios: { deploymentTarget: "16.4" },
       },
     ],
+    ...(helvena
+      ? [
+          [
+            "expo-font",
+            {
+              android: {
+                fonts: [
+                  {
+                    fontFamily: "Helvena",
+                    fontDefinitions: HELVENA_FACES.map((f) => ({ path: `${HELVENA_DIR}/${f.file}`, weight: f.weight })),
+                  },
+                ],
+              },
+              ios: { fonts: HELVENA_FACES.map((f) => `${HELVENA_DIR}/${f.file}`) },
+            },
+          ] as [string, Record<string, unknown>],
+        ]
+      : []),
   ],
   // D19: OTA only for fixes, one channel per profile; the native runtime is the app version.
   runtimeVersion: { policy: "appVersion" },
   updates: { url: `https://u.expo.dev/${projectId}` },
   experiments: { typedRoutes: true, reactCompiler: true },
-  extra: { eas: { projectId }, variant },
+  extra: { eas: { projectId }, variant, helvena },
 });

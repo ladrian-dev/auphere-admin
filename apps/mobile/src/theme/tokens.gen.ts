@@ -38,7 +38,18 @@ export const tokens = {
     "info": "#2695AC",
     "infoText": "#005B6E",
     "infoBg": "#2695AC1F",
-    "brandGround": "#032221"
+    "brandGround": "#032221",
+    "selection": "#0D0F01",
+    "onSelection": "#F1F7F6",
+    "highlight": "#2CC295",
+    "highlightSoft": "#2CC29529",
+    "onHighlight": "#032221",
+    "highlightInk": "#106958",
+    "controlBorder": "#0D0F0180",
+    "bubbleAgent": "#DDF5EE",
+    "toastBg": "#0D0F01",
+    "toastFg": "#F1F7F6",
+    "toastAccent": "#2CC295"
   },
   "dark": {
     "background": "#0D1412",
@@ -76,7 +87,40 @@ export const tokens = {
     "info": "#2695AC",
     "infoText": "#7FCBDE",
     "infoBg": "#2695AC1F",
-    "brandGround": "#032221"
+    "brandGround": "#032221",
+    "selection": "#F1F7F6",
+    "onSelection": "#0D1412",
+    "highlight": "#2CC295",
+    "highlightSoft": "#2CC29529",
+    "onHighlight": "#032221",
+    "highlightInk": "#2CC295",
+    "controlBorder": "#F1F7F680",
+    "bubbleAgent": "#1B3A30",
+    "toastBg": "#F1F7F6",
+    "toastFg": "#0D1412",
+    "toastAccent": "#03624C"
+  },
+  "brand": {
+    "light": {
+      "whatsapp": "#1FA855",
+      "instagram": "#D6336C",
+      "messenger": "#0A7CFF",
+      "onBrand": "#FFFFFF",
+      "googleRed": "#EA4335",
+      "googleBlue": "#4285F4",
+      "googleYellow": "#FBBC05",
+      "googleGreen": "#34A853"
+    },
+    "dark": {
+      "whatsapp": "#25D366",
+      "instagram": "#F06595",
+      "messenger": "#4DA3FF",
+      "onBrand": "#FFFFFF",
+      "googleRed": "#EA4335",
+      "googleBlue": "#4285F4",
+      "googleYellow": "#FBBC05",
+      "googleGreen": "#34A853"
+    }
   },
   "radius": {
     "sm": 4,

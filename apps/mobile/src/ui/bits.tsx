@@ -1,8 +1,11 @@
+import { useState } from "react";
+import { Image, type ImageSource } from "expo-image";
 import { Pressable, StyleSheet, View } from "react-native";
 
 import { TOUCH, useTheme } from "@/theme/theme";
 import type { Palette } from "@/theme/tokens.gen";
 
+import { ChannelBadge, type ChannelKind } from "./brand-icons";
 import { Icon, icons, type IconName } from "./icon";
 import { Text } from "./text";
 
@@ -27,24 +30,51 @@ export function Badge({ label, tone }: { label: string; tone: "danger" | "warnin
 }
 
 /** Initials in a circle — a contact has no photo here. */
-export function Avatar({ initials, size = 40 }: { initials: string; size?: number }) {
+export function Avatar({
+  initials,
+  size = 40,
+  photo,
+  channel,
+}: {
+  initials: string;
+  size?: number;
+  /** The contact's photo (Instagram, Messenger), with the phone's credential when it comes from the API. */
+  photo?: ImageSource | null;
+  /** The channel the conversation is on, as a small badge (spec 069, R9.1). */
+  channel?: ChannelKind | null;
+}) {
   const { colors } = useTheme();
+  const [failed, setFailed] = useState(false);
   return (
-    <View
-      importantForAccessibility="no-hide-descendants"
-      accessibilityElementsHidden
-      style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.accentSoft }]}
-    >
-      {/\p{L}/u.test(initials) ? (
-        <Text variant="subhead" tone="accentDeep" maxFontSizeMultiplier={1.4}>
-          {initials}
-        </Text>
-      ) : (
-        // Known only by number: a person, not a dot that reads as an error.
-        <View testID="avatar-person">
-          <Icon name={icons.person} size={Math.round(size * 0.5)} tone="accentDeep" />
+    <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ width: size, height: size }}>
+      <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: colors.accentSoft }]}>
+        {photo && !failed ? (
+          <Image
+            source={photo}
+            style={{ width: size, height: size, borderRadius: size / 2 }}
+            contentFit="cover"
+            transition={120}
+            // Spec 031: what belongs to the business's customers lives in memory, never on disk.
+            cachePolicy="memory"
+            onError={() => setFailed(true)}
+            testID="avatar-photo"
+          />
+        ) : /\p{L}/u.test(initials) ? (
+          <Text variant="subhead" tone="accentDeep" maxFontSizeMultiplier={1.4}>
+            {initials}
+          </Text>
+        ) : (
+          // Known only by number: a person, not a dot that reads as an error.
+          <View testID="avatar-person">
+            <Icon name={icons.person} size={Math.round(size * 0.5)} tone="accentDeep" />
+          </View>
+        )}
+      </View>
+      {channel ? (
+        <View style={styles.channel} testID={`avatar-channel-${channel}`}>
+          <ChannelBadge kind={channel} size={Math.max(12, Math.round(size * 0.36))} ring={colors.card} />
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -90,7 +120,7 @@ export function Segmented<T extends string | number>({
             accessibilityRole="radio"
             accessibilityState={{ checked: on }}
             onPress={() => onChange(o.value)}
-            style={[styles.segment, { borderRadius: radius.sm, backgroundColor: on ? colors.card : "transparent" }]}
+            style={[styles.segment, { borderRadius: radius.sm, backgroundColor: on ? colors.card : "transparent", borderColor: on ? colors.controlBorder : "transparent" }]}
           >
             {/* One line: with large text a word shrinks to fit its segment rather than break in two (spec 044). */}
             <Text variant="subhead" tone={on ? "foreground" : "mutedForeground"} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
@@ -169,12 +199,14 @@ export function Divider() {
 }
 
 const styles = StyleSheet.create({
+  channel: { position: "absolute", right: -3, bottom: -3 },
   badge: { paddingHorizontal: 8, paddingVertical: 2, alignSelf: "flex-start" },
   avatar: { alignItems: "center", justifyContent: "center" },
   track: { height: 6, borderRadius: 3, overflow: "hidden" },
   fill: { height: "100%", borderRadius: 3 },
   segments: { flexDirection: "row", padding: 2, gap: 2 },
-  segment: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", paddingHorizontal: 8 },
+  // The chosen one is told by a 3:1 edge too, not by a white card on grey alone (WCAG 1.4.11).
+  segment: { flex: 1, minHeight: 40, alignItems: "center", justifyContent: "center", paddingHorizontal: 8, borderWidth: 1 },
   rowButton: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: TOUCH, paddingHorizontal: 16, paddingVertical: 12 },
   rowText: { flex: 1, minWidth: 0, gap: 2 },
 });
