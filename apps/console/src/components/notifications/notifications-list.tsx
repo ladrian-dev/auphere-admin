@@ -152,7 +152,10 @@ export function NotificationsList({
                 const Icon = SEVERITY_ICON[n.severity === "critical" ? "critical" : n.severity === "warning" ? "warning" : "info"];
                 const ref = balanceRequestRef(n);
                 return (
-                  <li key={n.id} className={cn("flex min-w-0 flex-wrap items-center gap-3 px-4 py-3", n.read && "opacity-75")}>
+                  // Leída, la fila se apaga solo en el texto del aviso (gris de tinta,
+                  // que ya cumple AA): con `opacity` en toda la fila, la etiqueta y la
+                  // fecha bajaban del 4,5:1 (axe `color-contrast`).
+                  <li key={n.id} className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-3">
                     {/* El punto de sin leer, o su hueco: así las filas no bailan al leerlas. */}
                     {!n.read ? (
                       <span role="img" aria-label={t("proto.notif.unread")} className="size-2 shrink-0 rounded-full bg-primary" />
@@ -164,7 +167,7 @@ export function NotificationsList({
                       {t(n.severity === "critical" ? "notif.severity.critical" : n.severity === "warning" ? "notif.severity.warning" : "notif.severity.info")}
                     </StatusBadge>
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <p className={cn("min-w-0 text-sm text-pretty", !n.read && "font-medium")}>{notificationText(locale, n, clientNames)}</p>
+                      <p className={cn("min-w-0 text-sm text-pretty", n.read ? "text-muted-foreground" : "font-medium")}>{notificationText(locale, n, clientNames)}</p>
                       <time dateTime={n.created_at} className="text-xs text-muted-foreground" title={n.created_at}>
                         {formatRelative(n.created_at, locale)}
                       </time>

@@ -80,7 +80,9 @@ describe("Notificaciones · como el prototipo", () => {
     expect(within(unread!).getByText("hace 2 horas")).toBeInTheDocument();
     expect(within(unread!).getByText("Ver cliente").closest("a")).toHaveAttribute("href", "/clients/flor");
     expect(within(unread!).getByRole("button", { name: "Marcar como leída" })).toBeInTheDocument();
-    expect(read!.className).toMatch(/opacity-75/);
+    // Leída: se apaga el texto, no la fila (con `opacity` la insignia y la hora no llegaban al 4,5:1).
+    expect(read!.className).not.toMatch(/opacity-/);
+    expect(read!.querySelector("p")!.className).toMatch(/text-muted-foreground/);
     expect(within(read!).queryByRole("button", { name: "Marcar como leída" })).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
   });
