@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 
 import { endpoints, type Detail, type NextBooking } from "@/api/endpoints";
@@ -8,7 +8,9 @@ import { useConversation, useSuggestedTags } from "@/api/hooks";
 import { keys } from "@/api/query";
 import { demo } from "@/api/reservas";
 import { useBizToday, useHasReservas, useReservasConfig } from "@/api/reservas-hooks";
-import { attendsLine, eventText, initialsOf } from "@/features/inbox/model";
+import { useAvatarSource } from "@/api/v13-bandeja-hooks";
+import { channelName, channelOf, eventText, handleLabel, initialsOf } from "@/features/inbox/model";
+import { ModePill } from "@/features/inbox/thread/mode";
 import { relativeDay } from "@/features/reservas/format";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
@@ -16,12 +18,13 @@ import { haptics } from "@/motion/haptics";
 import { glassAvailable } from "@/theme/glass";
 import { TOUCH, useTheme } from "@/theme/theme";
 import { Avatar, Divider, RowButton } from "@/ui/bits";
+import { ChannelMark } from "@/ui/brand-icons";
 import { Button } from "@/ui/button";
 import { Card } from "@/ui/card";
 import { Group } from "@/ui/group";
-import { Icon, icons } from "@/ui/icon";
+import { Icon, icons, type IconName } from "@/ui/icon";
 import { useOnline } from "@/ui/online";
-import { ErrorState, Skeleton } from "@/ui/states";
+import { ErrorState, OfflineBanner, Skeleton } from "@/ui/states";
 import { Text } from "@/ui/text";
 
 const MAX_TAGS = 20;
@@ -31,6 +34,10 @@ const MAX_TAGS = 20;
  * the agent's summary, the team's tags and internal note — editable, and the
  * web sees it on its next read (R12.2) — and what happened. Spec 044 (R12):
  * with Reservas, their next reservation, one row that leads to it.
+ *
+ * Spec 069 (R12.1, R21.2): the real channel with its mark and what its
+ * identifier is — «Teléfono» on WhatsApp, «Cuenta» on Instagram and
+ * Messenger — and the photo when the API has one.
  */
 export default function Contacto() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -45,6 +52,7 @@ export default function Contacto() {
   const config = useReservasConfig(hasReservas);
   const today = useBizToday(config.data);
   const d = detail.data;
+  const photo = useAvatarSource(id, Boolean(d?.contact.has_avatar));
 
   /** The person's edit of the note; `null` while they have not touched it. */
   const [draft, setDraft] = useState<string | null>(null);
@@ -112,14 +120,14 @@ export default function Contacto() {
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
     >
+      {/* R3.2: offline, the saved data and when; the tags and the note stay read-only until it is back. */}
+      {!online ? <OfflineBanner since={detail.dataUpdatedAt ? clock(new Date(detail.dataUpdatedAt), locale) : null} /> : null}
       <View style={styles.who}>
-        <Avatar initials={initialsOf(d.contact.name)} size={56} />
+        <Avatar initials={initialsOf(d.contact.name)} size={72} photo={photo} channel={channelOf(d.channel.kind)} />
         <Text variant="title" accessibilityRole="header" style={styles.center}>
           {d.contact.name}
         </Text>
-        <Text variant="subhead" tone="mutedForeground" style={styles.center}>
-          {attendsLine(d, t)}
-        </Text>
+        <ModePill d={d} />
       </View>
 
       {hasReservas && today ? <NextReservation next={nextOf(d.contact.next_booking, t) ?? demo?.nextFor(d.contact.name) ?? null} today={today} /> : null}
@@ -137,12 +145,20 @@ export default function Contacto() {
         <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
           {t("inbox.panel.data")}
         </Text>
-        <Field label={t("inbox.panel.phone")} value={d.contact.handle} selectable />
-        <Field label={t("inbox.panel.channel")} value={t("inbox.channel.whatsapp")} />
+        <Field
+          label={t("inbox.panel.channel")}
+          value={channelName(d.channel.kind, t)}
+          leading={channelOf(d.channel.kind) ? <ChannelMark kind={channelOf(d.channel.kind)!} size={20} /> : <Icon name={icons.message} size={20} tone="mutedForeground" />}
+        />
+        <Field label={handleLabel(d.channel.kind, t)} value={d.contact.handle} selectable icon={d.channel.kind === "whatsapp" ? icons.phone : icons.person} />
         {d.contact.first_message_at ? (
-          <Field label={t("inbox.panel.first")} value={new Date(d.contact.first_message_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })} />
+          <Field
+            label={t("inbox.panel.first")}
+            value={new Date(d.contact.first_message_at).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}
+            icon={icons.clock}
+          />
         ) : null}
-        <Field label={t("inbox.panel.conversations")} value={String(d.contact.conversations)} />
+        <Field label={t("inbox.panel.conversations")} value={String(d.contact.conversations)} icon={icons.messageText} />
       </Card>
 
       <Card>
@@ -172,7 +188,7 @@ export default function Contacto() {
             onChangeText={setTagDraft}
             onSubmitEditing={() => addTag(tagDraft)}
             placeholder={t("inbox.panel.tags.add")}
-            placeholderTextColor={colors.subtle}
+            placeholderTextColor={colors.mutedForeground}
             accessibilityLabel={t("inbox.panel.tags.add")}
             editable={online}
             returnKeyType="done"
@@ -219,7 +235,7 @@ export default function Contacto() {
             setNoteState("idle");
           }}
           placeholder={t("inbox.panel.note.placeholder")}
-          placeholderTextColor={colors.subtle}
+          placeholderTextColor={colors.mutedForeground}
           accessibilityLabel={t("inbox.panel.note")}
           editable={online}
           multiline
@@ -302,15 +318,19 @@ function NextReservation({ next, today }: { next: { id: string; date: string; st
   );
 }
 
-function Field({ label, value, selectable = false }: { label: string; value: string; selectable?: boolean }) {
+/** One datum of the contact: its icon, what it is and its value — one sentence for the screen reader. */
+function Field({ label, value, selectable = false, icon, leading }: { label: string; value: string; selectable?: boolean; icon?: IconName; leading?: ReactNode }) {
   return (
     <View style={styles.field} accessible accessibilityLabel={`${label}: ${value}`}>
-      <Text variant="footnote" tone="mutedForeground">
-        {label}
-      </Text>
-      <Text variant="body" selectable={selectable}>
-        {value}
-      </Text>
+      {leading ?? (icon ? <Icon name={icon} size={20} tone="mutedForeground" /> : null)}
+      <View style={styles.fieldText}>
+        <Text variant="footnote" tone="mutedForeground">
+          {label}
+        </Text>
+        <Text variant="body" selectable={selectable}>
+          {value}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -327,7 +347,8 @@ const styles = StyleSheet.create({
   note: { minHeight: 96, paddingVertical: 10, textAlignVertical: "top" },
   noteRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   flex: { flex: 1, minWidth: 0 },
-  field: { gap: 2, paddingVertical: 4 },
+  field: { flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 6, minHeight: 48 },
+  fieldText: { flex: 1, minWidth: 0, gap: 2 },
   activity: { gap: 2, paddingVertical: 4 },
 });
 

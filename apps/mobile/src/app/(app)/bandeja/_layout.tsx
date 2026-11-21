@@ -8,7 +8,7 @@ export default function BandejaStack() {
   const t = useT();
   return (
     <Stack screenOptions={useTabStackOptions()}>
-      <Stack.Screen name="index" options={{ title: t("inbox.title") }} />
+      <Stack.Screen name="index" options={{ title: t("v13.inbox.title") }} />
     </Stack>
   );
 }

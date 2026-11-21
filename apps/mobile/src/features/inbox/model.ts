@@ -17,7 +17,13 @@ import type { Locale, MessageKey, T } from "@/i18n/t";
 export type ComposerMode =
   | { kind: "resolved" }
   | { kind: "waiting"; reason: string | null; since?: string | null; agent?: string | null; code?: string }
-  | { kind: "agent"; agent?: string | null }
+  /**
+   * The agent answers. Spec 049 (7.3) and spec 069 (R11.5): when it no longer
+   * can — `windowClosed`, the contact's window closed for everybody, or
+   * `personUntil`, Instagram / Messenger past the agent's 24 h, when a person
+   * still can until then — the foot says so instead of «responde el agente».
+   */
+  | { kind: "agent"; agent?: string | null; windowClosed?: true; personUntil?: string }
   | { kind: "other"; name: string | null }
   | { kind: "mine"; blocked: "window_closed" | "channel_disconnected" | null; agent?: string | null };
 
@@ -31,7 +37,12 @@ export function composerMode(
     const code = d.waiting_code ?? undefined;
     return { kind: "waiting", reason: d.waiting_reason ?? null, since: d.waiting_since ?? lastEscalatedAt(d.activity ?? []), agent, ...(code ? { code } : {}) };
   }
-  if (d.state === "agent") return { kind: "agent", agent };
+  if (d.state === "agent") {
+    // The console's rule (`inbox-model.ts`): closed for everybody first, then the agent's own 24 h.
+    if (!d.window.open) return { kind: "agent", agent, windowClosed: true };
+    if (d.window.agent_open === false && d.window.closes_at) return { kind: "agent", agent, personUntil: d.window.closes_at };
+    return { kind: "agent", agent };
+  }
   if (d.assignee && !d.assignee.is_me) return { kind: "other", name: d.assignee.name ?? null };
   if (!d.channel.connected) return { kind: "mine", blocked: "channel_disconnected", agent };
   if (!d.window.open) return { kind: "mine", blocked: "window_closed", agent };
@@ -69,6 +80,17 @@ export const ATTACH_RULES: Record<string, { kind: "image" | "document"; maxBytes
   "image/png": { kind: "image", maxBytes: 5 * MB },
   "application/pdf": { kind: "document", maxBytes: 16 * MB },
 };
+
+export type AttachSource = "camera" | "library" | "document";
+
+/** What «Adjuntar» offers, in order (spec 031 R6.3, kept by spec 069 R20.1): a photo, the gallery, a PDF. */
+export function attachChoices(t: T): { label: string; source: AttachSource }[] {
+  return [
+    { label: t("app.inbox.attach.photo"), source: "camera" },
+    { label: t("app.inbox.attach.library"), source: "library" },
+    { label: t("app.inbox.attach.document"), source: "document" },
+  ];
+}
 
 export type AttachCheck = { ok: true } | { ok: false; reason: "type" } | { ok: false; reason: "size"; maxMb: number };
 
@@ -133,6 +155,8 @@ export function whoOf(a: Author | null | undefined, t: T): string {
   if (a.kind === "member") return a.is_me ? t("inbox.who.you") : (a.name ?? t("inbox.who.someone"));
   if (a.kind === "operator") return t("inbox.who.operator");
   if (a.kind === "contact") return t("inbox.who.contact");
+  // Spec 069 (R21.2): the agent by its name when the API gives it; «Agente» only when it does not.
+  if (a.kind === "agent" && a.name) return a.name;
   return t("inbox.who.agent");
 }
 
@@ -152,6 +176,8 @@ export function eventText(kind: string | null | undefined, a: Author | null | un
     case "released":
       return me ? t("inbox.event.released.you") : t("inbox.event.released", { who });
     case "resolved":
+      // Spec 064 (5.2), spec 069 (R11.7): the system closed it; it says why, not who.
+      if (detail === "inactivity") return t("inbox.event.resolved.inactivity");
       return me ? t("inbox.event.resolved.you") : t("inbox.event.resolved", { who });
     case "reopened":
       if (a?.kind === "contact") return t("inbox.event.reopened.contact");
@@ -219,13 +245,20 @@ export function reasonText(raw: string | null | undefined, t: T): string {
   return text;
 }
 
-/** A list row's preview: who wrote it, and the text or «Archivo». */
-export function previewOf(c: Pick<Conversation, "last_message">, t: T): string {
+/**
+ * A list row's preview: who wrote it, and the text or «Archivo». Spec 069
+ * (R9.1, R21.2): the agent's line goes after its name, from the data — the
+ * author's, or the agent that takes the conversation — never a fixed one.
+ */
+export function previewOf(c: Pick<Conversation, "last_message"> & Partial<Pick<Conversation, "agent" | "handled_by_agent">>, t: T): string {
   const m = c.last_message;
   if (!m) return "";
   const text = m.preview || (m.has_media ? t("inbox.row.media") : "");
   if (isMe(m.author)) return t("inbox.row.you", { text });
-  if (m.author.kind === "agent") return t("inbox.row.agent", { text });
+  if (m.author.kind === "agent") {
+    const agent = m.author.name ?? c.handled_by_agent?.name ?? c.agent?.name ?? null;
+    return agent ? t("v13.inbox.row.agent", { agent, text }) : t("inbox.row.agent", { text });
+  }
   return text;
 }
 
@@ -236,4 +269,133 @@ export function badgeOf(c: Pick<Conversation, "state" | "assignee">, t: T): { la
   if (c.assignee?.is_me) return { label: t("inbox.badge.mine"), tone: "positive" };
   if (c.assignee) return { label: t("inbox.badge.person", { name: c.assignee.name ?? t("inbox.who.someone") }), tone: "info" };
   return null;
+}
+
+// ── channels (spec 069, R9.1, R12.1, R21.2) ───────────────────────────
+
+/** The channels with their own mark and name in the app; the API's enum has more kinds. */
+export type KnownChannel = "whatsapp" | "instagram" | "messenger";
+export const KNOWN_CHANNELS: readonly KnownChannel[] = ["whatsapp", "instagram", "messenger"];
+
+export function channelOf(kind: string | null | undefined): KnownChannel | null {
+  return (KNOWN_CHANNELS as readonly string[]).includes(kind ?? "") ? (kind as KnownChannel) : null;
+}
+
+/** The channel's name, from the data: a kind the app does not know reads as the API says it. */
+export function channelName(kind: string | null | undefined, t: T): string {
+  const known = channelOf(kind);
+  if (known) return t(`inbox.channel.${known}`);
+  const raw = (kind ?? "").trim();
+  return raw ? raw[0]!.toUpperCase() + raw.slice(1) : t("inbox.filter.channel");
+}
+
+/** What the contact's identifier is (the console's `contact-panel.tsx`): a phone on WhatsApp, an account elsewhere. */
+export function handleLabel(kind: string | null | undefined, t: T): string {
+  return kind === "whatsapp" ? t("inbox.panel.phone") : t("inbox.panel.account");
+}
+
+// ── who answers, in the header and the contact (spec 069, R11.1) ──────
+
+/** `paused`: the agent would answer, but its window expired (R11.5): the foot says until when a person can. */
+export type ModeKind = "waiting" | "mine" | "other" | "agent" | "paused" | "resolved";
+
+/** «Atiende {agente}», «Respondes tú», «Espera a una persona», «Resuelta»: who answers now, and its tone. */
+export function modeLine(
+  d: Pick<Detail, "state" | "assignee"> & {
+    agent?: { name: string } | null;
+    handled_by_agent?: { name: string } | null;
+    /** Only the conversation knows it; the list doesn't, and says who answers. */
+    window?: Pick<Detail["window"], "open" | "agent_open" | "closes_at"> | null;
+  },
+  t: T,
+): { kind: ModeKind; text: string } {
+  if (d.state === "resolved") return { kind: "resolved", text: t("app.inbox.attends.resolved") };
+  if (d.state === "waiting" && !d.assignee) return { kind: "waiting", text: t("app.inbox.attends.waiting") };
+  if (d.assignee?.is_me) return { kind: "mine", text: t("v13.conv.mode.you") };
+  if (d.assignee) return { kind: "other", text: t("inbox.badge.person", { name: d.assignee.name ?? t("inbox.who.someone") }) };
+  const agent = d.handled_by_agent ?? d.agent;
+  // R11.5: the same rule as the foot (`composerMode`), never «Atiende {agente}» when it can't.
+  if (d.window && (!d.window.open || (d.window.agent_open === false && d.window.closes_at))) {
+    return { kind: "paused", text: agent ? t("v13.conv.mode.paused", { agent: agent.name }) : t("v13.conv.mode.paused.noName") };
+  }
+  return { kind: "agent", text: agent ? t("app.inbox.attends.agent", { agent: agent.name }) : t("app.inbox.attends.agent.noName") };
+}
+
+// ── the list by day (spec 069, R9.1, R9.3) ────────────────────────────
+
+export type DayGroup = "today" | "yesterday" | "week" | "older";
+export const DAY_GROUPS: readonly DayGroup[] = ["today", "yesterday", "week", "older"];
+
+/** Whole calendar days between two moments, in the phone's zone. */
+function daysBetween(at: Date, now: Date): number {
+  const a = new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+  const b = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.round((b - a) / 86_400_000);
+}
+
+/**
+ * Hoy, Ayer, Esta semana or Anteriores, from the last message. «Esta semana»
+ * is the calendar week, Monday on, as the design reads it (demo: Wednesday 18
+ * → Monday 16 is this week, Thursday 12 is earlier).
+ */
+export function dayGroupOf(at: string | null | undefined, now: Date): DayGroup {
+  if (!at) return "older";
+  const days = daysBetween(new Date(at), now);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  const sinceMonday = (now.getDay() + 6) % 7;
+  if (days <= sinceMonday) return "week";
+  return "older";
+}
+
+/** A row's time (design §3.8): «10:42» today, «Ayer», «lun» this week, «12 nov» before. */
+export function rowTime(at: string, now: Date, locale: Locale, t: T): string {
+  const d = new Date(at);
+  const group = dayGroupOf(at, now);
+  if (group === "today") return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  if (group === "yesterday") return t("inbox.time.yesterday");
+  if (group === "week") return d.toLocaleDateString(locale, { weekday: "short" }).replace(/\.$/, "");
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString(locale, { day: "numeric", month: "short", ...(sameYear ? {} : { year: "numeric" }) }).replace(/\.$/, "");
+}
+
+export function isWaitingRow(c: Pick<Conversation, "state" | "assignee">): boolean {
+  return c.state === "waiting" && !c.assignee;
+}
+
+export type InboxSection = "waiting" | DayGroup | "resolved";
+
+export type InboxEntry =
+  | { kind: "header"; key: string; section: InboxSection; count: number }
+  | { kind: "row"; key: string; c: Conversation; first: boolean; last: boolean; pinned: boolean };
+
+function push(out: InboxEntry[], section: InboxSection, rows: Conversation[], pinned: boolean, keyPrefix = ""): void {
+  if (rows.length === 0) return;
+  out.push({ kind: "header", key: `${keyPrefix}h-${section}`, section, count: rows.length });
+  rows.forEach((c, i) => out.push({ kind: "row", key: `${keyPrefix}${c.id}`, c, first: i === 0, last: i === rows.length - 1, pinned }));
+}
+
+/**
+ * The rows as the list draws them (R9.1, R9.3): who waits for a person first,
+ * apart (spec 044 R10.1), then the rest by day, each group under its heading,
+ * in the order the API sends them. `pinWaiting` only for «Abiertas» without a
+ * search; any other view is already one kind.
+ */
+export function inboxEntries(items: readonly Conversation[], now: Date, opts: { pinWaiting: boolean; keyPrefix?: string } = { pinWaiting: false }): InboxEntry[] {
+  const out: InboxEntry[] = [];
+  const prefix = opts.keyPrefix ?? "";
+  const pinned = opts.pinWaiting ? items.filter(isWaitingRow) : [];
+  const rest = opts.pinWaiting ? items.filter((c) => !isWaitingRow(c)) : [...items];
+  push(out, "waiting", pinned, true, prefix);
+  const byDay = new Map<DayGroup, Conversation[]>(DAY_GROUPS.map((g) => [g, []]));
+  for (const c of rest) byDay.get(dayGroupOf(c.last_message?.at, now))!.push(c);
+  for (const g of DAY_GROUPS) push(out, g, byDay.get(g)!, false, prefix);
+  return out;
+}
+
+/** The search's own section: the resolved ones that match, after the open ones (R10.2). */
+export function resolvedEntries(items: readonly Conversation[]): InboxEntry[] {
+  const out: InboxEntry[] = [];
+  push(out, "resolved", [...items], false, "r-");
+  return out;
 }

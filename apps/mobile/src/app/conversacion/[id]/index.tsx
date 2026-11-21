@@ -12,13 +12,18 @@ import { useQueryClient } from "@tanstack/react-query";
 import { endpoints, type ThreadItem } from "@/api/endpoints";
 import { useConversation, useReplies, useThread } from "@/api/hooks";
 import { invalidateInbox } from "@/api/query";
-import { checkAttachment, composerMode, attendsLine, dayLabel, withDaySeparators, type ThreadRow } from "@/features/inbox/model";
+import { useAvatarSource } from "@/api/v13-bandeja-hooks";
+import { attachChoices, channelOf, checkAttachment, composerMode, dayLabel, initialsOf, modeLine, withDaySeparators, type AttachSource, type ThreadRow } from "@/features/inbox/model";
 import { DayLine, EventLine, MessageBubble, PendingBubble, type Pending } from "@/features/inbox/thread/bubble";
+import { useChatActions } from "@/features/inbox/thread/chat-actions";
+import { CommentPost } from "@/features/inbox/thread/comment-post";
 import { ThreadFoot } from "@/features/inbox/thread/foot";
+import { useToastLift } from "@/ui/toast";
 import { openMedia } from "@/features/inbox/thread/media";
 import { ConversationTitle, ConversationToolbar, conversationMenu, type ConversationMenu } from "@/features/inbox/thread/toolbar";
 import { useConversationActions } from "@/features/inbox/thread/use-conversation";
 import { useLocale, useT } from "@/i18n/t";
+import { clock } from "@/lib/format";
 import { durations } from "@/motion/durations";
 import { useMotion } from "@/motion/use-motion";
 import { setOpenConversation } from "@/push/handler";
@@ -29,7 +34,7 @@ import { ContentScroll } from "@/ui/content-scroll";
 import { IconButton } from "@/ui/button";
 import { icons } from "@/ui/icon";
 import { useOnline } from "@/ui/online";
-import { ErrorState, Skeleton } from "@/ui/states";
+import { ErrorState, OfflineBanner, Skeleton } from "@/ui/states";
 import { Text } from "@/ui/text";
 
 type Row = ThreadRow | { kind: "pending"; key: string; p: Pending };
@@ -46,6 +51,11 @@ type Row = ThreadRow | { kind: "pending"; key: string; p: Pending };
  * The list is the keyboard library's chat scroll view: the foot's measured
  * height is the list's extra bottom padding, so the last message always
  * clears it, and the box rides the keyboard up (D4).
+ *
+ * Spec 069 (R11): the header says who, on which channel and who answers; the
+ * choreography of «Tomar el control» (120 ms, 40 ms, 240 ms) and its notice
+ * with «Devolver»; the menu adds «Vaciar chat» and «Eliminar chat», each
+ * after its confirmation; a comment shows the post it was left on.
  */
 export default function ConversationScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -69,6 +79,9 @@ export default function ConversationScreen() {
   const mode = d ? composerMode(d) : null;
   const replies = useReplies(mode?.kind === "mine");
   const [now] = useState(() => new Date());
+  const agentName = d?.handled_by_agent?.name ?? d?.agent?.name ?? null;
+  const chat = useChatActions(id, t, act, agentName);
+  const photo = useAvatarSource(id, Boolean(d?.contact.has_avatar));
 
   // A spacer at the list's visual bottom keeps the last message clear of the foot (R2.2): the foot's
   // clearance plus what the keyboard lifts it. Both live in React state and move with the platform's own
@@ -76,6 +89,8 @@ export default function ConversationScreen() {
   // drawn at a fraction of its opacity (H20), with the chat scroll view's inset as much as with a spacer.
   const [clearance, setClearance] = useState(0);
   const [keyboard, setKeyboard] = useState(0);
+  // Spec 069 (micro 6): the toast («Devolver») rises above the floating foot, never over the composer.
+  useToastLift(clearance + keyboard + 8);
   const onClearance = useCallback(
     (px: number) => {
       setClearance((cur) => {
@@ -141,12 +156,11 @@ export default function ConversationScreen() {
           online,
           onGiveBack: () => void act.giveBack(d.control_version),
           onContact: openContact,
-          onUnread: () =>
-            void act.markUnread().then((ok) => {
-              if (ok) router.back();
-            }),
-          onResolve: () => void act.resolve(),
+          onUnread: () => void chat.markUnread(),
+          onResolve: () => void chat.resolve(),
           onReopen: () => void act.reopen(),
+          onClear: chat.confirmClear,
+          onDelete: chat.confirmDelete,
         }
       : null;
   const openMenu = () => {
@@ -154,7 +168,7 @@ export default function ConversationScreen() {
   };
   const toolbar = menu ? <ConversationToolbar {...menu} /> : null;
 
-  const pick = async (source: "camera" | "library" | "document") => {
+  const pick = async (source: AttachSource) => {
     let asset: { uri: string; mimeType?: string | null; size?: number | null; name: string } | null = null;
     if (source === "document") {
       const r = await DocumentPicker.getDocumentAsync({ type: "application/pdf", copyToCacheDirectory: true });
@@ -183,11 +197,10 @@ export default function ConversationScreen() {
   };
 
   const attach = () =>
-    actions(t("inbox.composer.attach"), [
-      { label: t("app.inbox.attach.photo"), onPress: () => void pick("camera") },
-      { label: t("app.inbox.attach.library"), onPress: () => void pick("library") },
-      { label: t("app.inbox.attach.document"), onPress: () => void pick("document") },
-    ]);
+    actions(
+      t("inbox.composer.attach"),
+      attachChoices(t).map((c) => ({ label: c.label, onPress: () => void pick(c.source) })),
+    );
 
   const open = (messageId: string, mime: string | null) =>
     void openMedia(messageId, mime).then((ok) => {
@@ -203,7 +216,18 @@ export default function ConversationScreen() {
     <Stack.Screen
       options={{
         headerTitle: () =>
-          d ? <ConversationTitle name={d.contact.name} line={attendsLine(d, t)} hint={t("inbox.action.panel")} onPress={openContact} /> : null,
+          d ? (
+            <ConversationTitle
+              name={d.contact.name}
+              line={modeLine(d, t).text}
+              mode={modeLine(d, t).kind}
+              initials={initialsOf(d.contact.name)}
+              photo={photo}
+              channel={channelOf(d.channel.kind)}
+              hint={t("inbox.action.panel")}
+              onPress={openContact}
+            />
+          ) : null,
         headerRight: Platform.OS === "android" && d ? () => <IconButton icon={icons.more} label={t("app.more")} onPress={openMenu} /> : undefined,
       }}
     />
@@ -259,6 +283,12 @@ export default function ConversationScreen() {
                 </Text>
               </Animated.View>
             ) : null}
+            {/* R3.2: offline, what is on screen is what was saved, and when; only what writes is off (the box says so). */}
+            {!online && thread.data ? (
+              <View style={styles.offline}>
+                <OfflineBanner since={clock(new Date(thread.dataUpdatedAt), locale)} />
+              </View>
+            ) : null}
             <View testID="thread-spacer" style={{ height: spacer }} />
           </View>
         }
@@ -269,6 +299,12 @@ export default function ConversationScreen() {
             <PendingBubble p={row.p} t={t} onRetry={act.retry} onDismiss={act.dismiss} />
           ) : row.item.type === "event" ? (
             <EventLine item={row.item as ThreadItem} t={t} />
+          ) : row.item.comment ? (
+            // Spec 069 (R11.6): a comment under the post it was left on.
+            <View>
+              <CommentPost conversationId={id} messageId={row.item.id} t={t} />
+              <MessageBubble item={row.item as ThreadItem} t={t} locale={locale} onOpen={open} onCorrect={correct} />
+            </View>
           ) : (
             <MessageBubble item={row.item as ThreadItem} t={t} locale={locale} onOpen={open} onCorrect={correct} />
           )
@@ -280,6 +316,8 @@ export default function ConversationScreen() {
         ListFooterComponent={
           // Inverted: the "footer" is the visual top — the room the transparent header needs, then older pages loading.
           <View style={styles.top}>
+            {/* R3.1: a thread that did not load says so, with «Reintentar» — never an empty conversation. */}
+            {thread.isError && !thread.data ? <ErrorState body={t("inbox.thread.error")} onRetry={() => void thread.refetch()} /> : null}
             {thread.isFetchingNextPage || thread.isPending ? (
               <View style={styles.pad}>
                 <Skeleton rows={2} label={t("inbox.thread.loading")} />
@@ -298,7 +336,7 @@ export default function ConversationScreen() {
             t={t}
             replies={replies.data ?? null}
             focusSignal={act.tookOver}
-            onTakeOver={() => void act.takeOver(d.control_version)}
+            onTakeOver={() => void chat.takeOver(d.control_version)}
             onGiveBack={() => void act.giveBack(d.control_version)}
             onReopen={() => void act.reopen()}
             onReadMore={readMore}
@@ -312,6 +350,7 @@ export default function ConversationScreen() {
             }
             onClearance={onClearance}
             bottomInset={insets.bottom}
+            contactName={d.contact.name}
           />
         ) : null}
       </KeyboardStickyView>
@@ -327,5 +366,6 @@ const styles = StyleSheet.create({
   list: { paddingVertical: 8 },
   top: { paddingTop: 8 },
   notice: { marginHorizontal: 12, marginBottom: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  offline: { paddingHorizontal: 12, paddingBottom: 8 },
   foot: { position: "absolute", left: 0, right: 0, bottom: 0 },
 });

@@ -6,6 +6,7 @@ import { useMotion } from "@/motion/use-motion";
 import { FloatingSurface } from "@/ui/floating-surface";
 
 import type { ComposerMode } from "../model";
+import { takeOverMotion } from "./choreography";
 import { Composer } from "./composer";
 import { ControlCard } from "./control";
 import { FOOT_RADIUS } from "./foot-radius";
@@ -16,6 +17,10 @@ import { FOOT_RADIUS } from "./foot-radius";
  * «Tomar el control», who answers, «Reabrir», or the box. Taking control
  * changes the children; the surface stays and animates its height (D24's one
  * choreography, on glass). With «Reducir movimiento» the children only fade.
+ *
+ * Spec 069 (R2.3): the strip folds away in 120 ms, a 40 ms pause, and the box
+ * rises in 240 ms (`choreography.ts`). The waiting strip's action names who
+ * waits («Atender a Lucía», R11.2).
  */
 export function ThreadFoot({
   mode,
@@ -34,6 +39,7 @@ export function ThreadFoot({
   clearance,
   onClearance,
   bottomInset = 0,
+  contactName,
 }: {
   mode: ComposerMode;
   busy: boolean;
@@ -53,8 +59,11 @@ export function ThreadFoot({
   /** The clearance as a number each time it settles (see `FloatingSurface`). */
   onClearance?: (px: number) => void;
   bottomInset?: number;
+  /** Who waits, for «Atender a {nombre}». */
+  contactName?: string | null;
 }) {
   const motion = useMotion();
+  const choreo = takeOverMotion(motion.reduced);
   return (
     <FloatingSurface
       tone={mode.kind === "waiting" ? "warning" : "neutral"}
@@ -65,7 +74,7 @@ export function ThreadFoot({
       testID="thread-surface"
     >
       {mode.kind === "mine" ? (
-        <Animated.View key="mine" entering={motion.enter} exiting={motion.exit}>
+        <Animated.View key="mine" entering={choreo.rise} exiting={motion.exit} testID="foot-mine">
           <Composer
             mode={mode}
             online={online}
@@ -79,8 +88,18 @@ export function ThreadFoot({
           />
         </Animated.View>
       ) : (
-        <Animated.View key={`control-${mode.kind}`} entering={motion.enter} exiting={motion.exit}>
-          <ControlCard mode={mode} busy={busy} online={online} t={t} onTakeOver={onTakeOver} onGiveBack={onGiveBack} onReopen={onReopen} onReadMore={onReadMore} />
+        <Animated.View key={`control-${mode.kind}`} entering={motion.enter} exiting={choreo.fold} testID="foot-control">
+          <ControlCard
+            mode={mode}
+            busy={busy}
+            online={online}
+            t={t}
+            onTakeOver={onTakeOver}
+            onGiveBack={onGiveBack}
+            onReopen={onReopen}
+            onReadMore={onReadMore}
+            contactName={mode.kind === "waiting" ? contactName : null}
+          />
         </Animated.View>
       )}
     </FloatingSurface>

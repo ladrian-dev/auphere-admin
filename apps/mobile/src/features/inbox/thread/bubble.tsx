@@ -7,11 +7,12 @@ import type { ThreadItem } from "@/api/endpoints";
 import type { Locale, MessageKey, T } from "@/i18n/t";
 import { clock } from "@/lib/format";
 import { useMotion } from "@/motion/use-motion";
-import { useTheme } from "@/theme/theme";
+import { slopFor, useTheme } from "@/theme/theme";
+import type { Palette } from "@/theme/tokens.gen";
 import { Icon, icons, type IconName } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
-import { eventText, whoOf } from "../model";
+import { eventText, isMe, whoOf } from "../model";
 import { mediaHeaders, mediaUrl } from "./media";
 
 const MEDIA_ICON: Record<string, IconName> = {
@@ -43,8 +44,21 @@ export type Pending = {
 /**
  * One message (R5.3). The contact's on the left, the business's on the right
  * — the agent's and the people's alike, each one named. Files open in the
- * system's viewer. An outgoing message says how it went, in words.
+ * system's viewer. An outgoing message says how it went, in words — «Leído»
+ * only when the API says so (spec 069, R21.3).
+ *
+ * Spec 069 (design §4.4): the agent's answer in its mint bubble under its
+ * name, from the data; this person's in the primary green; the contact's on
+ * the card. A failed one keeps a light ground so its reason reads.
  */
+type Look = { bg: keyof Palette; border: keyof Palette; text: keyof Palette; meta: keyof Palette };
+const LOOK: Record<"contact" | "agent" | "mine" | "team" | "failed", Look> = {
+  contact: { bg: "card", border: "border", text: "foreground", meta: "mutedForeground" },
+  agent: { bg: "bubbleAgent", border: "highlightSoft", text: "foreground", meta: "mutedForeground" },
+  mine: { bg: "primary", border: "primary", text: "primaryForeground", meta: "primaryForeground" },
+  team: { bg: "secondary", border: "secondary", text: "foreground", meta: "mutedForeground" },
+  failed: { bg: "dangerBg", border: "danger", text: "foreground", meta: "dangerText" },
+};
 export const MessageBubble = memo(function MessageBubble({
   item,
   t,
@@ -78,6 +92,9 @@ export const MessageBubble = memo(function MessageBubble({
     .filter(Boolean)
     .join(". ");
   const correctable = out && item.author?.kind === "agent" && !!item.text && !!onCorrect;
+  const agent = out && item.author?.kind === "agent";
+  const mine = out && isMe(item.author);
+  const look = LOOK[delivery === "failed" ? "failed" : !out ? "contact" : agent ? "agent" : mine ? "mine" : "team"];
   return (
     <View style={[styles.line, out ? styles.right : styles.left]}>
       <View style={[styles.column, out ? styles.columnRight : null]}>
@@ -88,17 +105,20 @@ export const MessageBubble = memo(function MessageBubble({
           styles.bubble,
           styles.inColumn,
           {
-            backgroundColor: out ? colors.positiveBg : colors.card,
-            borderColor: out ? colors.positiveBg : colors.border,
+            backgroundColor: colors[look.bg],
+            borderColor: colors[look.border],
             borderRadius: radius.md * 2,
           },
           out ? { borderBottomRightRadius: radius.sm } : { borderBottomLeftRadius: radius.sm },
         ]}
       >
-        {who ? (
-          <Text variant="caption" tone="primaryText">
-            {who}
-          </Text>
+        {who && !mine ? (
+          <View style={styles.who}>
+            {agent ? <Icon name={icons.bot} size={14} tone="highlightInk" /> : null}
+            <Text variant="caption" tone="primaryText">
+              {who}
+            </Text>
+          </View>
         ) : null}
         {item.unsent ? (
           <Text variant="body" tone="muted">
@@ -117,16 +137,16 @@ export const MessageBubble = memo(function MessageBubble({
           </Text>
         ) : null}
         {item.text ? (
-          <Text variant="body" selectable>
+          <Text variant="body" tone={look.text} selectable>
             {item.text}
           </Text>
         ) : null}
         <View style={styles.meta}>
-          <Text variant="caption" tone="mutedForeground">
+          <Text variant="caption" tone={look.meta}>
             {clock(item.at, locale)}
           </Text>
           {out && status ? (
-            <Text variant="caption" tone={delivery === "failed" ? "dangerText" : "mutedForeground"}>
+            <Text variant="caption" tone={delivery === "failed" ? "dangerText" : look.meta}>
               {`· ${status}`}
             </Text>
           ) : null}
@@ -150,7 +170,8 @@ function CorrectLink({ label, spoken, onPress }: { label: string; spoken: string
       accessibilityRole="button"
       accessibilityLabel={spoken}
       onPress={onPress}
-      hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
+      // 32 tall: to 44 pt on iOS and 48 dp on Android (R3.3, review H21).
+      hitSlop={{ ...slopFor(32), left: 4, right: 4 }}
       android_ripple={{ color: colors.muted }}
       style={({ pressed }) => [styles.correct, { borderRadius: radius.full, backgroundColor: pressed ? colors.muted : "transparent" }]}
       testID="correct-answer"
@@ -179,6 +200,8 @@ function MediaChip({
   const { colors, radius } = useTheme();
   const label = name ?? t(`inbox.media.${kind ?? "document"}` as "inbox.media.document");
   const [headers, setHeaders] = useState<Record<string, string> | null>(null);
+  // An image that can't be loaded falls back to its file tile, which still opens (R3.1).
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (kind === "image") void mediaHeaders().then(setHeaders);
   }, [kind]);
@@ -192,12 +215,15 @@ function MediaChip({
     >
       {({ pressed }) => (
         <>
-          {kind === "image" && headers ? (
+          {kind === "image" && headers && !failed ? (
             <Image
               source={{ uri: mediaUrl(id), headers }}
+              onError={() => setFailed(true)}
               style={[styles.image, { borderRadius: radius.md, backgroundColor: colors.muted }]}
               contentFit="cover"
               transition={120}
+              // A customer's picture lives in memory only, never on disk (031).
+              cachePolicy="memory"
               accessible={false}
             />
           ) : (
@@ -216,13 +242,29 @@ function MediaChip({
   );
 }
 
+/** The design's icon for each event (§4.4): who took it, who gave it back, resolved, asked for help. */
+const EVENT_ICON: Record<string, IconName> = {
+  takeover: icons.person,
+  released: icons.bot,
+  resolved: icons.circleCheck,
+  reopened: icons.reopen,
+  escalated: icons.hand,
+};
+
 /** What happened to the conversation, in one centred line (R5.3). */
 export const EventLine = memo(function EventLine({ item, t }: { item: ThreadItem; t: T }) {
   const { colors, radius } = useTheme();
   const escalated = item.kind === "escalated";
+  const icon = EVENT_ICON[item.kind ?? ""];
   return (
     <View style={styles.event}>
-      <View style={[styles.eventPill, { backgroundColor: escalated ? colors.warningBg : colors.muted, borderRadius: radius.full }]}>
+      <View
+        style={[
+          styles.eventPill,
+          { backgroundColor: escalated ? colors.warningBg : colors.card, borderColor: escalated ? colors.warningBg : colors.border, borderRadius: radius.full },
+        ]}
+      >
+        {icon ? <Icon name={icon} size={14} tone={escalated ? "warningText" : "primaryText"} /> : null}
         <Text variant="caption" tone={escalated ? "warningText" : "mutedForeground"} style={styles.eventText}>
           {eventText(item.kind ?? null, item.author ?? null, item.detail ?? null, t)}
         </Text>
@@ -252,18 +294,21 @@ export function PendingBubble({ p, t, onRetry, onDismiss }: { p: Pending; t: T; 
       style={[
         styles.bubble,
         {
-          backgroundColor: failed ? colors.dangerBg : colors.positiveBg,
-          borderColor: failed ? colors.danger : colors.positiveBg,
+          // Spec 069: on its way it is already this person's green; failed, a light ground so the reason reads.
+          backgroundColor: failed ? colors.dangerBg : colors.primary,
+          borderColor: failed ? colors.danger : colors.primary,
           borderRadius: radius.md * 2,
           borderBottomRightRadius: radius.sm,
           opacity: failed ? 1 : 0.85,
         },
       ]}
     >
-      <Text variant="body">{p.text}</Text>
+      <Text variant="body" tone={failed ? "foreground" : "primaryForeground"}>
+        {p.text}
+      </Text>
       <View style={styles.meta}>
         {failed ? <Icon name={icons.failed} size={14} tone="dangerText" /> : null}
-        <Text variant="caption" tone={failed ? "dangerText" : "mutedForeground"}>
+        <Text variant="caption" tone={failed ? "dangerText" : "primaryForeground"}>
           {failed ? (p.reason ?? t("app.inbox.sendFailed")) : t("inbox.delivery.pending")}
         </Text>
       </View>
@@ -304,6 +349,7 @@ const styles = StyleSheet.create({
   file: { flexDirection: "row", alignItems: "center", gap: 8, padding: 10, minHeight: 48, minWidth: 180 },
   fileName: { flex: 1, minWidth: 0 },
   event: { alignItems: "center", paddingVertical: 8, paddingHorizontal: 24 },
-  eventPill: { paddingHorizontal: 12, paddingVertical: 6 },
-  eventText: { textAlign: "center" },
+  eventPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderWidth: StyleSheet.hairlineWidth, maxWidth: 320 },
+  eventText: { textAlign: "center", flexShrink: 1 },
+  who: { flexDirection: "row", alignItems: "center", gap: 4 },
 });
