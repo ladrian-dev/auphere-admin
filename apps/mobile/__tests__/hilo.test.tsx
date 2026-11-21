@@ -61,6 +61,17 @@ it("a received image is fetched with the phone's credential", async () => {
   expect(props.source.headers.Authorization).toBe("Bearer tok");
 });
 
+it("an image that can't be loaded shows its file tile, not a grey box forever (spec 069, R3.1; seen on iOS)", async () => {
+  const { act } = require("@testing-library/react-native") as typeof import("@testing-library/react-native");
+  await view(msg({ id: "img2", text: null, media: { kind: "image", filename: null, transcript: null } }));
+  await waitFor(() => expect(mockImage).toHaveBeenCalled());
+  const props = mockImage.mock.calls.at(-1)![0] as { onError?: () => void };
+  expect(props.onError).toBeInstanceOf(Function);
+  await act(async () => props.onError?.());
+  expect(screen.getByText("Imagen")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Abrir Imagen" })).toBeTruthy();
+});
+
 it("a document opens in the system's viewer", async () => {
   const onOpen = jest.fn();
   await view(msg({ id: "doc1", text: null, media: { kind: "document", filename: "factura.pdf", transcript: null } }), onOpen);

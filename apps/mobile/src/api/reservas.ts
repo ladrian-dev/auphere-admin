@@ -15,9 +15,12 @@ import { ApiError, errorOf } from "./errors";
  * the model the screens use (`data-model.md`). If a route or a field changes,
  * it changes here and nowhere else.
  *
- * The routes are not in `openapi.json` yet, so they go through `authedFetch`
- * (same credential, same one renewal, same refusals as the typed client);
- * they move to `openapi-fetch` when the API exports them.
+ * The routes go through `authedFetch` (same credential, same one renewal,
+ * same refusals as the typed client) and read the wire by hand. They are in
+ * `openapi.json` since `99f12805`; spec 069 adds the ones the web already
+ * used — move, ask to confirm, cancel with its options and preview, the
+ * offers — with the shapes of `schema.gen.ts` (`MoveIn`, `CancelIn`,
+ * `CancelPreviewOut`, `OfferOut`, `CalendarStatus`).
  *
  * In a development build, `EXPO_PUBLIC_RESERVAS_DEMO` swaps the HTTP source
  * for the example one (research D2). Nothing of it is ever loaded outside
@@ -33,7 +36,14 @@ export type Origin = "agent" | "person" | "walkin" | "waitlist";
 export type Channel = "whatsapp" | "phone" | "in_person";
 export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-export type Pro = { id: string; name: string; calendar: "google" | "none" };
+/** A professional's Google calendar as the API keeps it (`CalendarStatus.status`, spec 069 R13.7). */
+export type CalendarState = "none" | "pending" | "connected" | "needs_calendar" | "needs_reauth" | "error";
+/**
+ * `calendar` is what spec 044 read («google» only when connected) and stays for
+ * what compares it; `calendarState` is every state the API says, and
+ * `calendarBusy` the business's own Google still blocking their hours.
+ */
+export type Pro = { id: string; name: string; calendar: "google" | "none"; calendarState?: CalendarState; calendarBusy?: boolean };
 export type Service = { id: string; name: string; durationMin: number; price: number | null; proIds: string[] | null };
 export type Shift = { name: string; from: Minutes; to: Minutes; everyMin: number };
 /** A block covers the arrival times from `from` to `until`, both included (043 §6). */
@@ -67,7 +77,14 @@ export type ResConfig = {
   capacity: CapacityConfig | null;
   /** For `If-Match` on `PATCH /settings` (043 §2). */
   version: number;
+  /** Spec 064 R1, 069 R17.1: how soon the agent may give a time (minutes; 0 is none). Read as 60 when absent, the API's default. */
+  agent?: { minNoticeMin: number };
+  /** Spec 069 R17.1: the WhatsApp reminder 24 hours before (`reminder_enabled`). */
+  reminders?: boolean;
 };
+
+/** Spec 064 R1.2: the only notices the API takes for the agent. */
+export const NOTICE_MINUTES = [0, 15, 30, 60, 120, 240, 1440] as const;
 
 /** One line of a reservation's history (043 §4 `events`): the words are the screen's. */
 export type ResEvent = { kind: string; at: string; actor: string | null; data: Record<string, unknown> };
@@ -98,6 +115,34 @@ export type Reservation = {
   /** Only the detail read carries them; lists come with `[]`. */
   events: ResEvent[];
   actions: ResAction[];
+  /**
+   * Spec 069 (R14.1): what the API allows besides `actions` and the phone now
+   * offers too — moving it and asking the customer to confirm. Kept apart so
+   * `ResAction` stays what every screen and the example API already name.
+   */
+  moreActions?: MoreAction[];
+};
+
+export type MoreAction = "move" | "request_confirmation";
+
+/** Spec 069 (R14.2): what a cancellation does besides cancelling (`CancelIn`). */
+export type CancelOptions = { notify: boolean; offerSlot: boolean };
+
+/** Whether the slot of a cancellation can go to the waitlist (`CancelPreviewOut`). */
+export type CancelPreview = { canOffer: boolean; candidates: number; whyNot: "waitlist_off" | "too_soon" | "nobody_fits" | "not_services" | null };
+
+/** Spec 069 (R14.3): where a reservation goes (`MoveIn`); what does not change is left out. */
+export type MoveRequest = { date: LocalDate; time: Minutes; proId?: string | null; partySize?: number; notify: boolean };
+
+/** A freed slot the agent is offering to the waitlist, one person at a time (`OfferOut`, spec 069 R16.2). */
+export type Offer = {
+  id: string;
+  status: "running" | "filled" | "empty" | "stopped";
+  createdAt: string;
+  windowMin: number;
+  slot: { date: LocalDate; start: Minutes; end: Minutes; service: string | null; pro: string | null; seats: number | null };
+  candidates: { name: string | null; position: number; status: string; deadlineAt: string | null }[];
+  cancelledBy: string | null;
 };
 
 export type Slot = { date: LocalDate; time: Minutes; inside: number; capacity: number; blocked: string | null; closed: boolean };
@@ -131,6 +176,26 @@ export type ConfigPatch = {
   waitlist?: Partial<{ enabled: boolean; leadHours: number }>;
   confirmation?: Partial<{ enabled: boolean; when: ResConfig["confirmation"]["when"] }>;
   capacity?: Partial<{ capacity: number; stayMin: number; maxParty: number; walkinReserved: number }>;
+  /** Spec 069 R17.1. */
+  agent?: { minNoticeMin: number };
+  reminders?: boolean;
+};
+
+/**
+ * Someone on the waitlist. At the door (`inPerson`, the walk-in) no phone is
+ * asked (064 R3.7); put there by hand from the list, the phone is required
+ * (spec 069 R16.1) and so is what they want.
+ */
+export type JoinWaitlist = {
+  partySize: number;
+  name: string | null;
+  date: LocalDate | null;
+  time: Minutes | null;
+  phone?: string | null;
+  inPerson?: boolean;
+  serviceId?: string | null;
+  proId?: string | null;
+  until?: LocalDate | null;
 };
 
 export interface ReservasSource {
@@ -139,12 +204,21 @@ export interface ReservasSource {
   /** One reservation with its history (043 §4 `GET /bookings/{id}`). */
   booking(id: string): Promise<Reservation>;
   occupancy(from: LocalDate, to: LocalDate): Promise<Occupancy>;
-  freeSlots(q: { date: LocalDate; serviceId?: string; proId?: string | null; partySize?: number }): Promise<FreeSlot[]>;
+  /** `exclude`: a reservation being moved, so its own time counts as free (spec 069 R14.3). */
+  freeSlots(q: { date: LocalDate; serviceId?: string; proId?: string | null; partySize?: number; exclude?: string }): Promise<FreeSlot[]>;
   create(body: NewReservation, idempotencyKey: string): Promise<Reservation>;
   act(r: Pick<Reservation, "id" | "version">, action: ResAction): Promise<Reservation>;
+  /** Cancel, telling the customer or not and offering the slot to the waitlist or not (spec 069 R14.2). */
+  cancel(r: Pick<Reservation, "id" | "version">, opts: CancelOptions): Promise<Reservation>;
+  cancelPreview(id: string): Promise<CancelPreview>;
+  move(r: Pick<Reservation, "id" | "version">, body: MoveRequest): Promise<Reservation>;
+  requestConfirmation(r: Pick<Reservation, "id" | "version">): Promise<Reservation>;
   walkIn(body: { partySize: number; name: string | null }, idempotencyKey: string): Promise<Reservation>;
   waitlist(): Promise<WaitEntry[]>;
-  joinWaitlist(body: { partySize: number; name: string | null; date: LocalDate; time: Minutes | null }, idempotencyKey: string): Promise<void>;
+  joinWaitlist(body: JoinWaitlist, idempotencyKey: string): Promise<void>;
+  /** The slots being offered now (spec 069 R16.2). */
+  offers(): Promise<Offer[]>;
+  stopOffer(id: string): Promise<Offer>;
   offer(id: string): Promise<void>;
   removeWait(id: string): Promise<void>;
   patchConfig(body: ConfigPatch, version: number): Promise<ResConfig>;
@@ -165,8 +239,24 @@ const objs = (v: unknown): Wire[] => arr(v).map(obj).filter((x): x is Wire => x 
 const time = (v: unknown): Minutes | null => (typeof v === "string" && /^\d{1,2}:\d{2}$/.test(v) ? parseHHMM(v) : null);
 
 const STATES: readonly ResState[] = ["pending", "confirmed", "arrived", "done", "noshow", "cancelled"];
-/** The API's action names (043 §4 `allowed`) and the app's; `move` and `request_confirmation` are not offered on the phone yet. */
+/** The API's action names (043 §4 `allowed`) and the app's; `move` and `request_confirmation` go in `moreActions` (spec 069). */
 const ACTION_IN: Record<string, ResAction> = { confirm: "confirm", arrive: "arrived", noshow: "noshow", undo: "undo", cancel: "cancel" };
+const MORE_IN: Record<string, MoreAction> = { move: "move", request_confirmation: "request_confirmation" };
+const CALENDAR_STATES: readonly CalendarState[] = ["none", "pending", "connected", "needs_calendar", "needs_reauth", "error"];
+
+/**
+ * `calendar` says connected or not, as spec 044 read it; `calendarState` is
+ * added only when it says more (pending, a calendar to choose, to connect
+ * again, failing), and `calendarBusy` only when it is so.
+ */
+function calendarOf(w: Wire | null): Pick<Pro, "calendar" | "calendarState" | "calendarBusy"> {
+  const status = CALENDAR_STATES.find((s) => s === w?.status) ?? "none";
+  return {
+    calendar: status === "connected" ? "google" : "none",
+    ...(status !== "connected" && status !== "none" ? { calendarState: status } : {}),
+    ...(w?.business_busy === true ? { calendarBusy: true } : {}),
+  };
+}
 const ACTION_OUT: Record<ResAction, string> = { confirm: "confirm", arrived: "arrive", noshow: "noshow", undo: "undo", cancel: "cancel" };
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
 
@@ -227,7 +317,7 @@ export function toConfig(s: Wire, staff: Wire[] | null, services: Wire[] | null,
       mode === "services"
         ? {
             stepMin: num(s.slot_step_minutes) || 30,
-            team: (staff ?? []).map((p) => ({ id: str(p.id), name: str(p.name), calendar: obj(p.calendar)?.status === "connected" ? "google" : "none" })),
+            team: (staff ?? []).map((p) => ({ id: str(p.id), name: str(p.name), ...calendarOf(obj(p.calendar)) })),
             catalog: (services ?? []).map((x) => ({
               id: str(x.id),
               name: str(x.name),
@@ -252,6 +342,8 @@ export function toConfig(s: Wire, staff: Wire[] | null, services: Wire[] | null,
         }
       : null,
     version: num(s.version),
+    agent: { minNoticeMin: typeof obj(s.agent)?.min_notice_minutes === "number" ? num(obj(s.agent)?.min_notice_minutes) : 60 },
+    reminders: s.reminder_enabled !== false,
   };
 }
 
@@ -290,6 +382,42 @@ export function toReservation(w: Wire, tz: string): Reservation {
     actions: arr(w.allowed)
       .map((a) => ACTION_IN[String(a)])
       .filter((a): a is ResAction => a !== undefined),
+    moreActions: arr(w.allowed)
+      .map((a) => MORE_IN[String(a)])
+      .filter((a): a is MoreAction => a !== undefined),
+  };
+}
+
+export function toCancelPreview(w: Wire): CancelPreview {
+  const why = w.why_not;
+  return {
+    canOffer: w.can_offer === true,
+    candidates: num(w.candidates),
+    whyNot: why === "waitlist_off" || why === "too_soon" || why === "nobody_fits" || why === "not_services" ? why : null,
+  };
+}
+
+export function toOffer(w: Wire): Offer {
+  const slot = obj(w.slot) ?? {};
+  const local = obj(slot.local) ?? {};
+  const status = w.status === "filled" || w.status === "empty" || w.status === "stopped" ? w.status : "running";
+  return {
+    id: str(w.id),
+    status,
+    createdAt: str(w.created_at),
+    windowMin: num(w.window_minutes),
+    slot: {
+      date: str(local.date),
+      start: time(local.start) ?? 0,
+      end: time(local.end) ?? 0,
+      service: strOrNull(obj(slot.service)?.name),
+      pro: strOrNull(obj(slot.staff)?.name),
+      seats: numOrNull(slot.seats),
+    },
+    candidates: objs(w.candidates)
+      .map((c) => ({ name: strOrNull(c.name), position: num(c.position), status: str(c.status), deadlineAt: strOrNull(c.deadline_at) }))
+      .sort((a, b) => a.position - b.position),
+    cancelledBy: strOrNull(w.cancelled_by_name),
   };
 }
 
@@ -431,9 +559,9 @@ export function httpSource(): ReservasSource {
       });
       return { slots, days };
     },
-    freeSlots: async ({ date, serviceId, proId, partySize }) => {
+    freeSlots: async ({ date, serviceId, proId, partySize, exclude }) => {
       const c = last ?? (await config());
-      const w = (await request("GET", `${BASE}/slots${q({ date, service_id: serviceId, staff_id: proId, party_size: partySize })}`)) as Wire;
+      const w = (await request("GET", `${BASE}/slots${q({ date, service_id: serviceId, staff_id: proId, party_size: partySize, exclude })}`)) as Wire;
       if (w.closed === true) return [];
       return objs(w.slots).map((x) => {
         if (c.mode === "services") {
@@ -473,6 +601,40 @@ export function httpSource(): ReservasSource {
         )) as Wire,
         tz(),
       ),
+    cancel: async (r, opts) =>
+      toReservation(
+        (await request(
+          "POST",
+          `${BASE}/bookings/${encodeURIComponent(r.id)}/cancel`,
+          { notify: opts.notify, offer_slot: opts.offerSlot },
+          { "If-Match": String(r.version) },
+        )) as Wire,
+        tz(),
+      ),
+    cancelPreview: async (id) => toCancelPreview((await request("GET", `${BASE}/bookings/${encodeURIComponent(id)}/cancel-preview`)) as Wire),
+    move: async (r, b) =>
+      toReservation(
+        (await request(
+          "POST",
+          `${BASE}/bookings/${encodeURIComponent(r.id)}/move`,
+          {
+            date: b.date,
+            time: hhmmOut(b.time),
+            ...(b.proId !== undefined ? { staff_id: b.proId } : {}),
+            ...(b.partySize !== undefined ? { party_size: b.partySize } : {}),
+            notify: b.notify,
+          },
+          { "If-Match": String(r.version) },
+        )) as Wire,
+        tz(),
+      ),
+    requestConfirmation: async (r) =>
+      toReservation(
+        (await request("POST", `${BASE}/bookings/${encodeURIComponent(r.id)}/request-confirmation`, undefined, { "If-Match": String(r.version) })) as Wire,
+        tz(),
+      ),
+    offers: async () => objs(obj(await request("GET", `${BASE}/offers${q({ status: "running" })}`))?.items).map(toOffer),
+    stopOffer: async (id) => toOffer((await request("POST", `${BASE}/offers/${encodeURIComponent(id)}/stop`)) as Wire),
     walkIn: async (b, key) => {
       try {
         return toReservation((await request("POST", `${BASE}/walkins`, { party_size: b.partySize, name: b.name }, { "Idempotency-Key": key })) as Wire, tz());
@@ -489,7 +651,18 @@ export function httpSource(): ReservasSource {
       await request(
         "POST",
         `${BASE}/waitlist`,
-        { name: b.name ?? "", phone: null, party_size: b.partySize, date: b.date, time: b.time != null ? hhmmOut(b.time) : null, in_person: true },
+        {
+          name: b.name ?? "",
+          phone: b.phone ?? null,
+          party_size: b.partySize,
+          date: b.date,
+          time: b.time != null ? hhmmOut(b.time) : null,
+          // At the door unless the person typed a phone for it (064 R3.7: only in person goes without).
+          in_person: b.inPerson ?? !b.phone,
+          ...(b.serviceId ? { service_id: b.serviceId } : {}),
+          ...(b.proId ? { staff_id: b.proId } : {}),
+          ...(b.until ? { until: b.until } : {}),
+        },
         { "Idempotency-Key": key },
       );
     },
@@ -518,6 +691,8 @@ export function httpSource(): ReservasSource {
                 },
               }
             : {}),
+          ...(b.agent ? { agent: { min_notice_minutes: b.agent.minNoticeMin } } : {}),
+          ...(b.reminders !== undefined ? { reminder_enabled: b.reminders } : {}),
         },
         { "If-Match": String(version) },
       );

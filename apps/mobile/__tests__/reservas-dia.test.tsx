@@ -65,6 +65,13 @@ describe("Servicios · day (R2.4, R2.5, R2.6, R2.10)", () => {
   ];
   const now = { date: TODAY, minutes: 11 * 60 + 20 };
 
+  it("with every booking confirmed, the total alone, not «0 sin confirmar» (spec 069, edge cases)", async () => {
+    const confirmed = items.map((r) => (r.state === "pending" ? { ...r, state: "confirmed" as const } : r));
+    await render(<DayServices config={servicesConfig} items={confirmed} now={now} date={TODAY} pro={null} onPro={noop} onOpen={noop} t={t} locale="es" />);
+    expect(screen.getByText("3 reservas")).toBeTruthy();
+    expect(screen.queryByText(/0 sin confirmar/)).toBeNull();
+  });
+
   it("sums the day without the cancelled ones and draws «Ahora» between rows", async () => {
     await render(<DayServices config={servicesConfig} items={items} now={now} date={TODAY} pro={null} onPro={noop} onOpen={noop} t={t} locale="es" />);
     expect(screen.getByText("3 reservas · 1 sin confirmar")).toBeTruthy();

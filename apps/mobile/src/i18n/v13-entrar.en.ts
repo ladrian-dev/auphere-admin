@@ -1,0 +1,31 @@
+import type { v13EntrarEs } from "./v13-entrar.es";
+
+/** Spec 069 — Entrar, recuperar la contraseña y el preaviso de los avisos, English. Every Spanish key must exist here (`tsc` checks it). */
+export const v13EntrarEn: Record<keyof typeof v13EntrarEs, string> = {
+  "v13.entrar.brand": "Auphere",
+  "v13.entrar.headline": "Your customers, always within reach",
+  "v13.entrar.error.email": "Write the email you use for Auphere.",
+  "v13.entrar.error.password": "Write your password.",
+  "v13.entrar.offline.title": "No connection",
+  "v13.entrar.back": "Back",
+  "v13.entrar.forgot.body": "We will email you a link to create it. Your conversations keep being answered meanwhile.",
+  "v13.entrar.sent.title": "Check your email",
+  "v13.entrar.sent.body": "If that email has access, we have sent it a link to create the new password.",
+  "v13.entrar.sent.address": "Email: {email}",
+  "v13.entrar.sent.change": "Change",
+  "v13.entrar.sent.changeA11y": "Use another email",
+  "v13.entrar.step.a11y": "Step {n}: {title}",
+  "v13.entrar.step.a11y.hint": "Step {n}: {title}. {hint}",
+  "v13.entrar.step1": "Open the email from Auphere",
+  "v13.entrar.step2": "Open the link and create the password",
+  "v13.entrar.step2.hint": "The link lasts one hour.",
+  "v13.entrar.step3": "Come back and sign in",
+  "v13.entrar.step3.hint": "Your conversations keep being answered meanwhile.",
+  "v13.entrar.sent.help": "Not there? Check spam or promotions. If it still doesn't arrive, ask whoever manages your business in Auphere.",
+  "v13.entrar.resend.wait": "Resend in {time}",
+  "v13.entrar.resend.cta": "Resend the link",
+  "v13.entrar.resend.done": "Done. If that email has access, another link is on its way.",
+  "v13.entrar.notices.later": "You can change each one later in Settings.",
+  "v13.entrar.notices.denied": "No notices on this phone. Turn them on in Settings whenever you want.",
+  "v13.entrar.notices.continue": "Continue",
+};

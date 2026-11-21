@@ -1,10 +1,25 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useSyncExternalStore } from "react";
+import { AppState } from "react-native";
+
 import { sinceMinutes, wallClock, type BizNow, type LocalDate, type WallTime } from "@/lib/reservas-model";
 import { useNowMs } from "@/lib/use-now";
+import { TOAST_UNDO_MS, undoMs } from "@/ui/toast";
 
 import { useForbiddenRereadsMe, useMe } from "./hooks";
 import { invalidateReservas, keys } from "./query";
-import { reservasSource, type ConfigPatch, type NewReservation, type ResAction, type ResConfig, type Reservation } from "./reservas";
+import {
+  reservasSource,
+  type CancelOptions,
+  type ConfigPatch,
+  type JoinWaitlist,
+  type MoveRequest,
+  type NewReservation,
+  type ResAction,
+  type ResConfig,
+  type Reservation,
+  type WaitEntry,
+} from "./reservas";
 
 /**
  * Reservas' reads and writes on the phone (spec 044, R1, R17). Memory only,
@@ -46,9 +61,10 @@ export function useOccupancy(from: LocalDate | null, to: LocalDate | null, enabl
   return q;
 }
 
-export function useFreeSlots(p: { date: LocalDate; serviceId?: string; proId?: string | null; partySize?: number } | null) {
+export function useFreeSlots(p: { date: LocalDate; serviceId?: string; proId?: string | null; partySize?: number; exclude?: string } | null) {
   return useQuery({
-    queryKey: keys.reservasSlots(p?.date ?? "", p?.serviceId ?? null, p?.proId ?? null, p?.partySize ?? null),
+    // `exclude` (a reservation being moved) is its own read: its time counts as free there.
+    queryKey: [...keys.reservasSlots(p?.date ?? "", p?.serviceId ?? null, p?.proId ?? null, p?.partySize ?? null), p?.exclude ?? null],
     queryFn: () => reservasSource().freeSlots(p!),
     enabled: p !== null,
     staleTime: 0,
@@ -101,9 +117,7 @@ export function useWalkIn() {
 }
 
 export function useJoinWaitlist() {
-  return useInvalidating(({ key, ...b }: { partySize: number; name: string | null; date: LocalDate; time: number | null; key: string }) =>
-    reservasSource().joinWaitlist(b, key),
-  );
+  return useInvalidating(({ key, ...b }: JoinWaitlist & { key: string }) => reservasSource().joinWaitlist(b, key));
 }
 
 export function useWaitlistOffer() {
@@ -136,4 +150,199 @@ export function useReservation(id: string | null) {
 
 export function useUnblock() {
   return useInvalidating((id: string) => reservasSource().unblock(id));
+}
+
+// ── spec 069: what the web already did ────────────────────────────────
+
+/** Whether the client also has the Bandeja: «Abrir el chat» only then (constitution §V). */
+export function useHasInbox(): boolean {
+  return useMe().data?.nav.includes("inbox") ?? false;
+}
+
+/** Whether a cancellation's slot can go to the waitlist (Servicios; spec 069 R14.2). */
+export function useCancelPreview(id: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: [...keys.reservas, "cancel-preview", id ?? ""],
+    queryFn: () => reservasSource().cancelPreview(id!),
+    enabled: enabled && id !== null,
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+/** The slots being offered to the waitlist now (spec 069 R16.2). */
+export function useOffers(enabled = true) {
+  const q = useQuery({ queryKey: [...keys.reservas, "offers"], queryFn: () => reservasSource().offers(), enabled });
+  useForbiddenRereadsMe(q.error);
+  return q;
+}
+
+export function useStopOffer() {
+  return useInvalidating((id: string) => reservasSource().stopOffer(id));
+}
+
+export function useMoveReservation() {
+  return useInvalidating(({ r, body }: { r: Pick<Reservation, "id" | "version">; body: MoveRequest }) => reservasSource().move(r, body));
+}
+
+export function useRequestConfirmation() {
+  return useInvalidating((r: Pick<Reservation, "id" | "version">) => reservasSource().requestConfirmation(r));
+}
+
+// ── writes that wait for «Deshacer» (spec 069, micro 6) ───────────────
+
+/**
+ * Cancelling a reservation and taking someone off the waitlist have no
+ * inverse in the API, and a cancellation tells the customer on WhatsApp: a
+ * message cannot be unsent. So «Deshacer» is honest only if nothing went out
+ * yet — the write waits while the notice offers it (`undoMs()`, the toast's own
+ * time, longer with a screen reader) and the screens show it done meanwhile. «Deshacer» drops it; at the
+ * end it goes to the API, and a refusal is said and the truth re-read.
+ * Module state on purpose: the write outlives the sheet that started it.
+ */
+/** The usual wait, without a screen reader (tests). */
+export const UNDO_MS = TOAST_UNDO_MS;
+
+type Pending = { timer: ReturnType<typeof setTimeout>; commit: () => void };
+const cancels = new Map<string, Pending>();
+const removals = new Map<string, Pending>();
+
+/**
+ * What the screens read: an immutable snapshot, a new one per change, so a
+ * memoised render (React Compiler) sees the change in what it reads.
+ */
+type Snapshot = { cancels: ReadonlySet<string>; removals: ReadonlySet<string> };
+let snapshot: Snapshot = { cancels: new Set(), removals: new Set() };
+const listeners = new Set<() => void>();
+const emit = () => {
+  snapshot = { cancels: new Set(cancels.keys()), removals: new Set(removals.keys()) };
+  for (const l of listeners) l();
+};
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+};
+
+function usePending(): Snapshot {
+  return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
+}
+
+/** A day's reservations with those being cancelled shown cancelled (and nothing left to do with them). */
+export function useWithPendingCancels(items: Reservation[] | undefined): Reservation[] | undefined {
+  return withCancels(items, usePending().cancels);
+}
+
+function withCancels(items: Reservation[] | undefined, pending: ReadonlySet<string>): Reservation[] | undefined {
+  if (!items || pending.size === 0) return items;
+  return items.map((r) => (pending.has(r.id) ? { ...r, state: "cancelled", actions: [], moreActions: [] } : r));
+}
+
+/** The waitlist without those being taken off it. */
+export function useWithPendingRemovals(items: WaitEntry[] | undefined): WaitEntry[] | undefined {
+  const pending = usePending().removals;
+  if (!items || pending.size === 0) return items;
+  return items.filter((w) => !pending.has(w.id));
+}
+
+/**
+ * Leaving the app sends what was waiting: a write the person was told went
+ * through is not lost because the phone locked or the app was closed in the
+ * window (iOS goes «inactive» on the way to the switcher, before it may be
+ * killed). «Deshacer» after that says it is too late.
+ */
+let watching = false;
+function watchAppState() {
+  if (watching) return;
+  watching = true;
+  AppState.addEventListener("change", (state) => {
+    if (state === "background" || state === "inactive") flushPendingWrites();
+  });
+}
+
+export function flushPendingWrites(): void {
+  for (const map of [cancels, removals]) {
+    for (const p of [...map.values()]) {
+      clearTimeout(p.timer);
+      p.commit();
+    }
+  }
+}
+
+/** Returns the undo: `true` when it dropped the write, `false` when it had gone out already. */
+function defer(map: Map<string, Pending>, id: string, qc: QueryClient, send: () => Promise<unknown>, onFail: (e: unknown) => void): () => boolean {
+  watchAppState();
+  const prev = map.get(id);
+  if (prev) clearTimeout(prev.timer);
+  let sent = false;
+  const done = () => {
+    if (map.get(id)?.commit === commit) map.delete(id);
+    emit();
+  };
+  const commit = () => {
+    if (sent) return;
+    sent = true;
+    void send().then(
+      // Done: it stays shown as done until the re-read brings the truth, so it never flickers back.
+      () =>
+        qc
+          .invalidateQueries({ queryKey: keys.reservas })
+          .catch(() => undefined)
+          .finally(done),
+      // Refused: back as it was at once, said, and re-read.
+      (e: unknown) => {
+        onFail(e);
+        done();
+        invalidateReservas(qc);
+      },
+    );
+  };
+  // The notice's own time, longer with a screen reader: «Deshacer» never outlives the wait.
+  map.set(id, { timer: setTimeout(commit, undoMs()), commit });
+  emit();
+  return () => {
+    const p = map.get(id);
+    if (!p || p.commit !== commit || sent) return false;
+    clearTimeout(p.timer);
+    map.delete(id);
+    emit();
+    return true;
+  };
+}
+
+/** Cancel after the notice's «Deshacer»; returns the undo. */
+export function useDeferredCancel() {
+  const qc = useQueryClient();
+  return (r: Pick<Reservation, "id" | "version">, opts: CancelOptions, onFail: (e: unknown) => void) =>
+    defer(cancels, r.id, qc, () => reservasSource().cancel(r, opts), onFail);
+}
+
+/** Take someone off the waitlist after the notice's «Deshacer»; returns the undo. */
+export function useDeferredRemoveWait() {
+  const qc = useQueryClient();
+  return (id: string, onFail: (e: unknown) => void) => defer(removals, id, qc, () => reservasSource().removeWait(id), onFail);
+}
+
+/**
+ * «Deshacer» of a booking just saved (R15.4): there is no inverse, so it is
+ * cancelled — telling the customer when they were told it was made. A plain
+ * promise, not a mutation's callbacks: the form that saved it is gone by the
+ * time the notice is tapped, and a mutation would not call back then.
+ */
+export function useUndoCreate() {
+  const qc = useQueryClient();
+  return (r: Pick<Reservation, "id" | "version" | "customer">): Promise<void> =>
+    reservasSource()
+      .cancel(r, { notify: !!r.customer.phone, offerSlot: false })
+      .then(() => undefined)
+      .finally(() => invalidateReservas(qc));
+}
+
+/** For tests: nothing waiting. */
+export function resetPendingWrites(): void {
+  for (const p of [...cancels.values(), ...removals.values()]) clearTimeout(p.timer);
+  cancels.clear();
+  removals.clear();
+  emit();
 }

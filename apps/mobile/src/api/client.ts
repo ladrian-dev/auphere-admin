@@ -3,7 +3,7 @@ import createClient from "openapi-fetch";
 
 import { emitSessionEvent } from "@/auth/events";
 import { clearSession, readSession, writeSession, type Session } from "@/auth/store";
-import { API_URL, APP_VERSION, PLATFORM } from "@/config";
+import { API_URL, APP_VERSION, DEMO, PLATFORM } from "@/config";
 
 import { ApiError, errorOf } from "./errors";
 import type { paths } from "./schema.gen";
@@ -19,6 +19,19 @@ import type { paths } from "./schema.gen";
  *   why (R7.2); `app_update_required` sends the person to update (R13.1).
  */
 export const APP_HEADERS = { "X-App-Platform": PLATFORM, "X-App-Version": APP_VERSION } as const;
+
+type Transport = (input: Request | string, init?: RequestInit) => Promise<Response>;
+
+/**
+ * Where requests go (spec 069, R23): the network, or — in a development build
+ * started with `EXPO_PUBLIC_DEMO=1` — the in-memory example business. The
+ * example code is only required inside that branch.
+ */
+const transport: Transport =
+  __DEV__ && DEMO
+    ? // eslint-disable-next-line @typescript-eslint/no-require-imports -- only inside the development branch
+      (require("./demo") as typeof import("./demo")).demoFetch
+    : (input, init) => fetch(input, init);
 
 /** Renew a little before the hour is up, so a request never leaves with a dying token. */
 const EARLY_MS = 60_000;
@@ -80,7 +93,7 @@ export function refresh(): Promise<Session | null> {
     if (!before) return null;
     let res: Response;
     try {
-      res = await fetch(`${API_URL}/app/phones/refresh`, {
+      res = await transport(`${API_URL}/app/phones/refresh`, {
         method: "POST",
         headers: { ...APP_HEADERS, "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ refresh_token: before.refreshToken, app_version: APP_VERSION }),
@@ -136,7 +149,7 @@ export async function authedFetch(input: Request | string, init?: RequestInit): 
   const req = typeof input === "string" ? new Request(input, init) : input;
   const method = req.method.toUpperCase();
   const body = method === "GET" || method === "HEAD" ? undefined : await req.text();
-  const send = (token: string) => fetch(req.url, { method, headers: headersWith(req.headers, token), body });
+  const send = (token: string) => transport(req.url, { method, headers: headersWith(req.headers, token), body });
 
   const token = await accessToken();
   if (!token) return new Response(JSON.stringify({ detail: { code: "phone_closed", reason: null } }), { status: 401 });
@@ -168,7 +181,7 @@ export async function authedFetch(input: Request | string, init?: RequestInit): 
 export const api = createClient<paths>({ baseUrl: API_URL, fetch: authedFetch });
 
 /** The public routes (`/app/*`): no credential, still the app's headers. */
-export const publicApi = createClient<paths>({ baseUrl: API_URL, headers: APP_HEADERS });
+export const publicApi = createClient<paths>({ baseUrl: API_URL, headers: APP_HEADERS, ...(DEMO ? { fetch: (req: Request) => transport(req) } : {}) });
 
 type Result<T> = { data?: T; error?: unknown; response: Response };
 
@@ -194,7 +207,7 @@ export async function call<T>(promise: Promise<Result<T>>): Promise<T> {
 export async function upload(path: string, form: () => FormData, headers: Record<string, string> = {}): Promise<Response> {
   // expo/fetch: it streams an expo-file-system `File` inside FormData.
   const send = (token: string) =>
-    expoFetch(`${API_URL}${path}`, {
+    (DEMO ? transport : expoFetch)(`${API_URL}${path}`, {
       method: "POST",
       headers: { ...APP_HEADERS, ...headers, Authorization: `Bearer ${token}` },
       body: form(),

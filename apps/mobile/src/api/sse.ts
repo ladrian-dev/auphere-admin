@@ -4,7 +4,7 @@ import { fetch } from "expo/fetch";
 import { useEffect, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 
-import { API_URL } from "@/config";
+import { API_URL, DEMO } from "@/config";
 
 import { APP_HEADERS, accessToken, refresh, settleRefusal } from "./client";
 import { invalidateInbox, invalidateReservas, keys } from "./query";
@@ -118,6 +118,16 @@ export function useInboxStream(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
     const invalidator = makeInvalidator(qc);
+    if (__DEV__ && DEMO) {
+      // Spec 069, R23: the example business's live line — one new conversation a few seconds in.
+      setStatus("live");
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- only inside the development branch
+      const off = (require("./demo") as typeof import("./demo")).demoEvents((e) => invalidator.handle(e));
+      return () => {
+        off();
+        invalidator.cancel();
+      };
+    }
     let controller: AbortController | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let downTimer: ReturnType<typeof setTimeout> | null = null;

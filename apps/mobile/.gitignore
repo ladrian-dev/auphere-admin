@@ -53,3 +53,6 @@ GoogleService-Info.plist
 # Skills y ajustes de agentes: locales, como el `.claude/*` de la raíz. Se
 # restauran con `npx skills experimental_install` desde `skills-lock.json`.
 .claude/
+
+# Spec 069: Helvena (commercial) is never versioned until its app licence is confirmed.
+assets/fonts/helvena/

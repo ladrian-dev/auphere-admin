@@ -7,6 +7,7 @@ import { motionFor } from "@/motion/use-motion";
 import { CARD_RADIUS, concentric } from "@/theme/theme";
 import { EmptyState, ErrorState, OfflineBanner, PartialNotice, ReconnectingIndicator, SKELETON_DELAY_MS, Skeleton } from "@/ui/states";
 import { Avatar } from "@/ui/bits";
+import { icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
 const noop = () => undefined;
@@ -116,7 +117,7 @@ describe("motion (D24)", () => {
 
 describe("shape (spec 042, T006, R7.1)", () => {
   it("cards share one radius, and what sits inside keeps its corners concentric", () => {
-    expect(CARD_RADIUS).toBe(12);
+    expect(CARD_RADIUS).toBe(16); // spec 069, D4: the design's cards
     expect(concentric(24, 8)).toBe(16);
     expect(concentric(12, 12)).toBe(4);
     expect(concentric(6, 10)).toBe(4);
@@ -180,7 +181,7 @@ describe("buttons, in the platform's shape and touch (spec 042, T071, T078, R4.8
   });
 
   it("the icon button presses to a tint too, never to a lower opacity", async () => {
-    await render(<IconButton icon={{ ios: "ellipsis.circle", android: "more_vert" }} label="Más" onPress={() => undefined} />);
+    await render(<IconButton icon={icons.more} label="Más" onPress={() => undefined} />);
     await fireEvent(screen.getByRole("button", { name: "Más" }), "pressIn");
     expect(style("Más").opacity).toBeUndefined();
     expect(style("Más").backgroundColor).toBe(tokens.light.muted);

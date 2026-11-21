@@ -4,6 +4,12 @@ import { avisosEn } from "./avisos.en";
 import { fabricaEn } from "./fabrica.en";
 import { mejorasEn } from "./mejoras.en";
 import { reservasEn } from "./reservas.en";
+import { v13ComunEn } from "./v13-comun.en";
+import { v13InicioEn } from "./v13-inicio.en";
+import { v13BandejaEn } from "./v13-bandeja.en";
+import { v13ReservasEn } from "./v13-reservas.en";
+import { v13ConsumoEn } from "./v13-consumo.en";
+import { v13EntrarEn } from "./v13-entrar.en";
 
 /** The app's own words, English. Every Spanish key must exist here (`tsc` checks it). */
 export const appEn: Record<AppKey, string> = {
@@ -12,6 +18,12 @@ export const appEn: Record<AppKey, string> = {
   ...avisosEn,
   ...atenderEn,
   ...fabricaEn,
+  ...v13ComunEn,
+  ...v13InicioEn,
+  ...v13BandejaEn,
+  ...v13ReservasEn,
+  ...v13ConsumoEn,
+  ...v13EntrarEn,
   "app.tab.panel": "Home",
   "app.tab.inbox": "Inbox",
   "app.tab.reservas": "Bookings",

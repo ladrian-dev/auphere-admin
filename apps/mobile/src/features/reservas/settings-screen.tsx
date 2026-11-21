@@ -1,7 +1,9 @@
 import { router, Stack } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
 import { RefreshControl, ScrollView, StyleSheet } from "react-native";
 
 import { demo } from "@/api/reservas";
+import { CONSOLE_URL } from "@/config";
 import { usePatchReservasConfig, useReservasConfig, useUnblock } from "@/api/reservas-hooks";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
@@ -15,7 +17,7 @@ import { ReservasBody } from "./body";
 import { errorText } from "./screen";
 import { ReservasSettings } from "./settings";
 
-/** «Ajustes de reservas», stacked inside the Reservas tab (spec 044, Requisito 8, D5). */
+/** «Ajustes de reservas», stacked inside the Reservas tab (spec 044, Requisito 8, D5; spec 069, Requisito 17). */
 export default function SettingsScreen() {
   const t = useT();
   const locale = useLocale();
@@ -55,7 +57,7 @@ export default function SettingsScreen() {
               locale={locale}
               onPatch={(p) =>
                 patch.mutate({ patch: p, version: config.data!.version }, {
-                  onSuccess: () => haptics.light(),
+                  onSuccess: () => haptics.select(),
                   onError: (e) => toast.show({ text: errorText(e, t) }),
                 })
               }
@@ -66,6 +68,7 @@ export default function SettingsScreen() {
                 })
               }
               onBlock={() => router.push("/reserva/bloquear")}
+              onWeb={() => void WebBrowser.openBrowserAsync(`${CONSOLE_URL}/reservas`)}
             />
           ) : null}
         </ReservasBody>

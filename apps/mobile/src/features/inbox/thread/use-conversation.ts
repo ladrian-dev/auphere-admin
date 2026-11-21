@@ -53,12 +53,14 @@ export function useConversationActions(id: string, t: T) {
     invalidateInbox(qc);
   }, [id, qc]);
 
+  /** Whether it went through: the screen says the brief notice (spec 069, micro 6) only then. */
   const control = useCallback(
-    async (fn: () => Promise<Detail>, onDone?: () => void) => {
+    async (fn: () => Promise<Detail>, onDone?: () => void): Promise<boolean> => {
       setBusy(true);
       try {
         qc.setQueryData(keys.conversation(id), await fn());
         onDone?.();
+        return true;
       } catch (e) {
         if (e instanceof ApiError && e.status === 412 && e.info.conversation && typeof e.info.conversation === "object") {
           qc.setQueryData(keys.conversation(id), e.info.conversation as Detail);
@@ -67,6 +69,7 @@ export function useConversationActions(id: string, t: T) {
           setNotice({ text: e instanceof ApiError && e.offline ? t("app.offline.actions") : t("inbox.error.action"), tone: "warning" });
         }
         haptics.warning();
+        return false;
       } finally {
         setBusy(false);
         void refresh();
@@ -84,14 +87,8 @@ export function useConversationActions(id: string, t: T) {
       },
     );
   const giveBack = (version: number) => control(() => endpoints.giveBack(id, version), () => haptics.light());
-  const resolve = () =>
-    control(
-      () => endpoints.resolve(id),
-      () => {
-        haptics.success();
-        setNotice({ text: t("inbox.toast.resolved"), tone: "info" });
-      },
-    );
+  // Spec 069 (micro 6): the screen says it in the brief notice, with «Deshacer».
+  const resolve = () => control(() => endpoints.resolve(id), () => haptics.success());
   const reopen = () => control(() => endpoints.reopen(id));
 
   const markUnread = async (): Promise<boolean> => {

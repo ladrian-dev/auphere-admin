@@ -1,6 +1,6 @@
 import { ScrollView, StyleSheet, Switch, View } from "react-native";
 
-import type { Block, ConfigPatch, ResConfig } from "@/api/reservas";
+import { NOTICE_MINUTES, type Block, type ConfigPatch, type ResConfig } from "@/api/reservas";
 import type { Locale, T } from "@/i18n/t";
 import { hhmm } from "@/lib/reservas-model";
 import { TOUCH, useTheme } from "@/theme/theme";
@@ -11,7 +11,7 @@ import { icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 import { switchColors } from "@/ui/switch-colors";
 
-import { dayTitle, duration, price } from "./format";
+import { calendarText, dayTitle, duration, price } from "./format";
 
 const STAYS = [60, 90, 120, 150];
 const LEADS = [1, 2, 4, 24];
@@ -34,6 +34,7 @@ export function ReservasSettings({
   onPatch,
   onUnblock,
   onBlock,
+  onWeb,
   t,
   locale,
 }: {
@@ -43,6 +44,8 @@ export function ReservasSettings({
   onPatch: (p: ConfigPatch) => void;
   onUnblock: (b: Block) => void;
   onBlock: () => void;
+  /** «Editar en la web»: a button that does something, never a dead one (R17.3). */
+  onWeb?: () => void;
   t: T;
   locale: Locale;
 }) {
@@ -54,6 +57,11 @@ export function ReservasSettings({
   const waitEditable = config.waitlist.editable && online;
   const confEditable = config.confirmation.editable && online;
   const unit = cap?.unit ?? "";
+  const notice = config.agent?.minNoticeMin ?? 60;
+  // A notice stored by hand outside the list is shown as it is, until someone changes it (as the web).
+  const notices = (NOTICE_MINUTES as readonly number[]).includes(notice) ? [...NOTICE_MINUTES] : [...NOTICE_MINUTES, notice].sort((a, b) => a - b);
+  const noticeLabel = (m: number) =>
+    m === 0 ? t("reservas.settings.notice.none") : m % 60 === 0 ? t("reservas.settings.notice.hours", { hours: m / 60 }) : t("reservas.settings.notice.minutes", { minutes: m });
 
   return (
     <View style={styles.stack}>
@@ -121,7 +129,7 @@ export function ReservasSettings({
         <>
           <Group title={t("reservas.settings.team")}>
             {config.services.team.map((p) => (
-              <Row key={p.id} label={p.name} hint={t(p.calendar === "google" ? "reservas.settings.team.google" : "reservas.settings.team.none")} />
+              <Row key={p.id} label={p.name} hint={calendarText(p, t)} />
             ))}
           </Group>
           <Group title={t("reservas.settings.services")}>
@@ -132,6 +140,57 @@ export function ReservasSettings({
           </Group>
         </>
       ) : null}
+
+      {/* Spec 069 (R17.3): what only the web edits, said once, with the way there. */}
+      <View style={styles.stackSmall}>
+        <Text variant="footnote" tone="mutedForeground" style={styles.note}>
+          {t("reservas.settings.web")}
+        </Text>
+        {onWeb ? (
+          <Group>
+            <Row kind="external" label={t("reservas.settings.web.open")} hint={t("reservas.settings.web.hint")} onPress={onWeb} />
+          </Group>
+        ) : null}
+      </View>
+
+      {/* Spec 064 R1, 069 R17.1: how soon the agent may give a time. */}
+      <Group title={t(config.mode === "capacity" ? "reservas.settings.agent.capacity" : "reservas.settings.agent.services")}>
+        <View style={styles.block}>
+          <Text variant="body">{t("reservas.settings.notice")}</Text>
+          {online ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips} accessibilityRole="radiogroup" accessibilityLabel={t("reservas.settings.notice")}>
+              {notices.map((m) => (
+                // The waitlist's lead has «1 h» chips too: each says which it is (WCAG 2.4.6).
+                <Chip
+                  key={m}
+                  label={noticeLabel(m)}
+                  accessibilityLabel={`${t("reservas.settings.notice")}: ${noticeLabel(m)}`}
+                  on={notice === m}
+                  disabled={saving}
+                  onPress={() => onPatch({ agent: { minNoticeMin: m } })}
+                />
+              ))}
+            </ScrollView>
+          ) : (
+            <Text variant="bodyStrong">{noticeLabel(notice)}</Text>
+          )}
+          <Text variant="footnote" tone="mutedForeground">
+            {t("reservas.settings.notice.hint")}
+          </Text>
+        </View>
+      </Group>
+
+      <Group title={t("reservas.settings.reminders")}>
+        <SwitchRow
+          label={t("reservas.settings.reminder")}
+          hint={t("reservas.settings.reminder.hint")}
+          value={config.reminders ?? true}
+          editable={online}
+          busy={saving}
+          onChange={(v) => onPatch({ reminders: v })}
+          t={t}
+        />
+      </Group>
 
       <Group title={t("reservas.settings.waitlist")}>
         <SwitchRow
@@ -305,4 +364,5 @@ const styles = StyleSheet.create({
   num: { minWidth: 32, textAlign: "center", fontVariant: ["tabular-nums"] },
   blockRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 16, paddingRight: 8, paddingVertical: 10 },
   flex: { flex: 1, minWidth: 0 },
+  note: { paddingHorizontal: 4 },
 });

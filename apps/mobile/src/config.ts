@@ -34,6 +34,17 @@ export function demoStateOf(value: string | undefined, dev: boolean): "empty" | 
   return dev && (value === "empty" || value === "error" || value === "slow") ? value : null;
 }
 
+/**
+ * Spec 069, Requisito 23: the whole app on a fictional business («Clínica
+ * Brisa»), served from memory (`src/api/demo/`), in a development build started
+ * with `EXPO_PUBLIC_DEMO=1` — and nowhere else. Outside `__DEV__` it is always off.
+ */
+export function demoOf(value: string | undefined, dev: boolean): boolean {
+  return dev && value === "1";
+}
+
+export const DEMO = demoOf(process.env.EXPO_PUBLIC_DEMO, __DEV__);
+
 export const RESERVAS_DEMO = demoModeOf(process.env.EXPO_PUBLIC_RESERVAS_DEMO, __DEV__);
 export const RESERVAS_DEMO_STATE = demoStateOf(process.env.EXPO_PUBLIC_RESERVAS_DEMO_STATE, __DEV__);
 

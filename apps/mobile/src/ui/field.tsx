@@ -46,7 +46,7 @@ export function Field({
         <TextInput
           ref={ref}
           accessibilityLabel={label}
-          placeholderTextColor={colors.subtle}
+          placeholderTextColor={colors.mutedForeground}
           selectionColor={colors.primaryText}
           style={[styles.input, type.body, { color: colors.foreground }, style]}
           onFocus={(e) => {

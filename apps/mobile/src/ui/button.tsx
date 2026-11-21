@@ -115,6 +115,7 @@ export function Button({
       ]}
       {...rest}
     >
+      {/* Never wrap the row: iOS would stack the icon over the words. The words wrap beside it instead. */}
       <View style={styles.row}>
         {busy ? (
           <ActivityIndicator color={colors[fg]} />
@@ -169,7 +170,7 @@ export function IconButton({
 
 const styles = StyleSheet.create({
   base: { minHeight: TOUCH, minWidth: TOUCH, justifyContent: "center", borderWidth: StyleSheet.hairlineWidth * 2, overflow: "hidden" },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 10, flexWrap: "wrap" },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 10, flexWrap: "nowrap" },
   label: { textAlign: "center", flexShrink: 1 },
   icon: { minWidth: TOUCH, minHeight: TOUCH, alignItems: "center", justifyContent: "center", overflow: "hidden" },
 });

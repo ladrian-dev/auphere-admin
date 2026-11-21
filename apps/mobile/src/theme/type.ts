@@ -1,5 +1,6 @@
 import { Platform, type TextStyle } from "react-native";
 
+import { DISPLAY_FONT } from "./fonts";
 import { tokens } from "./tokens.gen";
 
 /**
@@ -11,15 +12,51 @@ import { tokens } from "./tokens.gen";
  * text size (`allowFontScaling` is on by default and never turned off, 031
  * R14.4): no fixed heights around text.
  */
-export type TypeName = "largeTitle" | "title" | "headline" | "body" | "bodyStrong" | "callout" | "subhead" | "footnote" | "caption" | "figure";
+export type TypeName =
+  | "largeTitle"
+  | "title"
+  | "headline"
+  | "body"
+  | "bodyStrong"
+  | "callout"
+  | "subhead"
+  | "footnote"
+  | "caption"
+  | "figure"
+  // Spec 069 (D3): the design's titles and figures, in the display family.
+  | "screenTitle"
+  | "sheetTitle"
+  | "dialogTitle"
+  | "name"
+  | "figureLarge";
 type Scale = Record<TypeName, TextStyle>;
 
 const weight = (w: TextStyle["fontWeight"]): TextStyle => ({ fontWeight: w });
 
+/**
+ * The design's titles (spec 069, D3, R1.4–R1.6): the display family, never
+ * heavier than 600, with the slight negative tracking a display face wants.
+ * On the system font the tracking is dropped (it already carries its own).
+ */
+const display = (fontSize: number, lineHeight: number, tracking: number, extra: TextStyle = {}): TextStyle => ({
+  fontSize,
+  lineHeight,
+  fontWeight: "600",
+  ...(DISPLAY_FONT ? { fontFamily: DISPLAY_FONT, letterSpacing: fontSize * tracking } : {}),
+  ...extra,
+});
+const DISPLAY: Pick<Scale, "screenTitle" | "sheetTitle" | "dialogTitle" | "name" | "figureLarge"> = {
+  screenTitle: display(28, 34, -0.02),
+  sheetTitle: display(18, 24, -0.01),
+  dialogTitle: display(19, 25, -0.01),
+  name: display(17, 22, -0.005),
+  figureLarge: display(24, 30, -0.02, { fontVariant: ["tabular-nums"] }),
+};
+
 /** iOS: the system's text styles (Large Title, Title 2, Headline, Body, Callout, Subheadline, Footnote, Caption 1) and Title 1 for figures. */
 const ios: Scale = {
-  largeTitle: { fontSize: 34, lineHeight: 41, ...weight("700") },
-  title: { fontSize: 22, lineHeight: 28, ...weight("700") },
+  largeTitle: { fontSize: 34, lineHeight: 41, ...weight("600") },
+  title: { fontSize: 22, lineHeight: 28, ...weight("600") },
   headline: { fontSize: 17, lineHeight: 22, ...weight("600") },
   body: { fontSize: 17, lineHeight: 22, ...weight("400") },
   bodyStrong: { fontSize: 17, lineHeight: 22, ...weight("600") },
@@ -27,14 +64,15 @@ const ios: Scale = {
   subhead: { fontSize: 15, lineHeight: 20, ...weight("500") },
   footnote: { fontSize: 13, lineHeight: 18, ...weight("400") },
   caption: { fontSize: 12, lineHeight: 16, ...weight("500") },
-  figure: { fontSize: 28, lineHeight: 34, ...weight("700"), fontVariant: ["tabular-nums"] },
+  figure: { fontSize: 28, lineHeight: 34, ...weight("600"), fontVariant: ["tabular-nums"] },
+  ...DISPLAY,
 };
 
 /** Android: the console's scale, from the tokens. */
 const t = tokens.text;
 const android: Scale = {
-  largeTitle: { fontSize: t["2xl"], lineHeight: t["2xl"] * 1.15, ...weight("700") },
-  title: { fontSize: t.xl, lineHeight: t.xl * 1.2, ...weight("700") },
+  largeTitle: { fontSize: t["2xl"], lineHeight: t["2xl"] * 1.15, ...weight("600") },
+  title: { fontSize: t.xl, lineHeight: t.xl * 1.2, ...weight("600") },
   headline: { fontSize: t.md, lineHeight: t.md * 1.3, ...weight("600") },
   body: { fontSize: t.base, lineHeight: t.base * 1.45, ...weight("400") },
   bodyStrong: { fontSize: t.base, lineHeight: t.base * 1.45, ...weight("600") },
@@ -42,7 +80,8 @@ const android: Scale = {
   subhead: { fontSize: t.sm, lineHeight: t.sm * 1.4, ...weight("500") },
   footnote: { fontSize: t.sm - 1, lineHeight: (t.sm - 1) * 1.4, ...weight("400") },
   caption: { fontSize: t.xs, lineHeight: t.xs * 1.4, ...weight("500") },
-  figure: { fontSize: t["2xl"], lineHeight: t["2xl"] * 1.1, ...weight("700"), fontVariant: ["tabular-nums"] },
+  figure: { fontSize: t["2xl"], lineHeight: t["2xl"] * 1.1, ...weight("600"), fontVariant: ["tabular-nums"] },
+  ...DISPLAY,
 };
 
 export const type: Scale = Platform.OS === "ios" ? ios : android;
@@ -65,6 +104,11 @@ const AX5: Record<TypeName, number> = {
   footnote: 44,
   caption: 43,
   figure: 44,
+  screenTitle: 60,
+  sheetTitle: 53,
+  dialogTitle: 53,
+  name: 53,
+  figureLarge: 44,
 };
 export const maxScale: Record<TypeName, number> = Object.fromEntries(
   (Object.keys(AX5) as TypeName[]).map((k) => [k, AX5[k] / ios[k].fontSize!]),

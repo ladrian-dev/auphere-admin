@@ -1,13 +1,17 @@
-import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render as rtlRender, screen, waitFor } from "@testing-library/react-native";
+import type { ReactElement } from "react";
 
 import type { Conversation } from "@/api/endpoints";
 import { badgeOf, eventText, previewOf, reasonText, waitingReasonText } from "@/features/inbox/model";
 import { t as translate, type MessageKey } from "@/i18n/t";
 
 /**
- * Spec 031 (T069, R5.1, R5.2, R14.5): the Bandeja's list. Swipe actions are
- * out of v1 — every action lives in the conversation's menu — so there is no
- * gesture without its button, and no «Deshacer» to offer.
+ * Spec 031 (T069, R5.1, R5.2, R14.5): the Bandeja's list. Spec 069 amends it
+ * (R9.1, R9.2, R9.7, R10): the design's words for the filters and the rows, the
+ * rest grouped by day under who waits, the list read with its channel through
+ * `useInboxList`, a search that settles before it asks, and a footer that
+ * names no channel. Its swipes and «Deshacer» are in `v13-bandeja-lista.test.tsx`.
  */
 const t = (k: MessageKey, v?: Record<string, string | number>) => translate("es", k, v);
 
@@ -33,11 +37,21 @@ const mockOptions: { current: Record<string, unknown> | null } = { current: null
 jest.mock("@/api/hooks", () => ({
   useMe: () => ({ data: { agents: mockAgents, nav: ["panel", "inbox"] } }),
   useCounts: () => ({ data: { unread: 1, waiting: 2 }, refetch: jest.fn() }),
-  useConversations: (...a: unknown[]) => {
-    mockConversations(...a);
+}));
+// Spec 069: the list goes with its channel (`v13-bandeja-hooks`); the search's resolved half is off unless searching.
+jest.mock("@/api/v13-bandeja-hooks", () => ({
+  useInboxList: (filter: string, q: string, agent: string | null, channel: string | null, enabled = true) => {
+    if (enabled === false) return { data: undefined, isPending: true, hasNextPage: false, isFetchingNextPage: false, refetch: jest.fn(), fetchNextPage: jest.fn() };
+    if (filter !== "resolved" || q === "") mockConversations(filter, q, agent, channel);
     return mockList.current;
   },
+  avatarSource: (id: string, headers: Record<string, string>) => ({ uri: id, headers }),
 }));
+jest.mock("react-native-gesture-handler/ReanimatedSwipeable", () => {
+  const RN = jest.requireActual<typeof import("react-native")>("react-native");
+  return { __esModule: true, SwipeDirection: { LEFT: "left", RIGHT: "right" }, default: (p: { children: ReactElement }) => <RN.View>{p.children}</RN.View> };
+});
+jest.mock("@/ui/toast", () => ({ useToast: () => ({ show: jest.fn() }) }));
 jest.mock("@/api/sse", () => ({ useLiveStatus: () => "live" }));
 jest.mock("@/ui/actions", () => ({ useActions: () => jest.fn() }));
 jest.mock("@/ui/online", () => ({ useOnline: () => true }));
@@ -63,6 +77,7 @@ function list(o: Record<string, unknown>) {
 }
 
 const Bandeja = require("@/app/(app)/bandeja/index").default;
+const render = (ui: ReactElement) => rtlRender(<QueryClientProvider client={new QueryClient()}>{ui}</QueryClientProvider>);
 
 describe("the list", () => {
   beforeEach(() => {
@@ -73,17 +88,18 @@ describe("the list", () => {
   it("ideal: one spoken row per conversation, unread and its state in words", async () => {
     list({ data: page([conv()]) });
     await render(<Bandeja />);
-    expect(screen.getByRole("button", { name: /^Ana López\. Sin leer\. Necesita humano\. ¿Tenéis hueco\?/ })).toBeTruthy();
+    // Spec 069 (R9.1): the channel after the name, the state in the design's words.
+    expect(screen.getByRole("button", { name: /^Ana López\. WhatsApp\. Sin leer\. Espera a una persona\. ¿Tenéis hueco\?/ })).toBeTruthy();
   });
 
-  it("filters: all, unread, waiting (with its count) and resolved — one chosen", async () => {
+  it("filters: all, unread, waiting and resolved — one chosen, with the counts the API gives", async () => {
     list({ data: page([conv()]) });
     await render(<Bandeja />);
-    // The words come from the console (`lite.gen.ts`): spec 056 calls «Todas» «Abiertas».
-    for (const name of [t("inbox.filter.all"), "Sin leer", "Necesita humano · 2", "Resueltas"]) expect(screen.getByRole("radio", { name })).toBeTruthy();
+    // Spec 056 calls «Todas» «Abiertas»; spec 069 (R9.2): «Esperan a una persona» and the counts as numbers after the label.
+    for (const name of [t("inbox.filter.all"), "Sin leer, 1", "Esperan a una persona, 2", "Resueltas"]) expect(screen.getByRole("radio", { name })).toBeTruthy();
     expect(screen.getByRole("radio", { name: t("inbox.filter.all") }).props.accessibilityState).toEqual({ checked: true });
     await fireEvent.press(screen.getByRole("radio", { name: "Resueltas" }));
-    expect(mockConversations).toHaveBeenLastCalledWith("resolved", "", null);
+    expect(mockConversations).toHaveBeenLastCalledWith("resolved", "", null, null);
   });
 
   it("the agent filter only with more than one agent", async () => {
@@ -98,13 +114,14 @@ describe("the list", () => {
     expect(screen.getByRole("button", { name: "Todos los agentes" })).toBeTruthy();
   });
 
-  it("searches by name or number from the native search bar", async () => {
+  it("searches by name or number from the native search bar, once the person stops typing (R10.1)", async () => {
     list({ data: page([conv()]) });
     await render(<Bandeja />);
     const search = mockOptions.current?.headerSearchBarOptions as { placeholder: string; onChangeText: (e: { nativeEvent: { text: string } }) => void };
-    expect(search.placeholder).toBe("Buscar por nombre, teléfono o mensaje");
+    // Spec 069: the design's placeholder.
+    expect(search.placeholder).toBe("Nombre, teléfono o mensaje");
     await act(async () => search.onChangeText({ nativeEvent: { text: "600" } }));
-    expect(mockConversations).toHaveBeenLastCalledWith("all", "600", null);
+    await waitFor(() => expect(mockConversations).toHaveBeenLastCalledWith("all", "600", null, null));
   });
 
   it("the search bar's icon, text and hint come from the theme, so they read in dark mode on Android (spec 042, H23)", async () => {
@@ -148,7 +165,7 @@ describe("the list", () => {
     expect(screen.getByText("Tienes 2 resueltas.")).toBeTruthy();
     expect(screen.queryByText("No hay conversaciones con estos filtros.")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Ver las resueltas" }));
-    expect(mockConversations).toHaveBeenLastCalledWith("resolved", "", null);
+    expect(mockConversations).toHaveBeenLastCalledWith("resolved", "", null, null);
   });
 
   it("one resolved reads in the singular; none at all is today's empty inbox, without a button", async () => {
@@ -194,7 +211,9 @@ describe("reasons in words", () => {
 describe("row words", () => {
   it("who wrote the last line", () => {
     expect(previewOf(conv({ last_message: { at: "", author: { kind: "member", name: "Yo", is_me: true }, preview: "Hola", has_media: false } }), t)).toBe("Tú: Hola");
-    expect(previewOf(conv({ last_message: { at: "", author: { kind: "agent", name: null, is_me: false }, preview: "", has_media: true } }), t)).toBe("Agente: Archivo");
+    // Spec 069 (R21.2): the agent's line after its name, from the data.
+    expect(previewOf(conv({ last_message: { at: "", author: { kind: "agent", name: null, is_me: false }, preview: "", has_media: true } }), t)).toBe("Recepción: Archivo");
+    expect(previewOf(conv({ agent: null, last_message: { at: "", author: { kind: "agent", name: null, is_me: false }, preview: "", has_media: true } }), t)).toBe("Agente: Archivo");
   });
 
   it("the state badge", () => {
@@ -219,9 +238,10 @@ describe("the waiting ones, pinned (spec 044, R10)", () => {
     list({ data: page([other, waiting]) });
     await render(<Bandeja />);
     expect(screen.getByText("Esperan a una persona · 1")).toBeTruthy();
-    expect(screen.getByText("Las demás")).toBeTruthy();
+    // Spec 069 (R9.1): the rest by day, not «Las demás».
+    expect(screen.getByText("Hoy")).toBeTruthy();
     expect(screen.getByText("Pide que le devuelvan la seña")).toBeTruthy();
-    expect(screen.getByText("Necesita humano · hace 12 min")).toBeTruthy();
+    expect(screen.getByText("Espera hace 12 min")).toBeTruthy();
   });
 
   it("without the time from the API, the reason alone — never an invented wait (R10.2)", async () => {
@@ -232,9 +252,10 @@ describe("the waiting ones, pinned (spec 044, R10)", () => {
     expect(screen.queryByText(/hace \d/)).toBeNull();
   });
 
-  it("says, at its foot, which conversations it shows", async () => {
+  it("says, at its foot, which conversations it shows — with the agent's name, and no channel (spec 069, R9.7)", async () => {
     list({ data: page([other]) });
     await render(<Bandeja />);
-    expect(screen.getByText("Aquí solo están las conversaciones que atiende o atendió tu agente. El resto de chats de tu WhatsApp no aparece.")).toBeTruthy();
+    expect(screen.getByText("Aquí solo están las conversaciones que atiende o atendió Recepción. El resto de tus chats no aparece.")).toBeTruthy();
+    expect(screen.queryByText(/WhatsApp/)).toBeNull();
   });
 });

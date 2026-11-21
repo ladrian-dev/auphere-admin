@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useMe, useUsageSpend, useUsageSummary } from "@/api/hooks";
 import { CONSOLE_URL } from "@/config";
 import { SettingsToolbar } from "@/features/tab-stack";
+import { UsageSkeleton } from "@/features/usage/skeleton";
 import { UsageView, type Period } from "@/features/usage/usage-view";
 import { useLocale, useT } from "@/i18n/t";
 import { clock } from "@/lib/format";
@@ -12,10 +13,12 @@ import { usePullRefresh } from "@/lib/use-pull-refresh";
 import { useActions } from "@/ui/actions";
 import { useOnline } from "@/ui/online";
 import { ScrollScreen } from "@/ui/screen";
-import { OfflineBanner, Skeleton } from "@/ui/states";
+import { OfflineBanner } from "@/ui/states";
 
 /**
- * Consumo (R4.2): read-only, the client's own money, in its five states.
+ * Consumo (R4.2; spec 069, R18): read-only, the client's own money, in its six
+ * states — the skeleton of the final layout, error with «Reintentar», partial,
+ * no spend yet in words, ideal, and offline with the time of the last read.
  * The 90-day series is read first (spec 042, R9.2): it contains the other
  * two, so it decides whether there is anything to chart before a period is
  * offered. The chosen period is read only when there is.
@@ -71,7 +74,7 @@ export default function Consumo() {
             contact={me.data?.balance_contact ?? null}
           />
         ) : (
-          <Skeleton rows={4} />
+          <UsageSkeleton />
         )}
       </ScrollScreen>
     </>

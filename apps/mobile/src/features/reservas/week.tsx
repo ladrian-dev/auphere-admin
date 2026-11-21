@@ -1,33 +1,45 @@
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
-import type { Reservation, ResConfig, Slot } from "@/api/reservas";
+import type { DayOccupancy, Reservation, ResConfig, Slot } from "@/api/reservas";
 import type { Locale, T } from "@/i18n/t";
 import { addDays, isClosed, occupancyLevel, slotsOfDay, type LocalDate } from "@/lib/reservas-model";
+import { haptics } from "@/motion/haptics";
 import { CARD_RADIUS, useTheme } from "@/theme/theme";
 import type { Palette } from "@/theme/tokens.gen";
 import { Group } from "@/ui/group";
+import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
-import { ListCard, ServicesRow } from "./day-services";
-import { dayShort, dayTitle, hhmm } from "./format";
+import { dayNumber, dayShort, dayTitle, hhmm, weekdayShort } from "./format";
+
+/** Cells of the week's meter: each is a tenth of the day's open hours. */
+const METER = 10;
 
 /**
- * Servicios · Semana (spec 044, R3.1): a card per day — «N reservas» or
- * «Cerrado» — with its rows, no grid. The title of each day takes you to it.
+ * Servicios · Semana (spec 044 R3.1; spec 069 R13.5, design §4.6): one row
+ * per day — the day of the week and its number (today in turquoise, without a
+ * circle), «N reservas» or «Cerrado», and a meter of how full it is (booked
+ * hours over open hours, the API's figure; the share is also said in words).
+ * A row takes you to that day.
  */
 export function WeekServices({
   config,
   items,
+  days: occupancy = [],
   from,
-  onOpen,
+  today,
   onDay,
   t,
   locale,
 }: {
   config: ResConfig;
   items: Reservation[];
+  /** The occupancy of each day (`occupancy` of the week). */
+  days?: DayOccupancy[];
   from: LocalDate;
-  onOpen: (r: Reservation) => void;
+  today?: LocalDate;
+  /** Kept for the callers of spec 044: the week now leads to the day, where each booking opens. */
+  onOpen?: (r: Reservation) => void;
   onDay: (d: LocalDate) => void;
   t: T;
   locale: Locale;
@@ -35,48 +47,61 @@ export function WeekServices({
   const { colors } = useTheme();
   const days = Array.from({ length: 7 }, (_, i) => addDays(from, i));
   return (
-    <View style={styles.stack}>
-      {days.map((d) => {
-        const list = items.filter((r) => r.date === d).sort((a, b) => a.start - b.start);
-        const live = list.filter((r) => r.state !== "cancelled").length;
-        const closed = isClosed(config, d) && list.length === 0;
-        const title = closed
-          ? t("reservas.week.closed", { day: dayTitle(d, locale) })
-          : live === 1
-            ? t("reservas.week.day.one", { day: dayTitle(d, locale) })
-            : t("reservas.week.day", { day: dayTitle(d, locale), n: live });
+    <View style={[styles.rows, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      {days.map((d, i) => {
+        const live = items.filter((r) => r.date === d && r.state !== "cancelled").length;
+        const closed = isClosed(config, d) && live === 0;
+        const pct = occupancy.find((o) => o.date === d)?.pct ?? 0;
+        const count = live === 1 ? t("reservas.day.count.one") : t("reservas.day.count", { n: live });
+        const isToday = d === today;
+        const filled = Math.min(METER, Math.round((pct / 100) * METER));
         return (
-          <View key={d} style={styles.day}>
-            <Pressable accessibilityRole="button" onPress={() => onDay(d)} hitSlop={6} style={styles.dayHead}>
-              <Text variant="subhead" tone="mutedForeground" accessibilityRole="header">
-                {title}
+          <Pressable
+            key={d}
+            accessibilityRole="button"
+            accessibilityLabel={closed ? t("reservas.week.row.closed", { day: dayTitle(d, locale) }) : t("reservas.week.row", { day: dayTitle(d, locale), count, pct })}
+            onPress={() => {
+              haptics.select();
+              onDay(d);
+            }}
+            android_ripple={{ color: colors.muted }}
+            testID={`week-${d}`}
+            style={({ pressed }) => [styles.weekRow, i > 0 ? { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border } : null, pressed ? { backgroundColor: colors.muted } : null]}
+          >
+            <View style={styles.dn}>
+              <Text variant="caption" tone={isToday ? "highlightInk" : "mutedForeground"} maxFontSizeMultiplier={1.4} numberOfLines={1}>
+                {isToday ? t("reservas.today").toLocaleLowerCase(locale) : weekdayShort(d, locale)}
               </Text>
-            </Pressable>
-            {list.length > 0 ? (
-              <ListCard>
-                {list.map((r, i) => (
-                  <ServicesRow key={r.id} r={r} past={false} first={i === 0} config={config} t={t} locale={locale} onOpen={onOpen} />
-                ))}
-              </ListCard>
-            ) : !closed ? (
-              <View style={[styles.empty, { borderColor: colors.border, borderRadius: CARD_RADIUS }]}>
-                <Text variant="footnote" tone="mutedForeground">
-                  {t("reservas.week.empty")}
-                </Text>
-              </View>
-            ) : null}
-          </View>
+              <Text variant="headline" tone={isToday ? "highlightInk" : closed ? "mutedForeground" : "foreground"} style={styles.num} maxFontSizeMultiplier={1.4}>
+                {dayNumber(d)}
+              </Text>
+            </View>
+            <View style={styles.flex}>
+              <Text variant="subhead" tone={closed ? "mutedForeground" : "foreground"}>
+                {closed ? t("reservas.month.closed") : count}
+              </Text>
+              {!closed ? (
+                <View style={styles.meter} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
+                  {Array.from({ length: METER }, (_, k) => (
+                    <View key={k} style={[styles.cellMeter, { backgroundColor: k < filled ? colors.primary : colors.muted }]} />
+                  ))}
+                </View>
+              ) : null}
+            </View>
+            <Icon name={icons.chevron} size={18} tone="subtle" />
+          </Pressable>
         );
       })}
     </View>
   );
 }
 
-const LEVEL: Record<0 | 1 | 2 | 3 | "full", { bg: keyof Palette; fg: keyof Palette }> = {
+/** Each step of occupancy and the ink of its number: 4.5:1 or more in both themes (test). */
+export const WEEK_LEVELS: Record<0 | 1 | 2 | 3 | "full", { bg: keyof Palette; fg: keyof Palette }> = {
   0: { bg: "muted", fg: "foreground" },
   1: { bg: "positiveBg", fg: "foreground" },
   2: { bg: "accentSoft", fg: "accentDeep" },
-  3: { bg: "positive", fg: "primaryForeground" },
+  3: { bg: "positive", fg: "onHighlight" }, // 7.4:1; the light ink was 2.1 in light (review H04)
   full: { bg: "accentDeep", fg: "accentSoft" }, // 5:1; on primaryDeep it was 4.2 (gate review)
 };
 
@@ -140,7 +165,7 @@ export function WeekHeat({
                         </View>
                       );
                     }
-                    const level = LEVEL[occupancyLevel(s.inside, s.capacity)];
+                    const level = WEEK_LEVELS[occupancyLevel(s.inside, s.capacity)];
                     return (
                       <Pressable
                         key={m}
@@ -182,10 +207,12 @@ export function WeekHeat({
 }
 
 const styles = StyleSheet.create({
-  stack: { gap: 16 },
-  day: { gap: 8 },
-  dayHead: { minHeight: 32, justifyContent: "center" },
-  empty: { borderWidth: StyleSheet.hairlineWidth * 2, borderStyle: "dashed", padding: 12 },
+  rows: { borderWidth: StyleSheet.hairlineWidth * 2, borderRadius: CARD_RADIUS, overflow: "hidden" },
+  weekRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 12, minHeight: 56 },
+  dn: { width: 44, alignItems: "center" },
+  flex: { flex: 1, minWidth: 0 },
+  meter: { flexDirection: "row", gap: 3, marginTop: 6 },
+  cellMeter: { width: 14, height: 6, borderRadius: 3 },
   heatWrap: { padding: 12, gap: 12 },
   heatRow: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 4 },
   heatDay: { width: 52 },

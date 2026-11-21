@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react-native";
 import { AccessibilityInfo, Text as RNText } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
-import { ToastProvider, useToast, TOAST_MS, TOAST_UNDO_MS } from "@/ui/toast";
+import { ToastProvider, useToast, TOAST_MS, TOAST_UNDO_MS, TOAST_UNDO_READER_MS, undoMs } from "@/ui/toast";
 
 const metrics = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 47, left: 0, right: 0, bottom: 34 } };
 
@@ -56,5 +56,25 @@ describe("the brief notice (R16.7, D7)", () => {
     expect(undo).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("Reserva confirmada")).toBeNull();
   });
-});
 
+  it("with a screen reader on, «Deshacer» lasts 20 s and is said with the notice (review H10, WCAG 2.2.1)", async () => {
+    const reader = jest.spyOn(AccessibilityInfo, "isScreenReaderEnabled").mockResolvedValue(true);
+    const spoken = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+    await render(
+      <SafeAreaProvider initialMetrics={metrics}>
+        <ToastProvider>
+          <Trigger undo={jest.fn()} />
+        </ToastProvider>
+      </SafeAreaProvider>,
+    );
+    await act(async () => undefined);
+    expect(undoMs()).toBe(TOAST_UNDO_READER_MS);
+    await act(async () => fireEvent.press(screen.getByText("go")));
+    expect(spoken).toHaveBeenLastCalledWith("Reserva confirmada. Deshacer");
+    await act(async () => jest.advanceTimersByTime(TOAST_UNDO_MS + 50));
+    expect(screen.getByText("Deshacer")).toBeTruthy();
+    await act(async () => jest.advanceTimersByTime(TOAST_UNDO_READER_MS - TOAST_UNDO_MS));
+    expect(screen.queryByText("Reserva confirmada")).toBeNull();
+    reader.mockResolvedValue(false);
+  });
+});
