@@ -34,9 +34,9 @@ describe("LiteSpendCard currency", () => {
     expect(el.textContent).not.toContain("US$");
   });
 
-  it("stays in US$ when the spend comes without a currency (no bags)", () => {
+  it("stays in USD when the spend comes without a currency (no bags)", () => {
     const el = card({ total_cents: 1626, by_agent: null });
-    expect(within(el).getByText(/^16,26\sUS\$$/, { selector: ".sr-only" })).toBeTruthy();
+    expect(within(el).getByText(/^16,26\sUSD$/, { selector: ".sr-only" })).toBeTruthy();
     expect(screen.queryByText(/€/)).toBeNull();
   });
 });

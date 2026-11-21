@@ -59,6 +59,13 @@ export const attentionMessages = {
   // ── El Panel ─────────────────────────────────────────────────────────────
   "att.panel.balance.low": { es: "Saldo bajo", en: "Low balance" },
   "att.panel.balance.empty": { es: "Sin saldo para asignar", en: "No balance to assign" },
+  // Spec 072 (3.4): la línea por debajo del 80 %, neutra y con quién la paga.
+  "att.panel.buildCalm": {
+    es: "Construcción y pruebas: {spent} de {cap} · la paga Auphere hasta el tope",
+    en: "Building and testing: {spent} of {cap} · Auphere pays up to the cap",
+  },
+  // Spec 072 (2.5): la barra bajo «Saldo disponible».
+  "panel.v2.balance.meter": { es: "Disponible: {amount}", en: "Available: {amount}" },
   "att.panel.build": {
     es: "Construcción y pruebas: {spent} de {cap} ({pct} %)",
     en: "Building and testing: {spent} of {cap} ({pct} %)",

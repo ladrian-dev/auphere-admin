@@ -65,6 +65,23 @@ export const moneyMessages = {
   },
   "money.alertLow": { es: "Avisarme cuando le quede menos del 20 %", en: "Tell me when it has less than 20 % left" },
 
+  // ── Spec 072 §6: elegir un importe ──
+  // El botón dice el importe, y si está apagado una línea dice por qué.
+  "money.assign.submitAmount": { es: "Asignar {amount}", en: "Assign {amount}" },
+  "money.assign.why.amount": { es: "Escribe un importe para asignar.", en: "Type an amount to assign." },
+  "money.assign.why.short": { es: "Te quedan {amount} en tu cuenta.", en: "You have {amount} left in your account." },
+  // El recibo: una línea por dato, ninguna cifra repetida con otro nombre.
+  "money.assign.receipt.now": { es: "Su saldo ahora", en: "Their balance now" },
+  "money.assign.receipt.assigned": { es: "Asignas", en: "You assign" },
+  "money.assign.receipt.debit": { es: "{amount} de tu cuenta", en: "{amount} from your account" },
+  "money.assign.receipt.after": { es: "Su nuevo saldo", en: "Their new balance" },
+  "money.assign.receipt.left": { es: "Te queda en el tuyo", en: "Left in yours" },
+  // El relleno es un interruptor que dice su importe.
+  "money.refill.switch": { es: "Rellenar cada mes hasta {amount}", en: "Top up every month to {amount}" },
+  "money.refill.switchNoAmount": { es: "Rellenar cada mes", en: "Top up every month" },
+  // El nombre accesible de la barra de hoy en «Gasto por día» (072 §5.3).
+  "money.chart.todayName": { es: "hoy", en: "today" },
+
   // ── «Cambiar saldo»: subir o bajar (45.6, 43.6) ──
   "money.change.title": { es: "Cambiar el saldo de {name}", en: "Change {name}’s balance" },
   "money.change.body": {
@@ -183,6 +200,19 @@ export const moneyMessages = {
     es: "Lo que les queda a tus clientes. Hay bolsas en otra moneda, convertidas al cambio de hoy.",
     en: "What your clients have left. Some bags are in another currency, converted at today’s rate.",
   },
+  // Spec 072 (4.3): la nota de «En bolsas» cuenta clientes, no repite lo disponible.
+  "money.figure.inBags.clients": { es: "{n} clientes con saldo asignado", en: "{n} clients with assigned balance" },
+  "money.figure.inBags.clients.one": { es: "1 cliente con saldo asignado", en: "1 client with assigned balance" },
+  "money.figure.inBags.otherCurrency": {
+    es: "Hay bolsas en otra moneda, convertidas al cambio de hoy",
+    en: "Some bags are in another currency, converted at today’s rate",
+  },
+  // Spec 072 (4.3): Meta como una cifra más, sin «≈», diciendo quién la paga.
+  "money.figure.meta": { es: "Mensajes de Meta", en: "Meta messages" },
+  "money.figure.meta.hint": {
+    es: "Estimación de lo que el negocio paga a Meta, aparte de tu saldo.",
+    en: "An estimate of what the business pays Meta, apart from your balance.",
+  },
   "money.figure.month": { es: "Gasto del mes", en: "This month’s spend" },
   "money.figure.month.hint": { es: "A fin de mes, unos {amount} al ritmo de los últimos 7 días.", en: "About {amount} by month end at the last 7 days’ pace." },
   "money.table.title": { es: "Saldo por cliente", en: "Balance by client" },
@@ -206,6 +236,8 @@ export const moneyMessages = {
   "money.table.currency": { es: "Cambiar la moneda", en: "Change the currency" },
 
   "money.chart.title": { es: "Gasto por día", en: "Spend per day" },
+  // Spec 072 (4.2): el título dice su ventana.
+  "money.chart.titleDays": { es: "Gasto por día · últimos {days} días", en: "Spend per day · last {days} days" },
   "money.chart.period": { es: "Periodo", en: "Period" },
   "money.chart.days": { es: "{n} días", en: "{n} days" },
   "money.chart.client": { es: "Cliente", en: "Client" },
@@ -213,8 +245,9 @@ export const moneyMessages = {
   "money.chart.line": { es: "Partida", en: "Line" },
   "money.chart.partnerPays": { es: "Lo que pagas tú", en: "What you pay" },
   "money.chart.partnerPaysNote": {
-    es: "Lo que sale de tu dinero: las conversaciones, las pruebas a cargo del cliente y el Companion. Elige una partida para ver Meta o «Construcción y pruebas».",
-    en: "What comes out of your money: conversations, tests paid by the client and the Companion. Choose a line to see Meta or “Building and testing”.",
+    // Spec 072 (D3): sin el desplegable de partida; Meta y Construcción tienen su cifra y su línea.
+    es: "Lo que sale de tu dinero: las conversaciones, las pruebas a cargo del cliente y el Companion. Meta va en su cifra y «Construcción y pruebas», en el Panel.",
+    en: "What comes out of your money: conversations, tests paid by the client and the Companion. Meta has its own figure and “Building and testing” is on the Overview.",
   },
   "money.chart.approxNote": { es: "Es una estimación.", en: "It is an estimate." },
   "money.chart.total": { es: "{amount} en {days} días", en: "{amount} in {days} days" },
@@ -277,6 +310,11 @@ export const moneyMessages = {
     en: "What the platform measures inside, by client and meter. To review in detail or export.",
   },
   "money.detail.period": { es: "Últimos {days} días", en: "Last {days} days" },
+  // Spec 072 (4.4, D2): Companion y teammates viven aquí, con quién los paga.
+  "money.detail.account": {
+    es: "Companion y teammates este mes: {amount} · lo paga tu cuenta",
+    en: "Companion and teammates this month: {amount} · paid by your account",
+  },
   "money.detail.csv": { es: "Descargar CSV", en: "Download CSV" },
   "money.detail.agent": { es: "Agente", en: "Agent" },
   "money.detail.line": { es: "Partida", en: "Line" },

@@ -7,7 +7,6 @@ import type {
   ClientAction,
   ClientAgent,
   ClientFilter,
-  ClientPanel,
   Lifecycle,
   Money,
   MissingSection,
@@ -119,51 +118,34 @@ function countAgents(agents: readonly ClientAgent[]): AgentsSummary {
 export type BagBar = { pct: number; tone: "ok" | "warn" | "danger" };
 
 /**
- * La minibarra de la columna «Saldo» (prototipo §2.3): el relleno es **lo
- * gastado** de lo asignado; ámbar desde el 80 %, roja y llena sin saldo
- * asignado o agotado. Sin límite (lo cubre Auphere) no hay barra.
+ * La minibarra de saldo de una bolsa — spec 072 (2.1, 2.3). Se llena con **lo
+ * que queda** de lo asignado, como dice su texto («17,70 USD · quedan de 60,00
+ * USD»). El tono sale de la regla de la API (`state`, el mismo criterio que
+ * `low_balance` de la 071: menos del 20 % o menos de 7 días), no de un umbral
+ * propio: ámbar con `low`, roja y vacía sin saldo o sin asignar. Sin límite (lo
+ * cubre Auphere) no hay barra.
  */
 export function bagBar(bag: Bag | null): BagBar | null {
   if (bag?.state === "unlimited") return null;
-  if (!bag || bag.state === "unassigned" || !bag.assigned) return { pct: 100, tone: "danger" };
-  const pct = clampPct(bag.pct_spent ?? 0);
-  if (bag.state === "empty") return { pct: 100, tone: "danger" };
-  return { pct, tone: pct >= 80 ? "warn" : "ok" };
+  if (!bag || bag.state === "unassigned" || !bag.assigned || bag.state === "empty") return { pct: 0, tone: "danger" };
+  const left = bag.pct_left ?? (bag.pct_spent != null ? 100 - bag.pct_spent : 0);
+  return { pct: clampPct(left), tone: bag.state === "low" ? "warn" : "ok" };
 }
 
-/** Lo que la consola sabía decir de la bolsa (días y % libre), en el `title` de la barra. */
-export function bagBarTitle(t: T, bag: Bag | null): string | undefined {
-  if (!bag || bag.state === "unassigned" || bag.state === "unlimited") return undefined;
-  const days = roundDays(bag.days_left);
-  const first = days != null ? t("clients.v2.bag.days", { days }) : t("clients.v2.bag.noEstimate");
-  return bag.pct_left != null ? `${first} · ${t("clients.v2.bag.pct", { pct: Math.round(bag.pct_left) })}` : first;
+/**
+ * Cuánto dura a este ritmo (spec 072, 2.2): «Unos 79 días a este ritmo». Si no
+ * se puede estimar, dice qué falta. Sin bolsa, sin límite o sin saldo, nada:
+ * eso ya lo dice su línea.
+ */
+export function bagPace(t: T, bag: Bag | null): string | null {
+  if (!bag || bag.state === "unassigned" || bag.state === "unlimited" || bag.state === "empty" || !bag.assigned) return null;
+  const days = bag.days_estimable ? roundDays(bag.days_left) : null;
+  if (days == null) return t("clients.v2.bag.noPace");
+  return days < 1 ? t("clients.v2.bag.paceLess") : t("clients.v2.bag.pace", { days });
 }
 
 function clampPct(n: number): number {
   return Math.min(100, Math.max(0, n));
-}
-
-export type SpendSegment = { agent_id: string; name: string; spent: Money; pct: number };
-
-/**
- * Los tramos de la barra apilada del Panel (prototipo §4.2): uno por agente con
- * gasto, de más a menos, y su ancho **sobre lo asignado**, de modo que lo que
- * queda vacío es lo disponible. La API da el gasto por agente del mes y el
- * consumido de la bolsa desde que se asignó; para que la barra cuadre con
- * «Consumido … · {pct} %», lo consumido se reparte según el gasto del mes.
- */
-export function spendSegments(bag: Bag, byAgent: ClientPanel["spend_by_agent"]): SpendSegment[] {
-  if (bag.state === "unassigned" || bag.state === "unlimited" || !bag.assigned?.amount_micros) return [];
-  const spending = byAgent.filter((s) => s.spent.amount_micros > 0).sort((a, b) => b.spent.amount_micros - a.spent.amount_micros);
-  const total = spending.reduce((sum, s) => sum + s.spent.amount_micros, 0);
-  const consumed = clampPct(bag.pct_spent ?? 0);
-  if (!total || !consumed) return [];
-  return spending.map((s) => ({
-    agent_id: s.agent_id,
-    name: s.name,
-    spent: s.spent,
-    pct: Math.round(((consumed * s.spent.amount_micros) / total) * 100) / 100,
-  }));
 }
 
 /** «1–25 oct»: del día 1 del periodo a hoy (en UTC, como lo cuenta la API), sin pasar del fin de mes. */

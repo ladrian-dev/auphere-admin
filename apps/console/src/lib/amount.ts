@@ -1,14 +1,19 @@
+import { currencyFormat, formatMoney } from "@nexus/ui";
+
 import { AMOUNT_MAX_MINOR, type RuleCode } from "@/lib/business-rules";
 
 /**
- * Un solo formato de dinero — spec 056 (requisito 13, D9). Los importes llegan
- * de la API en la unidad menor de su moneda (`amount_minor`, ISO 4217) y se
- * enseñan con **el idioma de la persona**, con Intl: «10,00 US$» en español,
- * «$10.00» en inglés. En español Intl no agrupa cuatro cifras («1500,00 €»): es
- * el formato del idioma, no un fallo. Los campos aceptan coma o punto y enseñan
- * el separador del idioma.
+ * Un solo formato de dinero — spec 056 (requisito 13) y spec 072 (1.1, D1). Los
+ * importes llegan de la API en la unidad menor de su moneda (`amount_minor`, ISO
+ * 4217) y se enseñan con **el idioma de la persona**:
+ * - el dólar con su código, nunca «US$» ni «$»: «10,00 USD» en español, «USD
+ *   10.00» en inglés (D1, sustituye a la D9 de la 056);
+ * - en español, el euro y el dólar son **el mismo texto** que `formatMoney` de
+ *   `@nexus/ui` (la consola nueva), porque delegan en él: «1.500,00 €»;
+ * - el resto, Intl con {@link currencyFormat}.
+ * Los campos aceptan coma o punto y enseñan el separador del idioma.
  *
- * `lib/money.ts` (el saldo del partner, céntimos de US$) delega aquí. Puro.
+ * `lib/money.ts` (el saldo del partner, céntimos de USD) delega aquí. Puro.
  */
 
 export type AmountValue = { amount_minor: number; currency: string };
@@ -30,28 +35,43 @@ export function minorDigits(currency: string): number {
 const numberText = (value: number, digits: number, locale: string, useGrouping: boolean) =>
   new Intl.NumberFormat(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits, useGrouping }).format(value);
 
-/** «10,00 US$» · «15.000 CLP» (es) · «$10.00» · «CLP 15,000» (en). Lo que no es un número, «—». */
+/** El euro y el dólar en español los escribe `formatMoney` (spec 072, 1.1). */
+function viaFormatMoney(currency: string, locale: string): currency is "EUR" | "USD" {
+  return (currency === "EUR" || currency === "USD") && locale.toLowerCase().startsWith("es");
+}
+
+const intl = (currency: string, digits: number, locale: string) =>
+  new Intl.NumberFormat(locale, currencyFormat(currency, { minimumFractionDigits: digits, maximumFractionDigits: digits }));
+
+/** «10,00 USD» · «15.000 CLP» (es) · «USD 10.00» · «CLP 15,000» (en). Lo que no es un número, «—». */
 export function formatAmount(money: AmountValue, locale: string): string {
   if (!Number.isFinite(money.amount_minor)) return "—";
   const digits = minorDigits(money.currency);
   const value = money.amount_minor / 10 ** digits;
+  if (viaFormatMoney(money.currency, locale)) return formatMoney(value, money.currency);
   try {
-    return new Intl.NumberFormat(locale, { style: "currency", currency: money.currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+    return intl(money.currency, digits, locale).format(value);
   } catch {
     // Una moneda que Intl no acepta: el número del idioma y su código, sin partirse.
     return `${numberText(value, digits, locale, true)} ${money.currency}`;
   }
 }
 
+/** Un importe en unidades de su moneda (Facturación: «20» → «20,00 USD»), con el mismo formato. */
+export function formatUnits(amount: number | null | undefined, currency: string, locale: string): string {
+  if (amount == null || !Number.isFinite(amount)) return "—";
+  return formatAmount({ amount_minor: Math.round(amount * 10 ** minorDigits(currency)), currency }, locale);
+}
+
 /**
  * Las partes del mismo formato (para pintar los decimales y la moneda más
- * suaves, como «16,26 US$» en «Gasto del mes»). Unidas, dan {@link formatAmount}.
+ * suaves, como «16,26 USD» en «Gasto del mes»). Unidas, dan {@link formatAmount}.
  */
 export function amountParts(money: AmountValue, locale: string): Intl.NumberFormatPart[] {
   const digits = minorDigits(money.currency);
   const value = money.amount_minor / 10 ** digits;
   try {
-    return new Intl.NumberFormat(locale, { style: "currency", currency: money.currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).formatToParts(value);
+    return intl(money.currency, digits, locale).formatToParts(value);
   } catch {
     return [{ type: "literal", value: formatAmount(money, locale) }];
   }

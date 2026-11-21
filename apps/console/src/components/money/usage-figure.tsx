@@ -11,8 +11,11 @@ export function UsageFigure({
   value,
   hint,
   bar,
+  mark,
 }: {
   label: string;
+  /** Spec 072 (4.3): la marca de quien cobra la cifra (Meta), junto a la etiqueta. */
+  mark?: React.ReactNode;
   value: string;
   hint?: React.ReactNode;
   bar?: { value: number; max: number };
@@ -21,7 +24,10 @@ export function UsageFigure({
   return (
     <Card data-slot="usage-figure">
       <CardContent className="grid min-w-0 content-start gap-2">
-        <h2 className="text-xs text-muted-foreground">{label}</h2>
+        <h2 className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+          {mark}
+          {label}
+        </h2>
         <p className="text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
         {pct !== null ? (
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true" data-slot="usage-figure-bar">

@@ -87,8 +87,8 @@ describe("Resumen · las cuatro preguntas", () => {
     const bloque = screen.getByRole("region", { name: "Saldo y consumo" });
     // `getAllByText`: el medidor repite la cifra en su etiqueta accesible, y
     // que esté dos veces es correcto — lo que se afirma es que está.
-    expect(within(bloque).getAllByText(/31,40\sUS\$/).length).toBeGreaterThan(0);
-    expect(within(bloque).getAllByText(/18,60\sUS\$/).length).toBeGreaterThan(0);
+    expect(within(bloque).getAllByText(/31,40\sUSD/).length).toBeGreaterThan(0);
+    expect(within(bloque).getAllByText(/18,60\sUSD/).length).toBeGreaterThan(0);
     // La proyección de mensajes etiquetada como créditos ya no está.
     expect(bloque.textContent).not.toMatch(/créditos|acabará el mes/);
   });

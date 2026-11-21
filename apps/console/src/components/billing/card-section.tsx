@@ -15,11 +15,10 @@ import {
   Input,
   Label,
   StatusBadge,
-  cn,
-  formatCurrency,
-  formatDate,
+  cn, formatDate,
 } from "@nexus/ui";
 
+import { formatUnits } from "@/lib/amount";
 import { deleteCardAction, setChargingAction, startCardAction } from "@/app/(console)/billing/actions";
 import { useLocale, useT } from "@/i18n/client";
 import { actionErrorText } from "@/lib/action-error";
@@ -64,7 +63,7 @@ export function CardSection({
   const [threshold, setThreshold] = React.useState(String((view.recharge_threshold_cents ?? 1000) / 100));
   const [amount, setAmount] = React.useState(String((view.recharge_amount_cents ?? 2000) / 100));
   const [confirmRemove, setConfirmRemove] = React.useState(false);
-  const money = (cents: number) => formatCurrency(cents / 100, CHECKOUT_CURRENCY, locale);
+  const money = (cents: number) => formatUnits(cents / 100, CHECKOUT_CURRENCY, locale);
   const hasLine = view.credit_limit_cents > 0;
 
   function errorText(res: {
@@ -289,7 +288,7 @@ export function CardCharges({ view, canManage }: { view: BillingCardView; canMan
   const t = useT();
   const locale = useLocale();
   if (view.charges.length === 0) return null;
-  const money = (cents: number) => formatCurrency(cents / 100, CHECKOUT_CURRENCY, locale);
+  const money = (cents: number) => formatUnits(cents / 100, CHECKOUT_CURRENCY, locale);
   return (
     <Card aria-labelledby="charges-h" role="region" data-slot="billing-charges">
       <CardContent className="grid min-w-0 gap-2">

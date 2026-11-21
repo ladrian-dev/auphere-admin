@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
+import { BlockChart, type BlockChartCopy } from "../components/block-chart";
 import { StackedBarChart } from "../components/chart-bars";
 import { ProjectionLineChart } from "../components/chart-line";
 import { Meter } from "../components/meter";
@@ -52,5 +53,53 @@ export const Gauge: Story = {
       <Meter label="Mensajes del mes" value={5200} max={5000} valueLabel="5.200 / 5.000 · 104 %" />
       <Meter label="Mensajes del mes" value={900} max={null} valueLabel="900" noMaxLabel="Sin tope configurado" />
     </div>
+  ),
+};
+
+/* Spec 072 §5 — barras macizas: una por día, el eje en enteros y hoy con borde. */
+const blockCopy: BlockChartCopy = {
+  column: "Día",
+  total: "Total",
+  top: "Con más actividad",
+  noData: "Sin datos",
+  empty: "Aún no hay conversaciones en estos días.",
+  totalOf: (n) => `${n} conversaciones`,
+};
+const weekLabels = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Hoy"];
+
+export const DailyBars: Story = {
+  render: () => (
+    <BlockChart
+      title="Conversaciones por día"
+      series={[
+        { key: "resolved", label: "Resueltas sin persona" },
+        { key: "handed", label: "Pasadas a una persona" },
+      ]}
+      columns={weekLabels.map((label, i) => ({
+        key: String(i),
+        label,
+        title: `${label} ${16 + i} nov`,
+        values: [[1, 0, 2, 0, 1, 0, 1][i] ?? 0, [0, 0, 0, 1, 0, 0, 0][i] ?? 0],
+      }))}
+      copy={blockCopy}
+    />
+  ),
+};
+
+export const DailySpend: Story = {
+  render: () => (
+    <BlockChart
+      title="Gasto por día"
+      series={[{ key: "conversations", label: "Conversaciones" }]}
+      columns={Array.from({ length: 30 }, (_, i) => ({
+        key: String(i),
+        label: i === 29 ? "Hoy" : String(i + 1),
+        title: `${i + 1} nov`,
+        values: [((i * 37) % 90) * 10_000],
+      }))}
+      copy={{ ...blockCopy, totalOf: (n) => n }}
+      minStep={1_000}
+      formatValue={(v) => `${(v / 100_000).toFixed(2).replace(".", ",")} USD`}
+    />
   ),
 };

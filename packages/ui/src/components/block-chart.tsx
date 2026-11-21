@@ -9,28 +9,32 @@ import { Skeleton } from "./skeleton";
 import { useUiCopy } from "./ui-copy";
 
 /**
- * La gráfica de bloques — spec 047 (R47.10, R46.3; D33: SVG y CSS propios,
- * sin dependencias).
+ * La gráfica de barras por día — spec 047 (R47.10, R46.3; D33: SVG y CSS
+ * propios, sin dependencias) y spec 072 §5 («Barras macizas»).
  *
- * Una rejilla continua de cuadros: cada columna es un día o una franja del
- * día, los cuadros llenos son el valor y los vacíos dibujan la pista. Dos
- * tonos para dos series («Resueltas sin persona» y «Pasadas a una persona» en
- * el Panel; las partidas en Consumo). El cálculo es el de `01` §12, y está en
- * funciones puras para poder probarlo sin pintar nada.
+ * Una barra maciza por columna (un día o una franja del día). Con dos series
+ * («Resueltas sin persona» y «Pasadas a una persona» en el Panel; las partidas
+ * en Consumo) se apilan dentro de la misma barra, de abajo arriba. El eje va
+ * en pasos enteros de su unidad (1, 2 o 5 × 10ⁿ, nunca por debajo de
+ * `minStep`): conversaciones enteras, dinero en pasos redondos. Hoy se marca
+ * con un borde. Las barras crecen desde el eje al entrar, solo si la persona
+ * no pidió «Reducir movimiento». El cálculo está en funciones puras para
+ * poder probarlo sin pintar nada.
  *
  * Accesibilidad:
- * - la rejilla es un `listbox` con una sola parada de Tab; las flechas, Inicio
+ * - el gráfico es un `listbox` con una sola parada de Tab; las flechas, Inicio
  *   y Fin recorren las columnas (`aria-activedescendant`). Las columnas no son
  *   focos sueltos: a 390 px una columna mide unos pocos píxeles, y noventa
  *   botones así no cumplirían el tamaño mínimo de objetivo (WCAG 2.5.8);
- * - cada columna se nombra con su día y su total, y el tooltip (total, reparto
- *   y los 3 con más actividad) se abre igual con el teclado que con el ratón,
- *   se cierra con Escape y se puede recorrer con el puntero (WCAG 1.4.13);
+ * - cada columna se nombra con su día, «hoy» si lo es, y su total; el tooltip
+ *   (total, reparto y los 3 con más actividad) se abre igual con el teclado que
+ *   con el ratón, se cierra con Escape y se puede recorrer con el puntero
+ *   (WCAG 1.4.13);
  * - una tabla equivalente, solo para lectores de pantalla, lleva todos los
  *   números.
  *
- * En móvil la rejilla se desplaza de lado dentro de su caja (90 días no caben
- * en 390 px) y el tooltip pasa debajo de la gráfica.
+ * En móvil el gráfico se desplaza de lado dentro de su caja (90 días no caben
+ * en 390 px) y el tooltip pasa debajo.
  */
 
 export type BlockChartSeries = { key: string; label: string };
@@ -45,6 +49,12 @@ export type BlockChartColumn = {
   /** Un valor por serie. `null` = no hay datos de esta columna (estado parcial), que no es lo mismo que cero. */
   values: number[] | null;
   top?: BlockChartTop[];
+  /**
+   * Es hoy: se marca con un borde y dice «hoy» en su nombre (072 §5.3). Si
+   * ninguna columna lo dice, hoy es la última, como en todos los periodos que
+   * acaban hoy.
+   */
+  today?: boolean;
 };
 export type BlockChartCopy = {
   /** Encabezado de la primera columna de la tabla: «Día», «Franja». */
@@ -57,6 +67,8 @@ export type BlockChartCopy = {
   empty: string;
   /** El total con su unidad: «{n} conversaciones». Recibe el número ya formateado. */
   totalOf: (formatted: string) => string;
+  /** La palabra que marca hoy en el nombre accesible. Por defecto, «hoy» o «today» según `locale`. */
+  today?: string;
 };
 
 export type BlockChartProps = {
@@ -70,6 +82,11 @@ export type BlockChartProps = {
   copy: BlockChartCopy;
   /** Cómo se escribe un valor (dinero, por ejemplo). Por defecto, un número en el idioma. */
   formatValue?: (value: number) => string;
+  /**
+   * El paso más pequeño del eje, en la unidad de los valores. Por defecto 1:
+   * una conversación. Para dinero en cien milésimas, un céntimo (1 000).
+   */
+  minStep?: number;
   locale?: Locale;
   loading?: boolean;
   /** Si hay error, se dice y no se pinta nada inventado. */
@@ -78,59 +95,58 @@ export type BlockChartProps = {
   className?: string;
 };
 
-const NICE = [1, 2, 2.5, 5, 10];
+const NICE = [1, 2, 5, 10] as const;
+/** Como mucho cuatro tramos: cinco marcas en el eje. */
+const MAX_INTERVALS = 4;
 const SERIES_BG = ["bg-series-1", "bg-series-2"] as const;
-/** Por debajo de esto una columna deja de verse como cuadros: la rejilla se desplaza. */
+/** Por debajo de esto una columna deja de leerse: el gráfico se desplaza. */
 const MIN_COLUMN_PX = 6;
 const TOP_LIMIT = 3;
+const TODAY_WORD: Record<Locale, string> = { es: "hoy", en: "today" };
 
-/** El máximo del eje: un paso «bonito» (1, 2, 2,5, 5 o 10 × 10ⁿ) ≥ pico × 1,04 / 4, por 4. */
-export function blockChartScale(peak: number): { step: number; max: number } {
-  if (!(peak > 0)) return { step: 1, max: 4 };
-  const target = (peak * 1.04) / 4;
+const tidy = (x: number) => Number(x.toPrecision(12));
+
+/**
+ * El eje: el paso más pequeño de 1, 2 o 5 × 10ⁿ (y nunca menor que `minStep`)
+ * con el que el pico, más un 4 % de aire, cabe en cuatro tramos o menos. El
+ * máximo es el primer múltiplo del paso que lo cubre. Así el Panel con un pico
+ * de una conversación lee «0 · 1 · 2», y no «0 · 0,5 · 1 · 1,5 · 2».
+ */
+export function blockChartScale(peak: number, minStep = 1): { step: number; max: number } {
+  const unit = minStep > 0 ? minStep : 1;
+  if (!(peak > 0)) return { step: unit, max: tidy(unit * 4) };
+  const top = peak * 1.04;
+  const target = Math.max(unit, top / MAX_INTERVALS);
   const magnitude = 10 ** Math.floor(Math.log10(target));
+  let step = tidy(10 * magnitude);
   for (const n of NICE) {
-    const step = Number((n * magnitude).toPrecision(12));
-    if (step >= target) return { step, max: Number((step * 4).toPrecision(12)) };
+    const candidate = tidy(n * magnitude);
+    if (candidate >= target) {
+      step = candidate;
+      break;
+    }
   }
-  // 10 × 10ⁿ siempre llega; esto solo calma al compilador.
-  return { step: 10 * magnitude, max: 40 * magnitude };
+  const intervals = Math.max(1, Math.ceil(tidy(top / step)));
+  return { step, max: tidy(step * intervals) };
 }
 
-/** 12 filas; 16 si hay más de 60 columnas (90 días). */
-export function blockChartRows(columns: number): number {
-  return columns > 60 ? 16 : 12;
+/** Las marcas del eje, de 0 al máximo. */
+export function blockChartTicks(peak: number, minStep = 1): number[] {
+  const { step, max } = blockChartScale(peak, minStep);
+  const count = Math.round(max / step);
+  return Array.from({ length: count + 1 }, (_, i) => tidy(i * step));
 }
 
 /**
- * Cuántos cuadros llena cada serie en una columna: máx(1 si hay dato,
- * redondeo(total / máximo × filas)), repartidos por resto mayor. Una serie con
- * dato conserva al menos un cuadro si hay sitio para todas.
+ * Una barra: su alto sobre el máximo del eje (0 a 1) y lo que pone cada serie
+ * dentro de ella (partes de 1, de abajo arriba). Un valor que no es un número
+ * positivo cuenta como cero.
  */
-export function blockChartCells(values: readonly number[], max: number, rows: number): number[] {
+export function blockChartBar(values: readonly number[], max: number): { height: number; parts: number[] } {
   const clean = values.map((v) => (Number.isFinite(v) && v > 0 ? v : 0));
   const total = clean.reduce((a, b) => a + b, 0);
-  if (total <= 0 || max <= 0) return clean.map(() => 0);
-  const filled = Math.min(rows, Math.max(1, Math.round((total / max) * rows)));
-  const raw = clean.map((v) => (v / total) * filled);
-  const cells = raw.map((r) => Math.floor(r));
-  let left = filled - cells.reduce((a, b) => a + b, 0);
-  const byRemainder = raw.map((r, i) => ({ i, frac: r - Math.floor(r) })).sort((a, b) => b.frac - a.frac || a.i - b.i);
-  for (const { i } of byRemainder) {
-    if (left <= 0) break;
-    cells[i] = (cells[i] ?? 0) + 1;
-    left -= 1;
-  }
-  if (filled >= clean.filter((v) => v > 0).length) {
-    clean.forEach((v, i) => {
-      if (v > 0 && cells[i] === 0) {
-        const donor = cells.indexOf(Math.max(...cells));
-        cells[donor] = (cells[donor] ?? 0) - 1;
-        cells[i] = 1;
-      }
-    });
-  }
-  return cells;
+  if (total <= 0 || max <= 0) return { height: 0, parts: clean.map(() => 0) };
+  return { height: Math.min(1, total / max), parts: clean.map((v) => v / total) };
 }
 
 /** Qué columnas llevan etiqueta: todas hasta 14; si no, una de cada ⌈n/7⌉ y siempre la última. */
@@ -160,6 +176,7 @@ function BlockChart({
   columns,
   copy,
   formatValue,
+  minStep = 1,
   locale = "es",
   loading,
   error,
@@ -171,11 +188,15 @@ function BlockChart({
   const tipId = `${id}-tip`;
   const fmt = React.useCallback((v: number) => (formatValue ? formatValue(v) : formatNumber(v, locale)), [formatValue, locale]);
   const n = columns.length;
-  const rows = blockChartRows(n);
   const peak = Math.max(0, ...columns.map((c) => (c.values ? totalOf(c.values) : 0)));
-  const { max } = blockChartScale(peak);
+  const ticks = blockChartTicks(peak, minStep);
+  const max = ticks[ticks.length - 1] ?? 1;
   const labels = React.useMemo(() => new Set(blockChartLabelIndices(n)), [n]);
   const hasData = columns.some((c) => c.values && totalOf(c.values) > 0);
+  // Hoy: la columna que lo diga; si ninguna lo dice, la última.
+  const flagged = columns.some((c) => c.today !== undefined);
+  const isToday = (i: number) => (flagged ? Boolean(columns[i]?.today) : i === n - 1);
+  const todayMark = ` (${copy.today ?? TODAY_WORD[locale]})`;
 
   const [active, setActive] = React.useState(0);
   const [open, setOpen] = React.useState(false);
@@ -204,8 +225,9 @@ function BlockChart({
         <span role="status" className="sr-only">
           {ui.loading}
         </span>
+        {/* El mismo alto que el gráfico: la leyenda, el trazado y las fechas. */}
         <Skeleton className="h-4 w-56 max-w-full" />
-        <Skeleton className="h-40 w-full" />
+        <Skeleton className="mt-2 h-44 w-full" />
         <Skeleton className="h-4 w-full" />
       </figure>
     );
@@ -214,7 +236,7 @@ function BlockChart({
   if (error) {
     return (
       <figure data-slot="block-chart" className={cn("flex min-w-0 flex-col gap-3", className)}>
-        <div role="alert" className="flex h-40 flex-col items-center justify-center gap-3 text-center">
+        <div role="alert" className="flex h-44 flex-col items-center justify-center gap-3 text-center">
           <p className="max-w-prose text-sm text-pretty">{error}</p>
           {onRetry ? (
             <Button variant="outline" size="sm" onClick={onRetry}>
@@ -226,58 +248,69 @@ function BlockChart({
     );
   }
 
-  // Como el prototipo aprobado (`waffleChart`): cuadros redondeados con aire.
-  // Con un mes o más, cuadrados de hasta 20 px (10 con 90 días) repartidos a lo
-  // ancho. Con una semana, cada columna ocupa su parte del ancho con bloques de
-  // 16 px de alto: siete columnas de 20 px dejaban huecos enormes entre días.
+  // Con un mes o más, barras de hasta 20 px (10 con 90 días) repartidas a lo
+  // ancho. Con una semana, cada columna ocupa su parte del ancho y su barra
+  // mide hasta 40 px: siete barras de 20 px dejaban huecos enormes entre días.
   const wide = n <= 14;
   const dense = n > 60;
-  const cellMax = dense ? 10 : 20;
-  const gap = dense ? 2 : 3;
+  const barMax = dense ? 10 : 20;
+  const gap = dense ? 2 : 4;
   const template: React.CSSProperties = wide
     ? { gridTemplateColumns: `repeat(${Math.max(n, 1)}, minmax(0, 1fr))`, columnGap: 8 }
-    : { gridTemplateColumns: `repeat(${Math.max(n, 1)}, minmax(0, ${cellMax}px))`, justifyContent: "space-between", columnGap: gap };
+    : { gridTemplateColumns: `repeat(${Math.max(n, 1)}, minmax(0, ${barMax}px))`, justifyContent: "space-between", columnGap: gap };
   const minWidth = { minWidth: n * (MIN_COLUMN_PX + gap) };
-  const cellShape: React.CSSProperties = wide ? { borderRadius: 4, height: 16 } : { borderRadius: "22%", aspectRatio: "1 / 1" };
 
-  /** Los cuadros de una columna; con una abierta, las demás se atenúan y la suya se aviva. */
-  function cellsOf(col: BlockChartColumn, state: "rest" | "active" | "dim" = "rest") {
+  /** La barra de una columna; con una abierta, las demás se atenúan y la suya se aviva. */
+  function barOf(col: BlockChartColumn, today: boolean, state: "rest" | "active" | "dim" = "rest") {
     if (!col.values) {
-      return Array.from({ length: rows }, (_, r) => (
-        <span key={r} data-cell="missing" style={cellShape} className="block w-full border border-dashed border-border" />
-      ));
+      // Sin datos no es cero: una pista discontinua de todo el alto.
+      return <span data-placeholder="" className={cn("block h-full w-full rounded-sm border border-dashed border-border", wide && "max-w-10")} />;
     }
-    const filled = blockChartCells(col.values, max, rows);
-    const out: React.ReactNode[] = [];
-    filled.forEach((count, s) => {
-      for (let k = 0; k < count; k++) {
-        out.push(
-          <span
-            key={`${s}-${k}`}
-            data-cell={String(s)}
-            style={cellShape}
-            className={cn(
-              "block w-full transition-[opacity,filter] duration-150 motion-reduce:transition-none",
-              SERIES_BG[s] ?? "bg-accent-mid",
-              state === "dim" && "opacity-55",
-              state === "active" && "brightness-125",
-            )}
-          />,
-        );
-      }
-    });
-    while (out.length < rows) {
-      out.push(
-        <span
-          key={`t-${out.length}`}
-          data-cell="track"
-          style={cellShape}
-          className={cn("block w-full transition-colors duration-150 motion-reduce:transition-none", state === "active" ? "bg-foreground/10" : "bg-series-track")}
-        />,
-      );
-    }
-    return out;
+    const { height, parts } = blockChartBar(col.values, max);
+    return (
+      <span
+        data-bar=""
+        style={{ height: `${Number((height * 100).toFixed(2))}%` }}
+        className={cn(
+          // Crece desde el eje al entrar; con «Reducir movimiento», quieta.
+          "flex w-full origin-bottom flex-col-reverse gap-px overflow-hidden rounded-sm motion-safe:animate-bar-grow",
+          "transition-[opacity,filter] duration-150 motion-reduce:transition-none",
+          wide && "max-w-10",
+          // Un día con algo nunca desaparece; hoy se ve aunque aún no tenga nada.
+          (height > 0 || today) && "min-h-1",
+          height === 0 && "bg-series-track",
+          today && "outline-2 outline-offset-2 outline-foreground/60",
+          state === "dim" && "opacity-55",
+          state === "active" && "brightness-125",
+        )}
+      >
+        {parts.map((part, s) =>
+          part > 0 ? (
+            <span
+              key={series[s]?.key ?? s}
+              data-series={String(s)}
+              style={{ flexGrow: part, flexBasis: 0 }}
+              className={cn("block min-h-px w-full", SERIES_BG[s] ?? "bg-accent-mid")}
+            />
+          ) : null,
+        )}
+      </span>
+    );
   }
+
+  const intervals = Math.max(ticks.length - 1, 1);
+  const gridlines = (
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+      {Array.from({ length: intervals + 1 }, (_, i) => (
+        <span
+          key={i}
+          data-gridline=""
+          className={cn("absolute inset-x-0 border-t", i === 0 ? "border-foreground/20" : "border-border")}
+          style={{ top: `${(1 - i / intervals) * 100}%` }}
+        />
+      ))}
+    </div>
+  );
 
   function move(to: number) {
     setActive(Math.max(0, Math.min(n - 1, to)));
@@ -302,13 +335,17 @@ function BlockChart({
     run();
   }
 
-  // Cinco marcas, como el prototipo. `pb-7` deja fuera la fila de las fechas
-  // (8 + 16 px) y el relleno del desplazamiento (4 px): el eje mide lo que la rejilla.
-  const axis = (
-    <div aria-hidden="true" className="flex shrink-0 flex-col justify-between pb-7 text-right text-xs leading-none text-muted-foreground tabular-nums">
-      {[1, 0.75, 0.5, 0.25, 0].map((f) => (
-        <span key={f}>{fmt(max * f)}</span>
-      ))}
+  // Las marcas, de abajo arriba, cada una centrada en su línea. Sin datos no
+  // hay escala que enseñar: solo las líneas.
+  const axis = (withTicks: boolean) => (
+    <div aria-hidden="true" className="flex h-44 shrink-0 flex-col-reverse justify-between text-right text-xs leading-none text-muted-foreground tabular-nums">
+      {withTicks
+        ? ticks.map((tick) => (
+            <span key={tick} data-axis-tick="" className="flex h-0 items-center justify-end">
+              {fmt(tick)}
+            </span>
+          ))
+        : null}
     </div>
   );
 
@@ -317,8 +354,8 @@ function BlockChart({
       {columns.map((c, i) => (
         <span key={c.key} className="flex min-w-0 justify-center overflow-visible whitespace-nowrap">
           {labels.has(i) ? (
-            // «Hoy», la última, en tinta y más fuerte.
-            <span data-axis-label="" className={i === n - 1 ? "font-semibold text-foreground" : undefined}>
+            // «Hoy» en tinta y más fuerte.
+            <span data-axis-label="" className={isToday(i) ? "font-semibold text-foreground" : undefined}>
               {c.label}
             </span>
           ) : null}
@@ -345,17 +382,13 @@ function BlockChart({
     return (
       <figure data-slot="block-chart" className={cn("flex min-w-0 flex-col gap-3", className)}>
         {legend}
-        <div className="relative flex min-w-0 gap-2">
-          {axis}
+        <div className="relative flex min-w-0 gap-2 pt-2">
+          {axis(false)}
           {/* Vacío: solo decoración oculta. No desliza, porque una caja
               deslizable sin nada enfocable no la alcanza el teclado. */}
-          <div data-scroll-x="" className="relative min-w-0 flex-1 overflow-hidden">
-            <div aria-hidden="true" className="grid" style={{ ...template, ...minWidth }}>
-              {columns.map((c) => (
-                <div key={c.key} className="flex min-w-0 flex-col-reverse" style={{ gap }}>
-                  {cellsOf(c)}
-                </div>
-              ))}
+          <div data-scroll-x="" className="relative min-w-0 flex-1 overflow-hidden px-1">
+            <div aria-hidden="true" className="relative h-44" style={minWidth}>
+              {gridlines}
             </div>
             {xLabels}
           </div>
@@ -383,51 +416,55 @@ function BlockChart({
           if (!listRef.current?.contains(document.activeElement)) setOpen(false);
         }}
       >
-        <div className="flex min-w-0 gap-2">
-          {axis}
-          <div data-scroll-x="" className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain pb-1">
-            <div
-              ref={listRef}
-              role="listbox"
-              aria-label={title}
-              aria-orientation="horizontal"
-              aria-activedescendant={n > 0 ? optionId(active) : undefined}
-              tabIndex={0}
-              onKeyDown={onKeyDown}
-              onFocus={() => setOpen(true)}
-              onBlur={(e) => {
-                if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
-              }}
-              className="grid cursor-default outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
-              style={{ ...template, ...minWidth }}
-            >
-              {columns.map((c, i) => {
-                const missing = !c.values;
-                const name = `${c.title}: ${missing ? copy.noData : copy.totalOf(fmt(totalOf(c.values!)))}`;
-                const isActive = i === active;
-                return (
-                  <div
-                    key={c.key}
-                    id={optionId(i)}
-                    role="option"
-                    aria-label={name}
-                    aria-selected={isActive}
-                    aria-describedby={isActive && open ? tipId : undefined}
-                    data-missing={missing || undefined}
-                    data-active={(isActive && open) || undefined}
-                    onMouseEnter={() => move(i)}
-                    onClick={() => move(i)}
-                    className="relative flex min-w-0 flex-col-reverse"
-                    style={{ gap }}
-                  >
-                    {/* La línea guía de la columna abierta, como el prototipo. */}
-                    {isActive && open ? (
-                      <span aria-hidden="true" className="pointer-events-none absolute -inset-y-1 left-1/2 border-l border-dashed border-foreground/35" />
-                    ) : null}
-                    {cellsOf(c, !open ? "rest" : isActive ? "active" : "dim")}
-                  </div>
-                );
-              })}
+        <div className="flex min-w-0 gap-2 pt-2">
+          {axis(true)}
+          <div data-scroll-x="" className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain px-1 pb-1">
+            <div className="relative h-44" style={minWidth}>
+              {gridlines}
+              <div
+                ref={listRef}
+                role="listbox"
+                aria-label={title}
+                aria-orientation="horizontal"
+                aria-activedescendant={n > 0 ? optionId(active) : undefined}
+                tabIndex={0}
+                onKeyDown={onKeyDown}
+                onFocus={() => setOpen(true)}
+                onBlur={(e) => {
+                  if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setOpen(false);
+                }}
+                className="relative grid h-full cursor-default outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4"
+                style={template}
+              >
+                {columns.map((c, i) => {
+                  const missing = !c.values;
+                  const today = isToday(i);
+                  const name = `${c.title}${today ? todayMark : ""}: ${missing ? copy.noData : copy.totalOf(fmt(totalOf(c.values!)))}`;
+                  const isActive = i === active;
+                  return (
+                    <div
+                      key={c.key}
+                      id={optionId(i)}
+                      role="option"
+                      aria-label={name}
+                      aria-selected={isActive}
+                      aria-describedby={isActive && open ? tipId : undefined}
+                      data-missing={missing || undefined}
+                      data-today={today || undefined}
+                      data-active={(isActive && open) || undefined}
+                      onMouseEnter={() => move(i)}
+                      onClick={() => move(i)}
+                      className="relative flex h-full min-w-0 flex-col items-center justify-end"
+                    >
+                      {/* La línea guía de la columna abierta, como el prototipo. */}
+                      {isActive && open ? (
+                        <span aria-hidden="true" className="pointer-events-none absolute -inset-y-1 left-1/2 border-l border-dashed border-foreground/35" />
+                      ) : null}
+                      {barOf(c, today, !open ? "rest" : isActive ? "active" : "dim")}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
             {xLabels}
           </div>
@@ -493,9 +530,12 @@ function BlockChart({
           </tr>
         </thead>
         <tbody>
-          {columns.map((c) => (
+          {columns.map((c, i) => (
             <tr key={c.key}>
-              <th scope="row">{c.title}</th>
+              <th scope="row">
+                {c.title}
+                {isToday(i) ? todayMark : null}
+              </th>
               {series.map((s, i) => (
                 <td key={s.key}>{c.values ? fmt(c.values[i] ?? 0) : copy.noData}</td>
               ))}

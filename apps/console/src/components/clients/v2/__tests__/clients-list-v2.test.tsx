@@ -25,7 +25,7 @@ vi.mock("@/app/(console)/clients/new-client-actions", () => ({
 }));
 
 const { ClientsListV2 } = await import("../clients-list-v2");
-const { agentsText, bagBar, filterHref, menuActions, parseFilter, reasonText, stateView } = await import("../client-v2-model");
+const { agentsText, bagBar, bagPace, filterHref, menuActions, parseFilter, reasonText, stateView } = await import("../client-v2-model");
 const { t } = await import("@/i18n/messages");
 
 /**
@@ -52,9 +52,14 @@ function bodyRows() {
   return within(table).getAllByRole("row").slice(1);
 }
 
-/** La línea bajo la minibarra: «Quedan {x} de {y}» o «Sin saldo asignado». */
+/** La línea de la minibarra: «{x} · quedan de {y}» o «Sin saldo asignado» (spec 072, 2.1). */
 function line(r: HTMLElement) {
   return r.querySelector("[data-slot=bag-line]")?.textContent?.trim();
+}
+
+/** La línea de cuánto dura (spec 072, 2.2). */
+function pace(r: HTMLElement) {
+  return r.querySelector("[data-slot=bag-pace]")?.textContent?.trim();
 }
 
 /** El relleno de la minibarra de saldo de una fila. */
@@ -116,29 +121,36 @@ describe("ClientsListV2", () => {
     expect(within(rows[0]!).getByText("Ninguno")).toBeTruthy();
     expect(line(rows[0]!)).toBe("Sin saldo asignado");
     expect(fill(rows[0]!).bar?.dataset.tone).toBe("danger");
-    expect(fill(rows[0]!).fill?.style.width).toBe("100%");
+    // Spec 072 (2.1): la barra es lo que queda; sin saldo, vacía.
+    expect(fill(rows[0]!).fill?.style.width).toBe("0%");
+    expect(pace(rows[0]!)).toBeUndefined();
 
     // Flor y Encanto: «Al día», los agentes en texto y lo que queda de lo asignado.
     expect(within(rows[1]!).getByText("Al día")).toBeTruthy();
     expect(within(rows[1]!).getByText("3 agentes · 1 en prueba · 1 pausado")).toBeTruthy();
-    expect(line(rows[1]!)).toMatch(/^Quedan 17,70\sUSD de 60,00\sUSD$/);
+    expect(line(rows[1]!)).toMatch(/^17,70\sUSD · quedan de 60,00\sUSD$/);
     expect(within(rows[1]!).getByRole("img", { name: "Ventas mayoristas: En prueba" })).toBeTruthy();
-    expect(fill(rows[1]!).fill?.style.width).toBe("70.5%");
+    expect(fill(rows[1]!).fill?.style.width).toBe("29.5%");
     expect(fill(rows[1]!).bar?.dataset.tone).toBe("ok");
-    // Los días y el % libre de la consola se quedan en el `title` de la barra.
-    expect(fill(rows[1]!).bar?.getAttribute("title")).toBe("12 días · 30 % libre");
+    // Spec 072 (2.2, 2.6): cuánto dura, a la vista; la barra dice lo mismo que se lee.
+    expect(pace(rows[1]!)).toBe("Unos 12 días a este ritmo");
+    expect(fill(rows[1]!).bar).toHaveAttribute("role", "meter");
+    expect(fill(rows[1]!).bar?.getAttribute("aria-label")?.replace(/\s/g, " ")).toBe("17,70 USD · quedan de 60,00 USD. Unos 12 días a este ritmo");
 
-    // Clínica: saldo bajo, en ámbar desde el 80 % gastado.
+    // Clínica: saldo bajo por la regla de la API (`state: "low"`), en ámbar (spec 072, 2.3).
     expect(within(rows[2]!).getByText("Saldo bajo · quedan 4 días")).toBeTruthy();
     expect(fill(rows[2]!).bar?.dataset.tone).toBe("warn");
+    expect(fill(rows[2]!).fill?.style.width).toBe("16%");
+    expect(pace(rows[2]!)).toBe("Unos 4 días a este ritmo");
 
     // Pedidos: el saldo agotado. El Estado solo dice el estado: lo de los agentes
     // está en su columna (Andrés, 2026-10-28).
     const estado = rows[3]!.querySelectorAll("td")[1] as HTMLElement;
     expect(estado.textContent).not.toMatch(/agente/);
     expect(within(rows[3]!).getByRole("img", { name: "Pedidos: Listo · sin canal" })).toBeTruthy();
-    expect(line(rows[3]!)).toMatch(/^Quedan 0,00\sUSD de 200,00\sUSD$/);
+    expect(line(rows[3]!)).toMatch(/^0,00\sUSD · quedan de 200,00\sUSD$/);
     expect(fill(rows[3]!).bar?.dataset.tone).toBe("danger");
+    expect(fill(rows[3]!).fill?.style.width).toBe("0%");
 
     // Sin «Bolsa» en ninguna parte, y el pie del prototipo.
     expect(screen.queryByText(/bolsa/i)).toBeNull();
@@ -266,13 +278,26 @@ describe("el modelo de la lista", () => {
     expect(agentsText(es, null, [{ agent_id: "a", name: "A", visible_state: serving }, { agent_id: "b", name: "B", visible_state: { code: "archived", tone: "muted", pause_reason: null } }])).toBe("1 agente");
   });
 
-  it("la minibarra mide lo gastado: ámbar desde el 80 %, roja sin saldo", () => {
-    expect(bagBar(bag({ pct_spent: 25 }))).toEqual({ pct: 25, tone: "ok" });
-    expect(bagBar(bag({ pct_spent: 80 }))).toEqual({ pct: 80, tone: "warn" });
-    expect(bagBar(bag({ pct_spent: 130, state: "empty" }))).toEqual({ pct: 100, tone: "danger" });
-    expect(bagBar({ ...bag(), state: "unassigned", pct_spent: null })).toEqual({ pct: 100, tone: "danger" });
-    expect(bagBar(null)).toEqual({ pct: 100, tone: "danger" });
+  it("la minibarra se llena con lo que queda; el ámbar sale de la regla, no de un umbral (spec 072, 2.1 y 2.3)", () => {
+    expect(bagBar(bag({ pct_spent: 25, pct_left: 75 }))).toEqual({ pct: 75, tone: "ok" });
+    // Gastado el 85 % pero la API no lo da por bajo (le quedan semanas): sin ámbar.
+    expect(bagBar(bag({ pct_spent: 85, pct_left: 15 }))).toEqual({ pct: 15, tone: "ok" });
+    expect(bagBar(bag({ pct_spent: 40, pct_left: 60, state: "low" }))).toEqual({ pct: 60, tone: "warn" });
+    // Sin `pct_left`, lo que no se ha gastado.
+    expect(bagBar(bag({ pct_spent: 30, pct_left: null }))).toEqual({ pct: 70, tone: "ok" });
+    expect(bagBar(bag({ pct_spent: 130, state: "empty" }))).toEqual({ pct: 0, tone: "danger" });
+    expect(bagBar({ ...bag(), state: "unassigned", pct_spent: null })).toEqual({ pct: 0, tone: "danger" });
+    expect(bagBar(null)).toEqual({ pct: 0, tone: "danger" });
     expect(bagBar({ ...bag(), state: "unlimited" })).toBeNull();
+  });
+
+  it("cuánto dura, en una línea que dice qué falta si no se puede estimar (spec 072, 2.2)", () => {
+    expect(bagPace(es, bag({ days_left: 78.6, days_estimable: true }))).toBe("Unos 79 días a este ritmo");
+    expect(bagPace(es, bag({ days_left: 0.4, days_estimable: true }))).toBe("Menos de un día a este ritmo");
+    expect(bagPace(es, bag({ days_left: null, days_estimable: false }))).toBe("Aún no hay gasto para calcular cuánto dura");
+    expect(bagPace(es, bag({ state: "empty" }))).toBeNull();
+    expect(bagPace(es, { ...bag(), state: "unassigned" })).toBeNull();
+    expect(bagPace(es, null)).toBeNull();
   });
 
   it("los filtros y el menú en su orden, sin «Nuevo agente»", () => {

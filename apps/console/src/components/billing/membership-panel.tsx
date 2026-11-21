@@ -34,11 +34,10 @@ import {
   CardHeader,
   CardTitle,
   DescriptionList,
-  StatusBadge,
-  formatCurrency,
-  formatDate,
+  StatusBadge, formatDate,
 } from "@nexus/ui";
 
+import { formatUnits } from "@/lib/amount";
 import { useLocale, useT } from "@/i18n/client";
 import type { MembershipOut, SubscriptionState, TierOut } from "@/lib/backend/membership";
 
@@ -78,7 +77,7 @@ function TierCard({
         <CardDescription>
           {tier.monthly_price_cents === 0
             ? t("membership.free")
-            : `${formatCurrency(tier.monthly_price_cents / 100, "USD", locale)} ${t("membership.perMonth")}`}
+            : `${formatUnits(tier.monthly_price_cents / 100, "USD", locale)} ${t("membership.perMonth")}`}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

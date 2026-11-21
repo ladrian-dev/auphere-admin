@@ -112,7 +112,9 @@ class UsageDetailOut(BaseModel):
 
 
 #: Lo que el partner paga de su dinero: el gasto del mes (46.1).
-_PARTNER_PAYS = ("conversations", "client_tests", "companion")
+#: Spec 072 (4.3, D2): «Gasto del mes» es lo que gastan las bolsas de sus clientes,
+#: lo mismo que suman las partes del Panel. Companion y teammates solo en el detalle.
+_CLIENT_BAGS: tuple[Line, ...] = tuple(line for line in LINES if PAYER[line] == "client_bag")
 
 
 @router.get("/summary", response_model=UsageSummaryOut)
@@ -174,8 +176,8 @@ async def usage_summary(
                 )
             )
 
-    month_spend = lines.total(lines=_PARTNER_PAYS, since=month_day)
-    pace7 = lines.total(lines=_PARTNER_PAYS, since=week_ago) / 7
+    month_spend = lines.total(lines=_CLIENT_BAGS, since=month_day)
+    pace7 = lines.total(lines=_CLIENT_BAGS, since=week_ago) / 7
     projected = month_spend + int(pace7 * max(0, days_in_month - elapsed))
     out_lines: list[LineOut] = []
     for line in LINES:

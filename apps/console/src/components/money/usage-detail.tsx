@@ -6,10 +6,10 @@ import { Button, StatusBadge, formatNumber } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { UsageDetail, UsageLine } from "@/lib/backend/money-types";
+import type { Money, UsageDetail, UsageLine } from "@/lib/backend/money-types";
 import { meterLabel } from "@/lib/meter-label";
 
-import { LINE_LABEL } from "./money-model";
+import { LINE_LABEL, moneyText } from "./money-model";
 
 /** «Descargar CSV»: el detalle del periodo por cliente, agente, medidor, partida y origen (46.6). */
 export function usageCsvHref(days: number, client: string): string {
@@ -26,7 +26,20 @@ const isLine = (l: string | null): l is UsageLine => l === "conversations" || l 
  * cliente, agente, partida y origen, con lo que aún no tiene precio marcado, y
  * «Descargar CSV».
  */
-export function UsageDetailPanel({ detail, names, days, client }: { detail: UsageDetail | null; names: Record<string, string>; days: number; client: string }) {
+export function UsageDetailPanel({
+  detail,
+  names,
+  days,
+  client,
+  account = null,
+}: {
+  detail: UsageDetail | null;
+  names: Record<string, string>;
+  days: number;
+  client: string;
+  /** Spec 072 (4.4, D2): lo que gastan Companion y teammates este mes, que paga la cuenta. */
+  account?: Money | null;
+}) {
   const t = useT();
   const locale = useLocale();
   const n = (v: number) => formatNumber(v, locale);
@@ -42,7 +55,14 @@ export function UsageDetailPanel({ detail, names, days, client }: { detail: Usag
       </summary>
       <div className="flex min-w-0 flex-col gap-4 border-t border-border p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">{t("money.detail.period", { days })}</p>
+          <div className="grid gap-1">
+            <p className="text-xs text-muted-foreground">{t("money.detail.period", { days })}</p>
+            {account ? (
+              <p className="text-sm text-pretty" data-slot="usage-detail-account">
+                {t("money.detail.account", { amount: moneyText(account) })}
+              </p>
+            ) : null}
+          </div>
           <Button nativeButton={false} variant="outline" size="sm" render={<a href={usageCsvHref(days, client)} download />}>
             <Download aria-hidden="true" />
             {t("money.detail.csv")}

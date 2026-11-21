@@ -155,7 +155,7 @@ describe("LiteUsageView", () => {
     const first = cards.firstElementChild as HTMLElement;
     expect(first.getAttribute("data-slot")).toBe("lite-balance");
     expect(within(first).getByRole("heading", { name: "Saldo disponible" })).toBeTruthy();
-    expect(within(first).getByText("30,13 US$", { selector: ".sr-only" })).toBeTruthy();
+    expect(within(first).getByText("30,13 USD", { selector: ".sr-only" })).toBeTruthy();
     expect(within(first).getByText("Te alcanza hasta el lunes 19")).toBeTruthy();
     expect(container.querySelector('[data-slot="lite-balance"] progress')?.getAttribute("aria-valuetext")).toBe("Cubre 11 de 24 días del mes");
     expect(container.querySelector('[data-slot="lite-balance"] [data-slot="meter"]')?.getAttribute("data-tone")).toBe("warning");
@@ -202,7 +202,7 @@ describe("LiteUsageView", () => {
     const cells = within(rows[0]!).getAllByRole("cell").map((c) => c.textContent?.replace(/\s/g, " "));
     expect(within(rows[0]!).getByRole("rowheader").textContent).toBe("WhatsApp");
     // 2,40 + 3,60 + 1,66 US$ of the period's spend.
-    expect(cells).toEqual(["1284", "150.000", "12", "7,66 US$"]);
+    expect(cells).toEqual(["1284", "150.000", "12", "7,66 USD"]);
     expect(screen.queryByRole("columnheader", { name: /Otros/ })).toBeNull();
     expect(document.body.textContent).not.toMatch(/Instagram|Messenger/);
   });
@@ -219,7 +219,7 @@ describe("LiteUsageView", () => {
     ];
     view({ agents, agent: "a2", periodSpend: { ...spend, series_cents: [1000, 0, 26] } });
     const table = screen.getByRole("table", { name: "Detalle técnico: mensajes, uso del modelo y multimedia" });
-    expect(within(table).getByText("10,26 US$")).toBeTruthy();
+    expect(within(table).getByText("10,26 USD")).toBeTruthy();
   });
 
   it("an unread spend leaves the money cell empty, never a zero", () => {

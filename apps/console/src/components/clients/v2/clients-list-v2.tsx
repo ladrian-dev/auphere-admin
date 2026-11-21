@@ -7,13 +7,15 @@ import * as React from "react";
 
 import { Button, EmptyState, Input, Money, NativeSelect, StatusBadge, cn } from "@nexus/ui";
 
+import { moneyText } from "@/components/money/money-model";
 import { clientHref } from "@/components/shell/routes-v2";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { AgentVisible, Bag, ClientCounts, ClientFilter, ClientRowV2 } from "@/lib/backend/client-records";
 
 import { ClientMenu } from "./client-menu";
-import { FILTERS, agentStateText, agentsText, bagBar, bagBarTitle, filterHref, liveAgents, parseFilter, stateView, type BagBar } from "./client-v2-model";
+import { FILTERS, agentStateText, agentsText, bagBar, bagPace, filterHref, liveAgents, parseFilter, stateView } from "./client-v2-model";
+import { BagMeter } from "./bag-meter";
 
 /** La espera del buscador antes de pedir la lista (prototipo §2.2: filtra al escribir). */
 const SEARCH_DELAY_MS = 250;
@@ -31,37 +33,34 @@ const DOT: Record<AgentVisible, string> = {
   archived: "bg-muted-foreground/40",
 };
 
-const BAR_FILL: Record<BagBar["tone"], string> = {
-  ok: "bg-series-1",
-  warn: "bg-status-warning",
-  danger: "bg-status-danger",
-};
-
-/** La columna «Saldo»: la minibarra de lo gastado y «Quedan {x} de {y}» o «Sin saldo asignado». */
+/**
+ * La columna «Saldo» — spec 072 (2.1–2.3, 2.6): «17,70 USD · quedan de 60,00
+ * USD», la minibarra de lo que queda y cuánto dura a este ritmo. La barra dice
+ * lo mismo que se lee; el ámbar, en la barra y en su texto, nunca en la fila.
+ */
 function BagCell({ bag }: { bag: Bag | null }) {
   const t = useT();
   const bar = bagBar(bag);
   if (!bar) return <span className="text-ui text-muted-foreground">{t("clients.v2.bag.unlimited")}</span>;
   const assigned = bag && bag.state !== "unassigned" && bag.assigned ? bag : null;
+  const pace = bagPace(t, bag);
+  const label = [assigned?.balance && assigned.assigned ? bagLeftText(t, assigned) : t("clients.v2.bag.unassigned"), pace].filter(Boolean).join(". ");
   return (
-    <div className="grid min-w-0 gap-2">
-      <span
-        data-slot="bag-bar"
-        data-tone={bar.tone}
-        title={bagBarTitle(t, bag)}
-        aria-hidden="true"
-        className="block h-2 w-30 max-w-full overflow-hidden rounded-full bg-muted"
-      >
-        <span className={cn("block h-full rounded-full", BAR_FILL[bar.tone])} style={{ width: `${bar.pct}%` }} />
-      </span>
-      <span data-slot="bag-line" className="text-ui whitespace-nowrap text-muted-foreground tabular-nums">
+    <div className="grid min-w-0 gap-1">
+      <span data-slot="bag-line" className="text-ui whitespace-nowrap tabular-nums">
         {assigned ? <BagLine bag={assigned} /> : t("clients.v2.bag.unassigned")}
       </span>
+      <BagMeter bag={bag} bar={bar} label={label} pace={pace} className="w-30 max-w-full" />
     </div>
   );
 }
 
-/** «Quedan 8,00 USD de 50,00 USD», con los importes como dinero. */
+/** La misma línea, en texto (el nombre de la barra). */
+function bagLeftText(t: ReturnType<typeof useT>, bag: Bag): string {
+  return t("clients.v2.bag.left", { left: moneyText(bag.balance!), assigned: moneyText(bag.assigned!) });
+}
+
+/** «17,70 USD · quedan de 60,00 USD», con los importes como dinero. */
 function BagLine({ bag }: { bag: Bag }) {
   const t = useT();
   if (!bag.balance || !bag.assigned) return null;

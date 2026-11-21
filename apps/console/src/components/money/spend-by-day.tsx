@@ -3,22 +3,24 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
-import { BlockChart, NativeSelect, SegmentedControl } from "@nexus/ui";
+import { BlockChart, MICROS_PER_UNIT, NativeSelect, SegmentedControl } from "@nexus/ui";
 
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { Currency, UsageDaily, UsageLine } from "@/lib/backend/money-types";
-import { USAGE_LINES } from "@/lib/backend/money-types";
 
 import { LINE_LABEL, chartColumns, chartLines, chartTotal, microsText } from "./money-model";
 
 const PERIODS = [7, 30, 90] as const;
+/** El paso más pequeño del eje de dinero: un céntimo, en cien milésimas (072 §5.2). */
+const CENT_STEP = MICROS_PER_UNIT / 100;
 
 /**
  * Los filtros de «Gasto por día» (46.3): el periodo, el cliente y la partida.
  * Son la URL (`?days=&client=&line=`): lo que se ve se puede compartir.
  */
-export function SpendFilters({ days, client, line, clients }: { days: number; client: string; line: UsageLine | null; clients: { ref: string; name: string }[] }) {
+/** El periodo y el cliente — spec 072 (4.2, D3): sin el desplegable de partida. */
+export function SpendFilters({ days, client, clients }: { days: number; client: string; clients: { ref: string; name: string }[] }) {
   const t = useT();
   const router = useRouter();
   const pathname = usePathname();
@@ -48,14 +50,6 @@ export function SpendFilters({ days, client, line, clients }: { days: number; cl
         {clients.map((c) => (
           <option key={c.ref} value={c.ref}>
             {c.name}
-          </option>
-        ))}
-      </NativeSelect>
-      <NativeSelect wrapperClassName="max-w-64" aria-label={t("money.chart.line")} value={line ?? ""} onChange={(e) => go({ line: e.target.value })}>
-        <option value="">{t("money.chart.partnerPays")}</option>
-        {USAGE_LINES.map((l) => (
-          <option key={l} value={l}>
-            {t(LINE_LABEL[l])}
           </option>
         ))}
       </NativeSelect>
@@ -93,6 +87,7 @@ export function SpendByDay({ daily, line, currency }: { daily: UsageDaily | null
         columns={chartColumns(t, daily, lines)}
         copy={copy(t)}
         formatValue={fmt}
+        minStep={CENT_STEP}
       />
     </div>
   );
@@ -106,5 +101,6 @@ function copy(t: (k: MessageKey, v?: Record<string, string | number>) => string)
     noData: t("money.chart.noData"),
     empty: t("money.chart.empty"),
     totalOf: (formatted: string) => formatted,
+    today: t("money.chart.todayName"),
   };
 }

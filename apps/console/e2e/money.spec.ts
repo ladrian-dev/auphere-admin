@@ -50,51 +50,54 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
     await page.setViewportSize({ width: 1280, height: 900 });
   });
 
-  test("Consumo: las tres cifras, la tabla por cliente, la gráfica con su tabla, las partidas y el detalle", async ({ page, request }) => {
+  test("Consumo en el orden de la demo (spec 072): la gráfica, las cuatro cifras con Meta, la tabla, los avisos y el detalle", async ({ page }) => {
     await go(page, "/usage", "Consumo");
+    // 4.1: el orden de la página.
+    const order = await page.locator("[data-slot=usage-spend], [data-slot=usage-figures], [data-slot=usage-balance], [data-slot=usage-detail]").evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.slot));
+    expect(order).toEqual(["usage-spend", "usage-figures", "usage-balance", "usage-detail"]);
+
+    // 4.2: la gráfica dice su ventana; el periodo y el cliente, sin el desplegable de partida (D3).
+    const chart = page.locator("#gasto");
+    await expect(chart.getByRole("heading", { name: "Gasto por día · últimos 30 días" })).toBeVisible();
+    await expect(chart.getByRole("listbox", { name: "Gasto por día" })).toBeVisible();
+    await expect(chart.getByRole("combobox", { name: "Partida" })).toHaveCount(0);
+    await chart.getByRole("button", { name: "7 días" }).click();
+    await expect(page).toHaveURL(/days=7/);
+    await expect(chart.locator("table tbody tr")).toHaveCount(7);
+
+    // 4.3: cuatro cifras; Meta con su marca y sin «≈».
     const figures = page.locator("[data-slot=usage-figures]");
-    await expect(figures).toContainText("Saldo disponible");
+    await expect(figures.locator("[data-slot=usage-figure]")).toHaveCount(4);
     expect(plain(await figures.textContent())).toContain("60,00 €");
-    expect(plain(await figures.textContent())).toContain("aprox.");
-    expect(plain(await figures.textContent())).toContain("1.234,50 €");
-    expect(plain(await figures.textContent())).toContain("1.890,00 €");
+    const meta = figures.locator("[data-slot=usage-figure]").nth(3);
+    await expect(meta.getByTestId("meta-mark")).toHaveCount(1);
+    await expect(meta).toContainText("Mensajes de Meta");
+    await expect(meta).not.toContainText(/aprox\.|≈/);
+    await expect(meta).toContainText("lo que el negocio paga a Meta");
+
+    // 4.4: sin las tarjetas de partidas.
+    await expect(page.locator("[data-slot=usage-lines]")).toHaveCount(0);
 
     const table = page.getByRole("region", { name: "Saldo por cliente" });
     const flor = table.locator(`tr[data-client=${FLOR}]`);
     expect(plain(await flor.textContent())).toContain("15,50 USD");
-    expect(plain(await flor.textContent())).toContain("12,40 €");
     const barberia = table.locator(`tr[data-client=${BARBERIA}]`);
     await expect(barberia.getByText("Sin saldo")).toBeVisible();
-    // Regla de los tres puntos: la acción va en el ⋯, no junto al estado.
     await expect(barberia.getByRole("button", { name: "Asignar saldo" })).toHaveCount(0);
 
-    // La gráfica de bloques con su tabla para lectores de pantalla, y sus filtros.
-    const chart = page.locator("#gasto");
-    await expect(chart.getByRole("listbox", { name: "Gasto por día" })).toBeVisible();
-    await expect(chart.locator("table caption", { hasText: "Gasto por día" })).toHaveCount(1);
-    await chart.getByRole("button", { name: "7 días" }).click();
-    await expect(page).toHaveURL(/days=7/);
-    await expect(chart.locator("table tbody tr")).toHaveCount(7);
-    await chart.getByRole("combobox", { name: "Partida" }).selectOption("build");
-    await expect(page).toHaveURL(/line=build/);
-    await expect(chart.locator("table thead")).toContainText("Construcción y pruebas");
-
-    // Las cuatro partidas, con quién paga cada una; la construcción, con su tope y «Pedir ampliación».
-    const lines = page.locator("[data-slot=usage-lines]");
-    await expect(lines.locator("h3")).toHaveText(["Conversaciones", "Mensajes de Meta", "Construcción y pruebas", "Companion y teammates"]);
-    await expect(lines).toContainText("La paga el negocio, a Meta");
-    const build = lines.locator("[data-line=build]");
-    expect(plain(await build.textContent())).toContain("41,00 € de 50,00 € · 82 %");
-    await expect(lines).not.toContainText(/tokens?/i);
-    await build.getByRole("button", { name: "Pedir ampliación" }).click();
-    await expect(build.getByText("Pedido a Auphere. Te avisamos cuando suba el tope.").first()).toBeVisible();
-    expect((await state(request)).extensions).toBe(1);
-
-    // El detalle técnico, plegado, con lo que aún no tiene precio y el CSV.
+    // El detalle técnico, plegado, con el CSV.
     const detail = page.locator("[data-slot=usage-detail]");
     await detail.locator("summary").click();
-    await expect(detail.getByText("Sin precio aún")).toBeVisible();
     await expect(detail.getByRole("button", { name: "Descargar CSV" })).toHaveAttribute("href", /\/api\/usage\/export\?days=7&lang=es/);
+    // 1.2: ningún «US$».
+    await expect(page.locator("main")).not.toContainText("US$");
+    await expectNoSeriousAxe(page);
+  });
+
+  test("Consumo pasa axe en oscuro (spec 072, 7.2)", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await go(page, "/usage", "Consumo");
+    await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
     await expectNoSeriousAxe(page);
   });
 
@@ -111,10 +114,11 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
     const receipt = dialog.locator("[data-slot=assign-receipt]");
     await expect(receipt).toHaveAttribute("role", "status");
     await expect.poll(async () => plain(await receipt.textContent())).toContain("Asignas12,50 €");
-    expect(plain(await receipt.textContent())).toContain("Queda en tu cuenta47,50 €");
+    expect(plain(await receipt.textContent())).toContain("Te queda en el tuyo47,50 €");
     await expect(dialog.getByRole("checkbox", { name: "Avisarme cuando le quede menos del 20 %" })).toBeChecked();
     await expectNoSeriousAxe(page);
-    await dialog.getByRole("button", { name: "Asignar saldo" }).click();
+    // Spec 072 §6.1: el botón dice el importe.
+    await dialog.getByRole("button", { name: /^Asignar 12,50\s€$/ }).click();
     await expect(page.locator("[data-sonner-toast]").first()).toContainText("Asignados 12,50");
     expect(plain(await page.locator("[data-sonner-toast]").first().textContent())).toContain("Asignados 12,50 € a Barbería Cultor. En tu cuenta quedan 47,50 €.");
     const sent = await state(request);
@@ -133,11 +137,12 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
     await expect(page).toHaveURL(/\/clients$/);
     const receipt = dialog.locator("[data-slot=assign-receipt]");
     await expect(receipt).toContainText("1 € = 1,0852 USD · BCE 26 oct 2026");
-    expect(plain(await receipt.textContent())).toContain("Sale de tu cuenta");
+    // Spec 072 §6.3: lo que sale de la cuenta en otra moneda es una nota de «Asignas».
+    expect(plain(await receipt.textContent())).toContain("de tu cuenta");
     await dialog.getByText(/^100,00\sUSD$/).click();
     await expect(receipt.getByText(/^Faltan 32,15\s€$/)).toBeVisible();
     await expect(receipt.getByRole("link", { name: "Recargar mi cuenta" })).toHaveAttribute("href", "/billing?recargar=33");
-    await expect(dialog.getByRole("button", { name: "Asignar saldo" })).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: /^Asignar 100,00\sUSD$/ })).toBeDisabled();
     await expectNoSeriousAxe(page);
   });
 
@@ -145,7 +150,7 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
     await go(page, `/clients/${FLOR}`, "Flor y Encanto");
     await page.locator("[data-slot=client-panel]").getByRole("button", { name: "Asignar saldo" }).click();
     const dialog = page.getByRole("dialog", { name: "Asignar saldo a Flor y Encanto" });
-    await dialog.getByRole("button", { name: "Asignar saldo" }).click();
+    await dialog.getByRole("button", { name: /^Asignar 20,00\sUSD$/ }).click();
     await expect(page.locator("[data-sonner-toast]").first()).toContainText("Asignados 20,00");
     expect((await state(request)).assigns[0]).toMatchObject({ ref: FLOR, body: { amount: { amount_micros: 2_000_000, currency: "USD" } } });
   });
@@ -155,7 +160,10 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
     await go(page, "/usage", "Consumo");
     const row = page.locator(`tr[data-client=${BARBERIA}]`);
     await expect(row.getByRole("button", { name: "Asignar saldo" })).toHaveCount(0);
-    await row.getByRole("button", { name: "Pedir saldo" }).click();
+    // La acción vive en el ⋯ de la fila (regla de los tres puntos, 2026-10-30).
+    await row.getByRole("button", { name: /^Acciones de / }).click();
+    await expect(page.getByRole("menuitem", { name: "Asignar saldo" })).toHaveCount(0);
+    await page.getByRole("menuitem", { name: "Pedir saldo" }).click();
     const dialog = page.getByRole("dialog", { name: "Pedir saldo para Barbería Cultor" });
     await dialog.getByRole("textbox", { name: /Nota/ }).fill("Se le acaba el viernes");
     await expectNoSeriousAxe(page);
@@ -191,7 +199,8 @@ test.describe("Spec 047 — el dinero: Consumo, «Asignar saldo», «Pedir saldo
     await go(page, "/usage", "Consumo");
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px Consumo se desborda").toEqual([]);
-    await page.locator(`tr[data-client=${BARBERIA}]`).getByRole("button", { name: "Asignar saldo" }).click();
+    await page.locator(`tr[data-client=${BARBERIA}]`).getByRole("button", { name: /^Acciones de / }).click();
+    await page.getByRole("menuitem", { name: "Asignar saldo" }).click();
     await expect(page.getByRole("dialog", { name: "Asignar saldo a Barbería Cultor" })).toBeVisible();
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px el modal se desborda").toEqual([]);

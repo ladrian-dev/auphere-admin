@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import * as React from "react";
-import { toast } from "sonner";
 
 import { cn } from "@nexus/ui";
 
-import { requestBuildExtensionAction } from "@/app/(console)/usage/money-actions";
 import { BalanceDialogs } from "@/components/money/balance-button";
 import { RowActions } from "@/components/row-actions";
 import { clientHref } from "@/components/shell/routes-v2";
 import { useT } from "@/i18n/client";
 import type { PanelAttention } from "@/lib/backend/home-usage";
 
+import { useBuildExtension } from "./build-extension-button";
 import { attentionFix, attentionSeverity, attentionText, attentionTitle, isPartnerRow } from "./attention-model";
 
 /**
@@ -30,19 +29,11 @@ import { attentionFix, attentionSeverity, attentionText, attentionTitle, isPartn
 export function AttentionRow({ row, compact = false }: { row: PanelAttention; compact?: boolean }) {
   const t = useT();
   const [dialog, setDialog] = React.useState<"assign" | "request" | null>(null);
-  const [asking, setAsking] = React.useState(false);
+  const { ask: askBuild, asking } = useBuildExtension();
   const partner = isPartnerRow(row);
   const title = attentionTitle(t, row);
   const fix = attentionFix(row);
   const critical = attentionSeverity(row) === "critical";
-
-  async function askBuild() {
-    setAsking(true);
-    const res = await requestBuildExtensionAction();
-    setAsking(false);
-    if (res.ok) toast.success(t("att.build.requested"));
-    else toast.error(res.status === 429 ? t("att.build.already") : t("common.error.backend"));
-  }
 
   const first =
     fix.kind === "link"

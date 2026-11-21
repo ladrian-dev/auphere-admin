@@ -32,11 +32,11 @@ function panel(over: Partial<HomePanel> = {}): HomePanel {
       period: "month",
       since: "2026-10-01T00:00:00Z",
       until: "2026-11-01T00:00:00Z",
+      // Spec 072 (3.1): solo las bolsas de sus clientes, que suman el total.
       total: EUR(1234.5),
       shares: [
         { kind: "client", external_client_ref: "flor-y-encanto", client_name: "Flor y Encanto", line: null, amount: EUR(900), approx: false },
-        { kind: "rest", external_client_ref: null, client_name: null, line: null, amount: EUR(300), approx: false },
-        { kind: "line", external_client_ref: null, client_name: null, line: "companion", amount: EUR(34.5), approx: false },
+        { kind: "rest", external_client_ref: null, client_name: null, line: null, amount: EUR(334.5), approx: false },
       ],
     },
     clients: { period: "now", serving: 7, not_archived: 9, onboarding: 1 },
@@ -72,7 +72,7 @@ describe("PartnerPanel", () => {
     const spend = container.querySelector("[data-slot=panel-spend]") as HTMLElement;
     expect(within(spend).getByText("Del 1 oct al 31 oct")).toBeTruthy();
     expect(plain(spend.textContent)).toContain("1.234,50 €");
-    expect(within(spend).getByRole("img", { name: /Flor y Encanto 900,00\s€, El resto 300,00\s€, Companion y teammates 34,50\s€/ })).toBeTruthy();
+    expect(within(spend).getByRole("img", { name: /Flor y Encanto 900,00\s€, El resto 334,50\s€$/ })).toBeTruthy();
     const clients = container.querySelector("[data-slot=panel-clients]") as HTMLElement;
     expect(within(clients).getByText("Clientes atendiendo")).toBeTruthy();
     expect(plain(clients.textContent)).toContain("7");
@@ -203,6 +203,62 @@ describe("PartnerPanel", () => {
     await userEvent.click(within(row).getByRole("button", { name: "Pedir ampliación" }));
     expect(money.requestBuildExtensionAction).toHaveBeenCalledTimes(1);
     expect(plain(region.querySelector("[data-code=account_low]")!.textContent)).toContain("Te queda saldo para unos 5 días a este ritmo.");
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("spec 072: el gasto cuadra, Construcción va siempre en su línea y la barra del saldo es lo disponible", async () => {
+    const budget = { cap: EUR(62), spent: EUR(12.4), remaining: EUR(49.6), state: "ok" as const, paid_by: "auphere" as const };
+    const long = "Clínica Dental Sonrisa Perfecta de Chamberí";
+    const p = panel({
+      spend: {
+        ...panel().spend!,
+        total: EUR(100),
+        shares: [{ kind: "client", external_client_ref: "clinica", client_name: long, line: null, amount: EUR(100), approx: false }],
+      },
+    });
+    const { container, rerender } = render(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={p} buildBudget={budget} />
+      </LocaleProvider>,
+    );
+    const spend = container.querySelector("[data-slot=panel-spend]") as HTMLElement;
+    // 3.2 y 3.3: una parte al 100 %, con su nombre entero (sin cortar).
+    expect(plain(spend.textContent)).toContain("100 %");
+    const name = within(spend).getByTitle(long);
+    expect(name.className).not.toContain("truncate");
+    // 3.4: por debajo del 80 %, neutra y con quién la paga; sin botón.
+    const line = container.querySelector("[data-slot=panel-build]") as HTMLElement;
+    expect(line).toHaveAttribute("data-tone", "calm");
+    expect(plain(line.textContent)).toContain("Construcción y pruebas: 12,40 € de 62,00 € · la paga Auphere hasta el tope");
+    expect(within(line).getByRole("meter", { name: "Construcción y pruebas" })).toHaveAttribute("aria-valuenow", "20");
+    expect(within(line).queryByRole("button")).toBeNull();
+    // 2.5: la barra de «Saldo disponible» es lo disponible (60 de 74,28).
+    const bar = container.querySelector("[data-slot=panel-balance-bar]") as HTMLElement;
+    expect(bar).toHaveAttribute("aria-valuenow", "81");
+    expect(bar.getAttribute("aria-label")?.replace(/\s/g, " ")).toBe("Disponible: 60,00 €");
+    // Desde el 80 %: la línea de la 071, en ámbar, con «Pedir ampliación» (4.4).
+    const warn = {
+      scope: "partner" as const,
+      severity: "warning" as const,
+      external_client_ref: null,
+      client_name: null,
+      code: "build_cap_warning" as const,
+      count: 1,
+      action: "request_build_extension" as const,
+      href: "/usage",
+      data: { pct: 84, spent: EUR(52.23), cap: EUR(62) },
+    };
+    rerender(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={{ ...p, attention: [warn] }} buildBudget={budget} />
+      </LocaleProvider>,
+    );
+    const hot = container.querySelector("[data-slot=panel-build]") as HTMLElement;
+    expect(hot).toHaveAttribute("data-tone", "warn");
+    expect(plain(hot.textContent)).toContain("52,23 € de 62,00 € (84 %)");
+    money.requestBuildExtensionAction.mockResolvedValue({ ok: true, data: { status: "requested" } });
+    await userEvent.click(within(hot).getByRole("button", { name: "Pedir ampliación" }));
+    expect(money.requestBuildExtensionAction).toHaveBeenCalledTimes(1);
     expect(await axeViolations(container)).toEqual([]);
   });
 
