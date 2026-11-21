@@ -57,7 +57,7 @@ const LAST = ["Rojas", "Soto", "Díaz", "González", "Muñoz", "Silva", "Torres"
 const SERVICES_CONFIG: ResConfig = {
   mode: "services",
   timezone: TZ,
-  currency: "CLP",
+  currency: "USD",
   hours: [
     ...([1, 2, 3, 4, 5] as const).map((weekday) => ({ weekday, open: 9 * 60, close: 19 * 60 })),
     { weekday: 6, open: 9 * 60, close: 14 * 60 },
@@ -79,11 +79,11 @@ const SERVICES_CONFIG: ResConfig = {
       { id: "p-andres", name: "Andrés Pérez", calendar: "none", calendarState: "pending", calendarBusy: true },
     ],
     catalog: [
-      { id: "s-corte", name: "Corte", durationMin: 30, price: 12000, proIds: null },
-      { id: "s-peinado", name: "Corte y peinado", durationMin: 45, price: 18000, proIds: null },
-      { id: "s-color", name: "Color", durationMin: 90, price: 35000, proIds: ["p-javiera"] },
-      { id: "s-barba", name: "Barba", durationMin: 30, price: 8000, proIds: ["p-marcos", "p-andres"] },
-      { id: "s-cortebarba", name: "Corte y barba", durationMin: 45, price: 16000, proIds: ["p-marcos", "p-andres"] },
+      { id: "s-corte", name: "Corte", durationMin: 30, price: 1500, proIds: null },
+      { id: "s-peinado", name: "Corte y peinado", durationMin: 45, price: 2200, proIds: null },
+      { id: "s-color", name: "Color", durationMin: 90, price: 4500, proIds: ["p-javiera"] },
+      { id: "s-barba", name: "Barba", durationMin: 30, price: 1000, proIds: ["p-marcos", "p-andres"] },
+      { id: "s-cortebarba", name: "Corte y barba", durationMin: 45, price: 2000, proIds: ["p-marcos", "p-andres"] },
     ],
   },
   capacity: null,
@@ -92,7 +92,7 @@ const SERVICES_CONFIG: ResConfig = {
 const CAPACITY_CONFIG = (today: LocalDate): ResConfig => ({
   mode: "capacity",
   timezone: TZ,
-  currency: "CLP",
+  currency: "USD",
   hours: ([1, 2, 3, 4, 5, 6, 7] as const).map((weekday) => ({ weekday, open: 13 * 60, close: 23 * 60 + 30 })),
   hoursLabel: "todos los días, comida 13:00–15:00 y cena 20:00–22:00; domingo sin cena",
   hoursMissing: false,
@@ -315,7 +315,7 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null,
     if (date === nextOpenDay(today)) {
       const lucia = mode === "services"
         ? make(r, date, 17 * 60, 17 * 60 + 45, {
-            service: { id: "s-peinado", name: "Corte y peinado", durationMin: 45, price: 18000 },
+            service: { id: "s-peinado", name: "Corte y peinado", durationMin: 45, price: 2200 },
             pro: { id: "p-marcos", name: "Marcos Soto" },
           })
         : make(r, date, 21 * 60, 22 * 60 + 30, { partySize: 4 });

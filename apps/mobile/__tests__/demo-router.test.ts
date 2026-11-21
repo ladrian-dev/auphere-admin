@@ -386,7 +386,7 @@ describe("the example remembers what was done", () => {
     expect(all.counts).toEqual({ unread: 2, waiting: 1 });
     const lucia = all.items.find((c) => c.id === demoIds.lucia);
     expect(lucia?.state).toBe("waiting");
-    expect(lucia?.waiting?.reason).toBe("Pide que le devuelvan la seña de 20 €. Ava no puede hacer devoluciones.");
+    expect(lucia?.waiting?.reason).toBe("Pide que le devuelvan la seña de 20 dólares. Ava no puede hacer devoluciones.");
     expect(lucia?.waiting_reason).toBe("escalated");
     expect(Date.now() - Date.parse(lucia?.waiting?.since ?? "")).toBeLessThan(13 * 60_000);
     const sofia = all.items.find((c) => c.id === demoIds.sofia);
@@ -394,7 +394,7 @@ describe("the example remembers what was done", () => {
     expect(sofia?.assignee).toEqual({ kind: "member", is_me: true, name: "Camila Rojas" });
 
     const d = await detail(demoIds.lucia);
-    expect(d.waiting_reason).toBe("Pide que le devuelvan la seña de 20 €. Ava no puede hacer devoluciones.");
+    expect(d.waiting_reason).toBe("Pide que le devuelvan la seña de 20 dólares. Ava no puede hacer devoluciones.");
     expect(d.waiting_code).toBe("escalated");
     // Reservas' example has her next booking, and points back to her conversation.
     expect(d.contact.next_booking?.service_name).toBeTruthy();
