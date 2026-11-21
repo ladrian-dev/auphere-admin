@@ -1,6 +1,6 @@
 # Especificación: Lo que te necesita
 
-**Rama**: `071-lo-que-te-necesita` · **Creada**: 2026-11-21 · **Estado**: Borrador con decisiones abiertas para el owner y Luis
+**Rama**: `071-lo-que-te-necesita` · **Creada**: 2026-11-21 · **Estado**: Borrador, decisiones del owner cerradas el 2026-11-21; pendiente de la revisión de Luis
 
 **Entrada**: el owner dio paso al lote 3 del roadmap de la consola (`[[nexus/UX-CONSOLA-PARTNERS-2026-11-20]]`), con sus palabras en la sesión lateral: «Perfecto podemos continuar con el siguiente paso». El lote dice:
 - una sola lista «Necesita tu atención» para el Panel, la campana y Consumo;
@@ -62,9 +62,9 @@ Hay **tres fuentes distintas**, y nada las une:
 - su texto;
 - su arreglo: la acción en el sitio o el enlace.
 
-1.2 Los códigos del partner son tres. **[NEEDS CLARIFICATION D2]**
+1.2 Los códigos del partner son tres:
 - `build_cap_warning` (80 % o más), `build_cap_exhausted` (100 %);
-- `account_low` y `account_empty`. ¿Qué es «bajo» para la cuenta? Propuesta: el mismo criterio que el de las bolsas, menos del 20 % de lo cargado en el mes o menos de 7 días al ritmo de los últimos 7;
+- `account_low` y `account_empty`. «Bajo» es el criterio de las bolsas (D2): menos del 20 % de lo cargado en el mes o menos de 7 días al ritmo de los últimos 7;
 - `billing_payment_failed`.
 
 Los de cliente son los de hoy.
@@ -98,13 +98,13 @@ Los informativos (miembro nuevo, cliente activado, sugerencias…) no se resuelv
 
 2.4 `build.budget.*` deja de colgarse de un cliente cualquiera: es un aviso del partner, sin `external_client_ref`.
 
-2.5 Resolver no manda correo ni push. **[NEEDS CLARIFICATION D3]** Propuesta: nada.
+2.5 Resolver no manda correo, ni push, ni aviso (D3): desaparece de «Ahora» y queda «Resuelto» en «Anteriores».
 
 ### 3. La campana
 
 3.1 El número rojo es el número de filas de la regla, más los avisos informativos sin leer.
 
-3.2 El desplegable empieza por **«Ahora»**, la lista viva con su arreglo. Después vienen **«Anteriores»**: los últimos avisos, con los resueltos marcados «Resuelto» y sin punto de no leído. **[NEEDS CLARIFICATION D1]**
+3.2 El desplegable empieza por **«Ahora»**, la lista viva con su arreglo. Después vienen **«Anteriores»**: los últimos avisos, con los resueltos marcados «Resuelto» y sin punto de no leído (D1).
 
 3.3 «Marcar todo como leído» solo afecta a los informativos. Lo de «Ahora» no se puede marcar como leído: se arregla.
 
@@ -126,11 +126,11 @@ Los informativos (miembro nuevo, cliente activado, sugerencias…) no se resuelv
 
 5.2 La tabla de clientes dice «Saldo bajo», además de «Sin saldo».
 
-## Decisiones abiertas
+## Decisiones (owner, 2026-11-21)
 
-- **D1 · La campana.** Propuesta: «Ahora», con la lista viva que se arregla, y «Anteriores», con el historial. Alternativa: una sola lista, con los resueltos atenuados.
-- **D2 · Saldo bajo de la cuenta.** Propuesta: menos del 20 % de lo cargado en el mes o menos de 7 días al ritmo de los últimos 7, como las bolsas.
-- **D3 · Al resolverse.** Propuesta: no avisar. Desaparece de «Ahora» y queda «Resuelto» en el historial.
+- **D1 · La campana**: «Ahora» (la lista viva, que se arregla) y «Anteriores» (el historial). Se descartó una sola lista con los resueltos atenuados.
+- **D2 · Saldo bajo de la cuenta**: como las bolsas, menos del 20 % de lo cargado en el mes o menos de 7 días al ritmo de los últimos 7.
+- **D3 · Al resolverse**: no se avisa. Solo desaparece de «Ahora» y queda «Resuelto» en el historial.
 
 ## Fuera de alcance
 
