@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { fireEvent, render, screen, within } from "@testing-library/react-native";
 import { Alert, Linking } from "react-native";
 
 /**
@@ -6,7 +6,8 @@ import { Alert, Linking } from "react-native";
  */
 let mockPermission = "granted";
 let mockNav = ["panel", "inbox"];
-let mockNotices: Record<string, unknown> = { kinds: ["inbox.waiting", "client.balance"] };
+let mockNotices: Record<string, unknown> | undefined = { kinds: ["inbox.waiting", "client.balance"] };
+let mockNoticesState: Record<string, unknown> = {};
 const mockSetNotices = jest.fn(async (kinds: string[], quiet?: boolean) => ({ kinds, ...(quiet === undefined ? {} : { quiet_outside_hours: quiet }) }));
 const mockEnable = jest.fn();
 const mockSignOut = jest.fn();
@@ -23,8 +24,10 @@ jest.mock("@/api/hooks", () => ({
       business: { timezone: "America/Santiago", hours: null, hours_label: "lunes a viernes 9:00–19:00, sábado 9:00–14:00" },
     },
   }),
-  useNotices: () => ({ data: mockNotices }),
+  useNotices: () => ({ data: mockNotices, ...mockNoticesState }),
 }));
+// Spec 069 (R17.2): the Bandeja's inactivity close reads through its own hook; off here, as these tests are about the rest.
+jest.mock("@/api/v13-ajustes-hooks", () => ({ useInboxAutoclose: () => ({ state: "off" }) }));
 jest.mock("@/api/endpoints", () => ({
   endpoints: { setNotices: (k: string[], q?: boolean) => mockSetNotices(k, q), requestDeletion: () => mockRequestDeletion() },
 }));
@@ -71,6 +74,35 @@ it("with permission, one switch per kind this person can get", async () => {
   // The Bandeja's two, «Agentes y números» (every client, spec 056, 2.7) and the balance.
   expect(screen.getAllByRole("switch")).toHaveLength(4);
   expect(screen.getByRole("switch", { name: "Mensaje nuevo donde respondes tú" }).props.value).toBe(false);
+});
+
+describe("while the notices are read, or if reading them fails (review H02, R3.1)", () => {
+  const saved = mockNotices;
+  afterEach(() => {
+    mockNotices = saved;
+    mockNoticesState = {};
+  });
+
+  it("loading: no switch drawn off, but that it is reading them", async () => {
+    mockPermission = "granted";
+    mockNotices = undefined;
+    mockNoticesState = { isPending: true, isError: false };
+    await render(<Ajustes />);
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
+    expect(screen.getByRole("progressbar", { name: "Leyendo tus avisos…" })).toBeTruthy();
+  });
+
+  it("failed: no switch drawn off, what happened and «Reintentar»", async () => {
+    mockPermission = "granted";
+    mockNotices = undefined;
+    const refetch = jest.fn();
+    mockNoticesState = { isPending: false, isError: true, refetch };
+    await render(<Ajustes />);
+    expect(screen.queryAllByRole("switch")).toHaveLength(0);
+    expect(screen.getByText("No se pudieron leer tus avisos.")).toBeTruthy();
+    await fireEvent.press(within(screen.getByTestId("settings-notices")).getByRole("button", { name: "Reintentar" }));
+    expect(refetch).toHaveBeenCalled();
+  });
 });
 
 it("denied: no switch, the reason, and the phone's settings", async () => {
@@ -133,9 +165,10 @@ describe("two risks, two sections (spec 042, T040, R8)", () => {
     expect(screen.getByText("Auphere te escribirá para confirmarlo y cerrará tu acceso.")).toBeTruthy();
   });
 
+  // Spec 069 (R19.1): privacy and support leave the app too, so the web's row is looked for in its own group.
   it("the way to the web says it leaves the app", async () => {
     await render(<Ajustes />);
-    expect(screen.getByTestId("row-indicator-external")).toBeTruthy();
+    expect(within(screen.getByTestId("settings-web")).getByTestId("row-indicator-external")).toBeTruthy();
     expect(screen.queryByTestId("row-indicator-push")).toBeNull();
   });
 });
