@@ -18,9 +18,21 @@ export const CATEGORIES = [
   { id: "agents", placeholder: "avisos.placeholder.agents" },
 ] as const;
 
-export async function ensureCategories(t: T): Promise<void> {
-  if (Platform.OS !== "ios") return;
-  await Promise.all(
-    CATEGORIES.map((c) => Notifications.setNotificationCategoryAsync(c.id, [], { previewPlaceholder: t(c.placeholder) })),
-  );
+/**
+ * One at a time, never `Promise.all`: on SDK 58, expo-notifications turns each
+ * reply into JS off the JS thread, and five at once crashed the app at launch on
+ * iOS 26 (EXC_BAD_ACCESS in Hermes, spec 069). The order is the list's.
+ */
+let queue: Promise<void> = Promise.resolve();
+
+export function ensureCategories(t: T): Promise<void> {
+  if (Platform.OS !== "ios") return Promise.resolve();
+  // A second call (the effect again, in another language) waits for the first.
+  const run = queue.then(async () => {
+    for (const c of CATEGORIES) {
+      await Notifications.setNotificationCategoryAsync(c.id, [], { previewPlaceholder: t(c.placeholder) });
+    }
+  });
+  queue = run.catch(() => undefined);
+  return run;
 }

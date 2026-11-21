@@ -53,6 +53,28 @@ describe("channels and categories", () => {
   });
 });
 
+describe("categories one at a time (spec 069, iOS 26 on SDK 58)", () => {
+  it("never registers two at once: concurrent replies crashed the app at launch (EXC_BAD_ACCESS in Hermes)", async () => {
+    Platform.OS = "ios";
+    let inFlight = 0;
+    let most = 0;
+    (Notifications.setNotificationCategoryAsync as jest.Mock).mockImplementation(async () => {
+      inFlight += 1;
+      most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight -= 1;
+      return null;
+    });
+    await ensureCategories(t);
+    expect(most).toBe(1);
+    expect((Notifications.setNotificationCategoryAsync as jest.Mock).mock.calls.length).toBeGreaterThanOrEqual(5);
+    // Two calls at once (the effect again with another language) queue up, they don't overlap.
+    most = 0;
+    await Promise.all([ensureCategories(t), ensureCategories(t)]);
+    expect(most).toBe(1);
+  });
+});
+
 describe("the device token", () => {
   it("is registered with its provider, and again when the system rotates it", async () => {
     Platform.OS = "ios";
