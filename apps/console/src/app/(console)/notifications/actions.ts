@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor, type ClientSummary } from "@/lib/backend";
+import type { AttentionList } from "@/lib/backend/home-usage";
 import type { Notification, NotificationPage } from "@/lib/backend/onboarding";
 import { can, requirePrincipal } from "@/lib/principal";
 
@@ -20,6 +21,16 @@ export async function unreadCountAction(): Promise<ActionResult<{ unread: number
   const principal = await requirePrincipal();
   if (!can(principal.role, "partner:read")) return forbidden;
   return run(() => backendFor(principal).unreadNotifications());
+}
+
+/**
+ * Spec 071: «Ahora» de la campana, la misma lista del Panel (`/console/attention`).
+ * Sin `clients:read` la API ya devuelve solo lo del partner.
+ */
+export async function attentionAction(): Promise<ActionResult<AttentionList>> {
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "partner:read")) return forbidden;
+  return run(() => backendFor(principal).attention());
 }
 
 const listSchema = z.object({ unread: z.boolean().optional(), cursor: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional() });

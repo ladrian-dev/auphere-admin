@@ -522,6 +522,7 @@ async def complete_consent_from_webhook(
         tc.consent_token_expires_at = None
         action = "connector.connect_completed"
         pending_agent = await _apply_pending_activation(session, tc, actor=actor)
+        _resolve_after_commit(session, tc.tenant_id)
     elif upstream_status == "EXPIRED":
         tc.status = TenantConnectorStatus.NEEDS_REAUTH.value
         action = "connector.needs_reauth"
@@ -687,6 +688,18 @@ async def _apply_pending_activation(
     )
     tc.config = {k: v for k, v in (tc.config or {}).items() if k != "pending_activation"}
     return agent_id
+
+
+def _resolve_after_commit(session: AsyncSession, tenant_id: uuid.UUID) -> None:
+    """Spec 071 (2.3): the integration works again — once committed, the partner's
+    ``integration.reauth_required`` notices that no longer hold are resolved."""
+    from nexus_api.services.attention_live import resolve_cleared_for_tenant
+    from nexus_api.services.business.writes import after_commit
+
+    async def _resolve() -> None:
+        await resolve_cleared_for_tenant(tenant_id)
+
+    after_commit(session, _resolve)
 
 
 async def _on_needs_reauth(
@@ -1264,6 +1277,7 @@ async def bootstrap_api_key(
         await auto_enable_connector_tools(
             session, tenant_id=tenant.id, connector=connector, actor=actor
         )
+    _resolve_after_commit(session, tenant.id)
     return tc
 
 

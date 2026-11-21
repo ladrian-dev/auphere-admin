@@ -40,7 +40,18 @@ const bagRef = (row: ClientUsage): BagRef => ({ ref: row.ref, name: row.name ?? 
  * ve «Pedir saldo» en el «⋯» y, si ya lo pidió, «Pedido hace…» junto al estado.
  * Se desplaza dentro de su caja.
  */
-export function UsageClientsTable({ clients, canWrite, days }: { clients: ClientUsage[]; canWrite: boolean; days: number }) {
+export function UsageClientsTable({
+  clients,
+  canWrite,
+  days,
+  low,
+}: {
+  clients: ClientUsage[];
+  canWrite: boolean;
+  days: number;
+  /** Spec 071 (5.2): los clientes con saldo bajo según la regla única. */
+  low?: ReadonlySet<string>;
+}) {
   const t = useT();
   const [open, setOpen] = React.useState<Open>(null);
   const close = () => setOpen(null);
@@ -104,6 +115,11 @@ export function UsageClientsTable({ clients, canWrite, days }: { clients: Client
                       <span className="inline-flex flex-wrap items-center justify-end gap-2">
                         <StatusBadge tone="danger">{t("money.table.noBalance")}</StatusBadge>
                         {canWrite ? null : <RequestedNote refId={row.ref} />}
+                      </span>
+                    ) : low?.has(row.ref) ? (
+                      <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                        <StatusBadge tone="warning">{t("att.usage.lowBadge")}</StatusBadge>
+                        <span className="whitespace-nowrap tabular-nums">{moneyText(row.bag, "down")}</span>
                       </span>
                     ) : (
                       <span className="whitespace-nowrap tabular-nums">{moneyText(row.bag, "down")}</span>

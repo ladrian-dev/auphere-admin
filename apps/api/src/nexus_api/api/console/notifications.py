@@ -14,6 +14,13 @@ Spec 030: a notification also has an ``audience``. The partner's bell lists
 lists ``client`` notices of its own client only. Both bells run the SAME
 logic below with a different :class:`Viewer` — one place decides what a
 person sees, so the two cannot drift.
+
+Spec 071: a notice that states a **condition** (``attention.CONDITION_CODES``) is
+counted by «Ahora», the live list (``GET /console/attention``), not by the bell:
+for a partner on the new console it carries ``condition: true``, it is left out
+of the unread count, and «Mark all as read» does not touch it — it is fixed, not
+read, and it resolves itself (``handled``) when the condition is gone. The old
+console and the client's bell (lite) keep today's behaviour (research.md §R6 and §R7).
 """
 
 from __future__ import annotations
@@ -35,6 +42,7 @@ from nexus_api.db.models import (
     ConsoleNotificationRead,
     NotificationAudience,
 )
+from nexus_api.services.attention import CONDITION_CODES
 
 from .schemas_onboarding import NotificationOut, NotificationPageOut, ReadAllOut, UnreadCountOut
 
@@ -51,6 +59,8 @@ class Viewer:
     user_id: str
     audience: str
     client_ref: str | None = None
+    #: Spec 071: this bell has «Ahora» — condition notices are fixed, not read.
+    conditions: bool = False
 
 
 def partner_viewer(principal: ConsolePrincipal) -> Viewer:
@@ -58,7 +68,16 @@ def partner_viewer(principal: ConsolePrincipal) -> Viewer:
         partner_id=principal.partner.id,
         user_id=principal.user_id,
         audience=NotificationAudience.PARTNER.value,
+        conditions=principal.partner.console_v2_enabled_at is not None,
     )
+
+
+def _informative(viewer: Viewer) -> sa.ColumnElement[bool]:
+    """What the bell counts and «Mark all as read» marks: everything, or — with
+    «Ahora» — everything but the condition notices (spec 071, 3.1 and 3.3)."""
+    if not viewer.conditions:
+        return sa.true()
+    return ConsoleNotification.kind.not_in(tuple(CONDITION_CODES))
 
 
 def _visible(viewer: Viewer) -> sa.ColumnElement[bool]:
@@ -190,7 +209,7 @@ def link_for(
     return template.format(**{k: v for k, v in values.items() if v})
 
 
-def _out(n: ConsoleNotification, *, read: bool) -> NotificationOut:
+def _out(n: ConsoleNotification, *, read: bool, conditions: bool = False) -> NotificationOut:
     data = dict(n.payload or {})
     return NotificationOut(
         id=n.id,
@@ -200,6 +219,7 @@ def _out(n: ConsoleNotification, *, read: bool) -> NotificationOut:
         external_client_ref=n.external_client_ref,
         read=read,
         handled=n.handled_at is not None,
+        condition=conditions and n.kind in CONDITION_CODES,
         created_at=n.created_at,
         href=link_for(n.kind, n.external_client_ref, data, audience=n.audience),
     )
@@ -209,7 +229,7 @@ async def _unread_count(session: AsyncSession, viewer: Viewer) -> int:
     value = await session.scalar(
         sa.select(sa.func.count())
         .select_from(ConsoleNotification)
-        .where(_visible(viewer), sa.not_(_read_expr(viewer.user_id)))
+        .where(_visible(viewer), _informative(viewer), sa.not_(_read_expr(viewer.user_id)))
     )
     return int(value or 0)
 
@@ -245,7 +265,7 @@ async def list_for(
         rows = (await session.execute(stmt)).all()
         page = rows[:limit]
         unread_total = await _unread_count(session, viewer)
-    items = [_out(n, read=bool(is_read)) for n, is_read in page]
+    items = [_out(n, read=bool(is_read), conditions=viewer.conditions) for n, is_read in page]
     next_cursor = None
     if len(rows) > limit and page:
         last = page[-1][0]
@@ -264,7 +284,7 @@ async def read_all_for(session: AsyncSession, viewer: Viewer) -> ReadAllOut:
         unread_rows = (
             await session.execute(
                 sa.select(ConsoleNotification.id, ConsoleNotification.recipient_user_id).where(
-                    _visible(viewer), sa.not_(_read_expr(viewer.user_id))
+                    _visible(viewer), _informative(viewer), sa.not_(_read_expr(viewer.user_id))
                 )
             )
         ).all()
@@ -310,7 +330,7 @@ async def mark_read_for(
                     )
                 )
         await session.flush()
-        out = _out(row, read=True)
+        out = _out(row, read=True, conditions=viewer.conditions)
     return out
 
 

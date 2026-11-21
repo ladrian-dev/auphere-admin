@@ -11,15 +11,17 @@ export default async function NotificationsPage({ searchParams }: { searchParams
   const sp = await searchParams;
   const unreadOnly = sp.unread === "1" || sp.unread === "true";
   const api = backendFor(principal);
-  const [page, clients] = await Promise.all([
+  const [page, clients, now] = await Promise.all([
     api.listNotifications({ unread: unreadOnly ? true : undefined, limit: 20 }),
     can(principal.role, "clients:read") ? api.listClients({ limit: 200 }).catch(() => null) : null,
+    // Spec 071 (3.4): «Ahora» arriba, la misma lista del Panel y de la campana.
+    api.attention().then((r) => r.items).catch(() => null),
   ]);
   const clientNames = Object.fromEntries((clients?.items ?? []).map((c) => [c.external_client_ref, c.name]));
   return (
     <>
       {/* La cabecera (con «Marcar todas como leídas») la pinta la lista: depende de las sin leer. */}
-      <NotificationsList initial={page} initialFilter={unreadOnly ? "unread" : "all"} clientNames={clientNames} canAssign={can(principal.role, "usage:write")} />
+      <NotificationsList initial={page} initialFilter={unreadOnly ? "unread" : "all"} clientNames={clientNames} canAssign={can(principal.role, "usage:write")} now={now} />
     </>
   );
 }

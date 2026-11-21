@@ -109,6 +109,9 @@ class Change:
     changed: bool = False
     audit: dict[str, Any] | None = None
     notices: list[Notice] = field(default_factory=list)
+    #: Spec 071: a problem went away — the partner's notices that no longer hold
+    #: are resolved once the change is committed.
+    cleared: bool = False
 
 
 # ── entry point ─────────────────────────────────────────────────────────────
@@ -312,6 +315,7 @@ async def _account_event(
     applied = False
     for tenant_id in tenants:
         notices: list[Notice] = []
+        cleared = False
         async with tenant_scoped_session(session, tenant_id):
             query = sa.select(Channel).where(
                 Channel.provider == "meta", Channel.status != ChannelStatus.DISCONNECTED
@@ -327,6 +331,7 @@ async def _account_event(
                 if not change.changed:
                     continue
                 applied = True
+                cleared = cleared or change.cleared
                 if change.audit is not None:
                     session.add(
                         AuditLog(
@@ -354,6 +359,10 @@ async def _account_event(
                     dedupe_key=f"{notice.dedupe_key}:{notice.data['channel_id']}",
                     to_client=notice.to_client,
                 )
+        if cleared:
+            from nexus_api.services.attention_live import resolve_cleared_for_tenant
+
+            await resolve_cleared_for_tenant(tenant_id)
     log.info("webhook.meta.account_event", field=field_name, waba_id=waba_id, applied=applied)
     return "applied" if applied else "unchanged"
 
@@ -413,7 +422,9 @@ def _account_update(channel: Channel, value: dict[str, Any]) -> Change:
         if not _clear_problem(channel, ACCOUNT_REASONS):
             return Change()
         return Change(
-            changed=True, audit={"action": "channel.whatsapp.account_state", "event": event}
+            changed=True,
+            audit={"action": "channel.whatsapp.account_state", "event": event},
+            cleared=True,
         )
     if event == "VOLUME_BASED_PRICING_TIER_UPDATE":
         info = value.get("volume_tier_info")
@@ -449,7 +460,7 @@ def _account_alerts(channel: Channel, value: dict[str, Any]) -> Change:
                 )
             )
     elif alert["status"] != "ACTIVE":
-        _clear_problem(channel, frozenset({"account_alert"}))
+        change.cleared = _clear_problem(channel, frozenset({"account_alert"}))
     return change
 
 
@@ -474,7 +485,8 @@ def _account_review(channel: Channel, value: dict[str, Any]) -> Change:
                 ],
             )
     elif decision == "APPROVED":
-        changed = _clear_problem(channel, frozenset({"account_review"})) or changed
+        cleared = _clear_problem(channel, frozenset({"account_review"}))
+        return Change(changed=cleared or changed, cleared=cleared)
     return Change(changed=changed)
 
 
