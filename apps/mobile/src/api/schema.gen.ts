@@ -3587,6 +3587,11 @@ export interface components {
         /** NotificationOut */
         NotificationOut: {
             /**
+             * Condition
+             * @default false
+             */
+            condition: boolean;
+            /**
              * Created At
              * Format: date-time
              */
