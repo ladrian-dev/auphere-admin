@@ -130,6 +130,17 @@ export function findingsByCheck(review: AgentReview): Map<string, ReviewFinding[
   return out;
 }
 
+/**
+ * Spec 073 (3b.4): con dos o más servicios sin precio, un aviso por servicio se
+ * vuelve una línea («N servicios no tienen precio…», con «Poner precios»). Con
+ * uno solo se deja el suyo, que ya lo nombra. Lo demás no cambia de orden.
+ */
+export function groupNoPrice(findings: readonly ReviewFinding[]): { findings: ReviewFinding[]; noPrice: number } {
+  const noPrice = findings.filter((f) => f.code === "service_without_price").length;
+  if (noPrice < 2) return { findings: [...findings], noPrice: 0 };
+  return { findings: findings.filter((f) => f.code !== "service_without_price"), noPrice };
+}
+
 // ── la barra flotante (§4.5) ────────────────────────────────────────────────
 
 export type BarTests = { summary: TestSummary | null; running: boolean; canRun: boolean } | null;
@@ -169,7 +180,9 @@ export function barState({ canWrite, preview, tests }: { canWrite: boolean; prev
         next: preview.has_draft ? "save" : preview.has_channels ? null : "connect",
       };
     case "pending":
-      return tests.canRun ? { kind: "pending", draft: preview.has_draft } : { kind: "plain" };
+      // Spec 073 (3b.3): las pruebas se ejecutan desde su tarjeta; la barra solo
+      // guarda o publica, así que sin borrador no tiene nada que decir.
+      return tests.canRun && preview.has_draft ? { kind: "pending", draft: true } : { kind: "plain" };
     case "none":
       return { kind: "plain" };
   }

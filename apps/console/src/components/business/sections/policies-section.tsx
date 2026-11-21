@@ -61,6 +61,7 @@ export function PoliciesSection({
   canWrite,
   actions = SERVER_ACTIONS,
   onStateChange,
+  confirmable = false,
 }: {
   refId: string;
   policies: Policies;
@@ -68,6 +69,8 @@ export function PoliciesSection({
   canWrite: boolean;
   actions?: PoliciesActions;
   onStateChange?: (state: SectionState) => void;
+  /** Spec 073 (4.5): «Es correcto» de lo leído, también aquí. */
+  confirmable?: boolean;
 }) {
   const t = useT();
   const [policies, setPolicies] = React.useState(initial);
@@ -131,6 +134,7 @@ export function PoliciesSection({
       title={t("business.policies.title")}
       state={policies.state}
       canWrite={canWrite}
+      confirm={confirmable ? { refId, section: "policies", onConfirmed: () => setPolicies((prev) => ({ ...prev, state: "complete" as const })) } : undefined}
       action={edit.editing ? null : <EditAction label={t("business.section.edit.label", { section: t("business.policies.title") })} onClick={edit.open} />}
     >
       <p className="text-sm text-pretty text-muted-foreground">{t("business.proposals.everyAgent")}</p>

@@ -177,6 +177,8 @@ async def test_the_rows_carry_niche_state_agents_bag_and_actions(
     assert ok["attention"] == {"needs": False, "reasons": []}
     assert ok["agents"][0]["visible_state"]["code"] == "serving"
     assert set(ok["allowed"]) == {"edit", "assign_balance", "new_agent", "archive", "delete"}
+    # Spec 073 (2.2): activo, «Eliminar» se ofrece pero la API dice por qué aún no.
+    assert ok["delete_blocked"] == "archive_first"
     # Lo que no lleva la lista: ni ids internos ni costes.
     assert "tenant_id" not in str(body) and "cost" not in str(body)
 
@@ -221,6 +223,7 @@ async def test_search_by_name_or_niche_and_filters_with_counters(
     assert row["external_client_ref"] == p["ok_slow"]["ref"]
     assert row["attention"]["needs"] is False  # archivar es apartarlo a propósito
     assert "restore" in row["allowed"] and "archive" not in row["allowed"]
+    assert row["delete_blocked"] is None  # archivado, ya se puede eliminar (spec 073, 2.4)
 
     by_niche = await _list(client, a["headers"](), q="dental")
     assert [r["external_client_ref"] for r in by_niche["items"]] == [p["low"]["ref"]]
@@ -250,6 +253,8 @@ async def test_actions_follow_the_permission_and_ask_for_balance_instead(
         r["external_client_ref"]: r for r in (await _list(client, analyst["headers"]()))["items"]
     }
     assert as_analyst[p["low"]["ref"]]["allowed"] == ["request_balance"]
+    # Sin permiso de eliminar no hay nada que explicar (spec 073, 2.2).
+    assert as_analyst[p["low"]["ref"]]["delete_blocked"] is None
 
 
 async def test_the_list_and_the_panel_say_the_same(

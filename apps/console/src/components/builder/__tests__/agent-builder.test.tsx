@@ -432,24 +432,22 @@ describe("la pantalla del agente · probar y guardar (historias 8 y 9)", () => {
     const user = userEvent.setup();
     const { container, quality } = withQuality();
     const aside = screen.getByRole("complementary", { name: "Pruebas y chat de prueba" });
-    // Como el prototipo: pegada al bajar, desde 1060 px.
-    expect(aside.className).toMatch(/min-\[1060px\]:sticky/);
+    // Spec 073 (3b.2): la columna de pruebas se mueve con la página, sin scroll propio.
+    expect(aside.className).not.toMatch(/sticky|overflow-y-auto|max-h-/);
     // El owner (2026-10-28): el chat arriba y, justo debajo, «Ejecutar todas» con las pruebas.
     expect(within(aside).getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
       "Chat de prueba · así lo verá su cliente",
       "Pruebas · 2 sin ejecutar",
     ]);
-    const runAll = within(aside).getByRole("button", { name: "Ejecutar todas" });
+    const runAll = within(aside).getByRole("button", { name: /^Ejecutar las \d+ pruebas$|^Ejecutar la prueba$/ });
     const composer = within(aside).getByRole("textbox", { name: "Mensaje del cliente" });
     expect(composer.compareDocumentPosition(runAll) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // Pegada, nunca más alta que lo que deja la barra flotante: la barra no tapa el chat.
-    expect(aside.className).toMatch(/min-\[1060px\]:max-h-\[calc\(100dvh-[0-9]+rem\)\]/);
-    expect(aside.className).toMatch(/min-\[1060px\]:overflow-y-auto/);
     const bar = screen.getByRole("region", { name: "Acciones del agente" });
     expect(bar).toBeVisible();
     expect(bar.closest("[data-slot=agent-actionbar]")?.className).toMatch(/(^|\s)glass(\s|$).*sticky|sticky.*(^|\s)glass(\s|$)/);
     expect(within(bar).getByRole("status")).toHaveTextContent("Borrador completo");
-    expect(within(bar).getByRole("button", { name: "Ejecutar pruebas" })).toBeVisible();
+    // Spec 073 (3b.3): la barra solo guarda o publica; las pruebas se ejecutan en su tarjeta.
+    expect(within(bar).queryByRole("button", { name: "Ejecutar pruebas" })).toBeNull();
     // La revisión se lee una vez y la comparten la tarjeta y «Más ajustes».
     await within(aside).findByRole("list", { name: "Revisión automática" });
     expect(screen.queryByRole("heading", { level: 2, name: "Historial" })).toBeNull();
@@ -505,13 +503,15 @@ describe("la pantalla del agente · probar y guardar (historias 8 y 9)", () => {
     });
     const bar = screen.getByRole("region", { name: "Acciones del agente" });
     expect(within(bar).getByRole("status")).toHaveTextContent("1 pregunta pendiente · puedes probar igualmente");
-    expect(within(bar).getByRole("button", { name: "Ejecutar pruebas" })).toBeVisible();
+    // Spec 073 (3b.3): probar se pide en la tarjeta de pruebas; la barra solo guarda.
+    expect(within(bar).queryByRole("button", { name: "Ejecutar pruebas" })).toBeNull();
   });
 
-  it("«Ejecutar pruebas» de la barra lanza la pasada y la tarjeta la cuenta", async () => {
+  it("ejecutarlas desde la tarjeta lanza la pasada y la tarjeta la cuenta (spec 073, 3b.3)", async () => {
     const user = userEvent.setup();
     const { quality } = withQuality();
-    await user.click(screen.getByRole("button", { name: "Ejecutar pruebas" }));
+    const aside = screen.getByRole("complementary", { name: "Pruebas y chat de prueba" });
+    await user.click(within(aside).getByRole("button", { name: /^Ejecutar las \d+ pruebas$/ }));
     expect(quality.tests.run).toHaveBeenCalledWith({ ref: REF, agent: AGENT, scope: "all" });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Pruebas terminadas."));
   }, 15_000);
@@ -771,13 +771,17 @@ describe("la pantalla del agente · como el prototipo", () => {
     expect(container.querySelector("[data-slot=performance-chart]")).not.toBeNull();
   });
 
-  it("los bloques son las cinco filas de una tabla compacta, con un lápiz por fila", () => {
+  it("los bloques son las cinco filas de una tabla compacta, con un «Editar» por fila", () => {
     screenWith({}, sections);
     const table = screen.getByRole("region", { name: "Parámetros del agente" });
     expect(table.className).toMatch(/divide-y/);
     expect(table.className).toMatch(/rounded-lg/);
     const edit = within(row("speaks")).getByRole("button", { name: "Editar «Cómo habla»" });
-    expect(edit.textContent).toBe("");
+    // Spec 073 (3b.1): la palabra a la vista y la etiqueta encima del texto, no al lado.
+    expect(edit.textContent).toBe("Editar");
+    const heading = within(row("speaks")).getByRole("heading", { level: 2, name: "Cómo habla" });
+    expect(heading.parentElement?.contains(edit)).toBe(true);
+    expect(row("speaks").className).not.toMatch(/grid-cols-\[168px/);
   });
 
   it("«Qué sabe» resume la ficha y sus fuentes, y su lápiz abre el conocimiento propio", async () => {

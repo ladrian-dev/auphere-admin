@@ -4,7 +4,7 @@ import { CircleCheck, Eye, Pencil, Plug, X } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
-import { Button, StatusBadge, buttonVariants } from "@nexus/ui";
+import { Button, StatusBadge, buttonVariants, cn } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
@@ -183,34 +183,32 @@ function Row({
     : canEdit
       ? t("builder.edit.label", { block: title })
       : t("agentProto.view", { row: title });
+  // Spec 073 (3b.1): la etiqueta encima del texto y el texto a una medida que se lee
+  // (~70 caracteres); un «Editar» con su palabra, no un lápiz en una tercera columna.
+  const visible = isOpen ? t("agentProto.rowAction.close") : canEdit ? t("agentProto.rowAction.edit") : t("agentProto.rowAction.view");
   return (
     <section
       id={`fila-${row}`}
       aria-labelledby={titleId}
-      className="grid min-w-0 scroll-mt-24 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-4 gap-y-2 px-4 py-4 sm:grid-cols-[168px_minmax(0,1fr)_auto] sm:px-5"
+      className="grid min-w-0 scroll-mt-24 gap-2 px-4 py-4 sm:px-5"
       data-row={row}
       data-open={isOpen || undefined}
     >
-      <h2 id={titleId} className="col-start-1 row-start-1 self-center text-sm font-medium text-balance sm:self-start">
-        {title}
-      </h2>
-      <div className="col-span-2 grid min-w-0 gap-4 sm:col-span-1 sm:col-start-2 sm:row-start-1">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <h2 id={titleId} className="min-w-0 text-sm font-medium text-balance">
+          {title}
+        </h2>
+        {opens ? (
+          <Button ref={actionRef} size="sm" variant="ghost" onClick={isOpen ? onClose : onOpen} aria-label={label} aria-expanded={isOpen} className="shrink-0">
+            {isOpen ? <X aria-hidden="true" /> : canEdit ? <Pencil aria-hidden="true" /> : <Eye aria-hidden="true" />}
+            {visible}
+          </Button>
+        ) : null}
+      </div>
+      <div className={cn("grid min-w-0 gap-4", !isOpen && "max-w-prose")}>
         {isOpen && children ? children : summary}
         {extra}
       </div>
-      {opens ? (
-        <Button
-          ref={actionRef}
-          size="icon-sm"
-          variant="ghost"
-          onClick={isOpen ? onClose : onOpen}
-          aria-label={label}
-          aria-expanded={isOpen}
-          className="col-start-2 row-start-1 justify-self-end sm:col-start-3"
-        >
-          {isOpen ? <X aria-hidden="true" /> : canEdit ? <Pencil aria-hidden="true" /> : <Eye aria-hidden="true" />}
-        </Button>
-      ) : null}
     </section>
   );
 }
@@ -263,8 +261,9 @@ function OpenParts({
                 {part}
               </h3>
               {editable && editing !== block ? (
-                <Button size="icon-sm" variant="ghost" onClick={() => onEdit(block as EditableBlock)} aria-label={t("builder.edit.label", { block: part })}>
+                <Button size="sm" variant="ghost" onClick={() => onEdit(block as EditableBlock)} aria-label={t("builder.edit.label", { block: part })}>
                   <Pencil aria-hidden="true" />
+                  {t("agentProto.rowAction.edit")}
                 </Button>
               ) : null}
             </div>

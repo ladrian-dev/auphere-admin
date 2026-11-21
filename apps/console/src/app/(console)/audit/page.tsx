@@ -54,7 +54,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
       {first.items.length === 0 ? (
         <EmptyState title={filtered ? t("hu.audit.empty.filtered") : t("audit.empty")} readonly />
       ) : (
-        <AuditTable key={JSON.stringify(query)} first={first} query={query} people={people} categories={categories} />
+        <AuditTable key={JSON.stringify(query)} first={first} query={query} people={people} categories={categories} me={principal.email} />
       )}
     </>
   );

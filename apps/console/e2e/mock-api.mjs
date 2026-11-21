@@ -130,9 +130,43 @@ const server = createServer((req, res) => {
       return send(res, 200, []);
     case "GET /console/team":
       return send(res, 200, { members: [], invitations: [] });
+    // Spec 073 (§1): la Auditoría, con nombres largos para ver que cabe a 1280 px.
+    case "GET /console/audit":
+      return send(res, 200, { items: auditItems(url.searchParams.get("view") ?? "all"), next_cursor: null });
+    case "GET /console/audit/filters":
+      return send(res, 200, {
+        people: [{ value: PRINCIPAL.email, label: "Luis" }],
+        clients: [{ value: "barberia-cultor", label: "Barbería Cultor y Peluquería de Caballeros del Barrio Antiguo" }],
+        categories: [{ value: "agents", label: "Agentes" }, { value: "auth", label: "Accesos a la consola" }],
+      });
     default:
       return send(res, 404, { detail: "Not Found" });
   }
 });
+
+/** Spec 073: unas filas de dos días, con nombres y categorías largas, y un acceso. */
+function auditItems(view) {
+  const day = (offset, time) => new Date(Date.UTC(2026, 10, 21 - offset, ...time.split(":").map(Number))).toISOString();
+  const rows = [
+    { at: day(0, "09:12"), actor: PRINCIPAL.email, actor_name: "Luis", actor_scope: "partner", action: "agent.paused", category: "agents", summary: "Luis pausó a Recepción, el agente de citas y reservas de la barbería, porque se acababa el saldo del mes." },
+    { at: day(0, "08:40"), actor: "lucia.fernandez.de.la.torre@barberiacultor.example", actor_name: "Lucía Fernández de la Torre", actor_scope: "client", action: "client.business.edit", category: "agents", origin: "app", summary: "Lucía Fernández de la Torre cambió el horario de los sábados." },
+    { at: day(1, "20:32"), actor: PRINCIPAL.email, actor_name: "Luis", actor_scope: "partner", action: "console.auth.login", category: "auth", summary: "Luis entró en la consola." },
+    { at: day(1, "18:05"), actor: "Auphere", actor_kind: "auphere", actor_name: "Auphere", actor_scope: null, action: "integration.renewed", category: "agents", summary: "Auphere renovó el conector de Google Calendar." },
+  ];
+  return rows
+    .filter((r) => view !== "changes" || r.action !== "console.auth.login")
+    .map((r, i) => ({
+      id: `00000000-0000-4000-8000-00000000000${i + 1}`,
+      actor_kind: "person",
+      origin: "console",
+      severity: "info",
+      sensitive: false,
+      target: "tenant:x",
+      external_client_ref: "barberia-cultor",
+      client_name: "Barbería Cultor y Peluquería de Caballeros del Barrio Antiguo",
+      more_like_this: 0,
+      ...r,
+    }));
+}
 
 server.listen(PORT, "127.0.0.1", () => process.stderr.write(`[mock-api] listening on ${PORT}\n`));

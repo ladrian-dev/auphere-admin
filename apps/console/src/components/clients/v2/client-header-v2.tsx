@@ -76,12 +76,11 @@ export function ClientHeaderV2({
             </p>
           ) : null}
         </div>
-        {!active ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <StatusBadge tone={tone}>{t(`clients.v2.lifecycle.${client.lifecycle}` as MessageKey)}</StatusBadge>
-            <ClientMenu refId={ref} name={client.name} allowed={client.allowed} detail={client} />
-          </div>
-        ) : null}
+        {/* Spec 073 (2.1): el «⋯» siempre está; la insignia, solo si no está activo. */}
+        <div className="flex shrink-0 items-center gap-2">
+          {!active ? <StatusBadge tone={tone}>{t(`clients.v2.lifecycle.${client.lifecycle}` as MessageKey)}</StatusBadge> : null}
+          <ClientMenu refId={ref} name={client.name} allowed={client.allowed} deleteBlocked={client.delete_blocked ?? null} detail={client} />
+        </div>
       </div>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <nav aria-label={t("clients.v2.tabs")} className="min-w-0">

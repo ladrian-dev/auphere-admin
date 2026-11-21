@@ -423,6 +423,10 @@ class AuditEntryOut(BaseModel):
     actor: str
     #: Spec 029: who wrote it, so the console draws a face or an icon.
     actor_kind: Literal["person", "companion", "auphere", "api_key", "machine", "system"] = "system"
+    #: Spec 073 (1.3, 1.4): la persona con su nombre (o su correo, si no hay nombre)
+    #: y de quién es. ``actor`` sigue siendo lo que usa el filtro por persona.
+    actor_name: str | None = None
+    actor_scope: Literal["partner", "client"] | None = None
     #: Spec 047 (events.md §4): desde dónde (también la consola lite y la app).
     origin: Literal["console", "lite_web", "app", "admin", "api", "system"] = "system"
     action: str

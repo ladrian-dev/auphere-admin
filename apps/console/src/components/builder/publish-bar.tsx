@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, CircleAlert, CircleCheck, LoaderCircle, Play, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, CircleCheck, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
@@ -300,16 +300,11 @@ export function PublishBar({
         ];
       break;
     case "pending":
-      text = state.draft ? t(preview.tests_on_save ? "agentProto.bar.complete" : "agentProto.bar.completeNoTests") : t("agentProto.bar.notRun");
-      buttons = [
-        <Button key="run" variant={state.draft ? "outline" : "default"} onClick={() => tests?.run()} className={PILL}>
-          <Play aria-hidden="true" />
-          {t("agentProto.bar.run")}
-        </Button>,
-        // La primera vez, el trabajo pasa las pruebas antes de decidir; después no las
-        // repite, y la puerta sigue mirando lo demás (requisito 68).
-        ...(state.draft ? [saveButton] : []),
-      ];
+      // Spec 073 (3b.3): «sin ejecutar» y su botón viven en la tarjeta de pruebas; aquí
+      // solo se guarda. La primera vez, el trabajo pasa las pruebas antes de decidir;
+      // después no las repite, y la puerta sigue mirando lo demás (requisito 68).
+      text = t(preview.tests_on_save ? "agentProto.bar.complete" : "agentProto.bar.completeNoTests");
+      buttons = [saveButton];
       break;
     case "plain":
       if (preview.has_draft) {

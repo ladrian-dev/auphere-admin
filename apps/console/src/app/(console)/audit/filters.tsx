@@ -59,6 +59,17 @@ export function AuditFilters({ state, options }: { state: AuditFilterState; opti
             { value: "custom", label: t("hu.audit.period.custom") },
           ]}
         />
+        {/* Spec 073 (1.6): «Solo cambios» por defecto; los accesos (entrar y salir), al pedirlos. */}
+        <SegmentedControl
+          type="pressed"
+          aria-label={t("hu.audit.view")}
+          value={state.view}
+          onValueChange={(v) => go({ view: v === "all" ? "all" : "" })}
+          options={[
+            { value: "changes", label: t("hu.audit.view.changes") },
+            { value: "all", label: t("hu.audit.view.all") },
+          ]}
+        />
         {active ? (
           <Button type="button" variant="link" size="sm" className="px-1" onClick={() => router.push(pathname, { scroll: false })}>
             {t("hu.audit.clear")}

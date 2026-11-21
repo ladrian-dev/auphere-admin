@@ -561,18 +561,17 @@ async def test_audit_renders_from_vocabulary_in_both_languages_with_dates_and_cs
     by_action = {i["action"]: i for i in en}
     assert (
         by_action["console.member.invite"]["summary"]
-        == "owner-a@example.com invited new@example.com as builder"
+        # Spec 073 (1.4): la frase nombra a la persona del equipo por su nombre.
+        == "Owner A invited new@example.com as builder"
     )
     assert (
         by_action["agent_config.promote"]["summary"]
-        == "owner-a@example.com published agent version 3 for Client A One"
+        == "Owner A published agent version 3 for Client A One"
     )
-    assert (
-        by_action["something.unknown"]["summary"] == "owner-a@example.com · something.unknown · x:1"
-    )
+    assert by_action["something.unknown"]["summary"] == "Owner A · something.unknown · x:1"
     es = (await client.get("/console/audit?lang=es", headers=h())).json()["items"]
     assert {i["action"]: i["summary"] for i in es}["console.member.invite"] == (
-        "owner-a@example.com invitó a new@example.com como constructor"
+        "Owner A invitó a new@example.com como constructor"
     )
     # Date filters.
     since = quote((datetime.now(UTC) - timedelta(days=1)).isoformat())

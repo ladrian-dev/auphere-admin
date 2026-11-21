@@ -80,9 +80,9 @@ describe("ClientHeaderV2", () => {
     // Sin número en la pestaña (Andrés, 2026-10-28).
     expect(screen.getByRole("link", { name: "Agentes" })).toHaveAttribute("href", "/clients/barberia-cultor/agents");
     expect(screen.getByRole("link", { name: "Nuevo agente" })).toHaveAttribute("href", "/clients/barberia-cultor/agents/new");
-    // Activo, la cabecera no lleva insignia ni «⋯»: archivar y borrar están en la lista.
+    // Activo, la cabecera no lleva insignia, pero el «⋯» siempre está (spec 073, 2.1).
     expect(screen.queryByText("Activo")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Acciones de Barbería Cultor" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Acciones de Barbería Cultor" })).toBeVisible();
   });
 
   it.each([

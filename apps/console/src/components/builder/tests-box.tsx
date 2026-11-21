@@ -10,9 +10,10 @@ import { Button, Callout } from "@nexus/ui";
 import { estimateTestsAction, qualityJobAction, runTestsAction, testsAction } from "@/app/(console)/clients/[ref]/agents/quality-actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { AgentTest, QualityJob, ReviewFinding, TestRunAccepted, TestRunScope, TestSuite } from "@/lib/backend/agent-quality-types";
+import { moneyText } from "@/components/money/money-model";
+import type { AgentTest, QualityJob, ReviewFinding, RunMoney, TestRunAccepted, TestRunScope, TestSuite } from "@/lib/backend/agent-quality-types";
 
-import { findingsByCheck, testsState } from "./agent-proto-model";
+import { findingsByCheck, groupNoPrice, testsState } from "./agent-proto-model";
 import { integrationName, sleep, type Result } from "./builder-model";
 import { canConnect } from "./missing-model";
 import { failedConversation, isFailing, reviewFixLink, runFailedKey, runRefusedKey, waitForJob } from "./quality-model";
@@ -50,6 +51,12 @@ export type TestRun = {
   ask: (scope?: TestRunScope) => Promise<void>;
   confirm: React.ReactNode;
   reload: () => Promise<void>;
+  /**
+   * Spec 073 (3b.3): lo que costaría ejecutarlas todas, leído antes de pulsar con la
+   * misma estimación que pregunta al ejecutar. `charge: null` si falta un precio;
+   * `undefined`/`null`, si no se pudo leer o no hay nada sin ejecutar.
+   */
+  cost?: { charge: RunMoney | null; unknown: boolean } | null;
 };
 
 /**
@@ -130,6 +137,27 @@ export function useTestRun({
 
   const { ask, dialog, pending } = useRunEstimate({ estimate: actions.estimate, ids, start: run });
 
+  // Spec 073 (3b.3): con pruebas sin ejecutar, lo que costaría ejecutarlas todas se
+  // lee antes de pulsar. Se vuelve a leer cuando cambia cuántas quedan.
+  const waiting = suite ? testsState(suite.summary) : null;
+  const waitingCount = waiting?.kind === "pending" ? waiting.pending : 0;
+  const mayRun = canWrite && Boolean(suite?.allowed.includes("run"));
+  // La lectura vale para cuántas quedaban al leerla; si cambian, no se enseña la vieja.
+  const costKey = waitingCount && mayRun && actions.estimate ? String(waitingCount) : null;
+  const [costRead, setCostRead] = React.useState<{ key: string; value: TestRun["cost"] } | null>(null);
+  React.useEffect(() => {
+    const estimate = actions.estimate;
+    if (!costKey || !estimate) return;
+    let live = true;
+    void estimate({ ...ids, scope: "all" }).then((res) => {
+      if (live) setCostRead({ key: costKey, value: res.ok ? { charge: res.data.charge, unknown: res.data.charge === null } : null });
+    });
+    return () => {
+      live = false;
+    };
+  }, [costKey, actions, ids]);
+  const cost = costRead && costRead.key === costKey ? costRead.value : null;
+
   return {
     suite,
     running,
@@ -140,6 +168,7 @@ export function useTestRun({
     ask: (scope = "all") => ask(scope),
     confirm: dialog,
     reload,
+    cost,
   };
 }
 
@@ -248,9 +277,21 @@ export function TestsBox({
             ) : null}
             <Button size="sm" variant={done || free ? "outline" : "default"} onClick={() => void tests.ask("all")} disabled={running !== null || pending}>
               {free ? null : <Play aria-hidden="true" />}
-              {onTheBag ? t("agentProto.tests.againAll") : done ? t("agentProto.tests.again") : t("agentProto.tests.runAll")}
+              {onTheBag
+                ? t("agentProto.tests.againAll")
+                : done
+                  ? t("agentProto.tests.again")
+                  : state.kind === "pending"
+                    ? t(counted === 1 ? "agentProto.tests.runAll.one" : "agentProto.tests.runAll.other", { n: counted })
+                    : t("agentProto.tests.runAll")}
             </Button>
           </div>
+        ) : null}
+        {canRun && state.kind === "pending" && !running && tests.cost ? (
+          // Spec 073 (3b.3): lo que costarían, con la misma estimación que pregunta al ejecutar.
+          <p className="basis-full text-xs text-pretty text-muted-foreground" data-slot="tests-cost">
+            {tests.cost.charge ? t("agentProto.tests.cost", { amount: moneyText(tests.cost.charge) }) : `${t("builder.suite.noPrice.title")}.`}
+          </p>
         ) : null}
       </div>
 
@@ -379,7 +420,8 @@ function ReviewChecks({
   return (
     <ul aria-label={t("agentProto.tests.checks")} className="grid min-w-0 gap-2 px-4 pb-4 text-sm" data-slot="tests-checks">
       {rows.flatMap((check) => {
-        const findings = byCheck.get(check.check) ?? [];
+        const grouped = groupNoPrice(byCheck.get(check.check) ?? []);
+        const findings = grouped.findings;
         if (check.ok) {
           return [
             <li key={check.check} className="flex min-w-0 items-start gap-2" data-ok="true">
@@ -392,6 +434,19 @@ function ReviewChecks({
             </li>,
           ];
         }
+        // Spec 073 (3b.4): muchos servicios sin precio, una línea con «Poner precios».
+        const noPriceRow = grouped.noPrice ? (
+          <li key={`${check.check}-no-price`} className="flex min-w-0 items-start gap-2" data-ok="false" data-severity="warn" data-slot="no-price">
+            <TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0 text-warning" />
+            <span className="min-w-0 text-pretty">
+              {t("builder.review.noPrice.many", { n: grouped.noPrice })}{" "}
+              <Link href={`/clients/${encodeURIComponent(refId)}/business#business-services`} className={LINK}>
+                {t("builder.review.noPrice.fix")}
+              </Link>
+            </span>
+          </li>
+        ) : null;
+        if (!findings.length && noPriceRow) return [noPriceRow];
         if (!findings.length) {
           return [
             <li key={check.check} className="flex min-w-0 items-start gap-2" data-ok="false">
@@ -403,7 +458,7 @@ function ReviewChecks({
             </li>,
           ];
         }
-        return findings.map((finding, i) => (
+        const rowsOf = findings.map((finding, i) => (
           <li key={`${check.check}-${i}`} className="flex min-w-0 items-start gap-2" data-ok="false" data-severity={finding.severity}>
             {finding.severity === "block" ? (
               <CircleAlert aria-hidden="true" className="mt-1 size-4 shrink-0 text-destructive" />
@@ -416,6 +471,7 @@ function ReviewChecks({
             </span>
           </li>
         ));
+        return noPriceRow ? [...rowsOf, noPriceRow] : rowsOf;
       })}
     </ul>
   );

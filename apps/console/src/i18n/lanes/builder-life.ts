@@ -37,6 +37,7 @@ export const builderLifeMessages = {
   "builder.life.pause.confirm": { es: "Pausar igualmente", en: "Pause anyway" },
   "builder.life.paused.toast": { es: "{name} está en pausa. Los mensajes se guardan y van a la Bandeja.", en: "{name} is paused. Messages are kept and go to the Inbox." },
   "builder.life.resumed": { es: "{name} vuelve a responder.", en: "{name} answers again." },
+  "builder.life.undo": { es: "Deshacer", en: "Undo" },
   "builder.life.archive.title": { es: "Archivar {name}", en: "Archive {name}" },
   "builder.life.archive.body": {
     es: "Deja de responder y sale de la lista de agentes. Se puede restaurar: vuelve en pausa.",

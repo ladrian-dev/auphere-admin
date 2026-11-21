@@ -205,6 +205,7 @@ async def test_without_agents_the_block_explains_and_offers_the_first(
     panel = await _panel(client, a["headers"](), c["url"])
     assert panel["agents_total"] == 0 and panel["top_agents"] == []
     assert "new_agent" in panel["allowed"]
+    assert panel["delete_blocked"] == "archive_first"  # spec 073 (2.2)
     assert {"code": "no_agents", "count": 1} in panel["attention"]["reasons"]
 
 

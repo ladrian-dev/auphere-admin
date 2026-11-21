@@ -24,7 +24,8 @@ const signingKey = generateKeyPairSync("ed25519").privateKey.export({ type: "pkc
 
 export default defineConfig({
   testDir: ".",
-  testMatch: /shell\.spec\.ts/,
+  // Spec 073: la Auditoría corre contra la misma API simulada.
+  testMatch: /(shell|audit-page)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

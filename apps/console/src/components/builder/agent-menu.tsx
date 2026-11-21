@@ -2,6 +2,7 @@
 
 import { MoreHorizontal } from "lucide-react";
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -87,6 +88,7 @@ export function AgentMenu({
   actions?: AgentLifeActions;
 }) {
   const t = useT();
+  const router = useRouter();
   const ids = { ref: refId, agent: header.id };
   const [renaming, setRenaming] = React.useState(false);
   const [confirmPause, setConfirmPause] = React.useState<number | null>(null);
@@ -101,7 +103,10 @@ export function AgentMenu({
     if (res.ok) {
       setConfirmPause(null);
       onHeader(res.data);
-      toast.success(t("builder.life.paused.toast", { name: header.name }));
+      // Spec 073 (3.1): «Deshacer» lo reanuda, a como estaba antes de la pausa.
+      toast.success(t("builder.life.paused.toast", { name: header.name }), {
+        action: { label: t("builder.life.undo"), onClick: () => void resume({ quiet: true }) },
+      });
       return;
     }
     if (res.code === "confirm_required") {
@@ -112,11 +117,24 @@ export function AgentMenu({
     fail();
   }
 
-  async function resume() {
+  async function resume({ quiet = false }: { quiet?: boolean } = {}) {
     const res = await actions.resume(ids);
     if (!res.ok) return fail();
     onHeader(res.data);
-    toast.success(t("builder.life.resumed", { name: header.name }));
+    if (!quiet) toast.success(t("builder.life.resumed", { name: header.name }));
+  }
+
+  /**
+   * Spec 073 (3.2): deshacer un archivado. La página ya cambió a la del agente
+   * archivado (y este menú se desmontó), así que no basta con `onHeader`: se
+   * recarga. Restaurar lo devuelve en pausa («Reanúdalo cuando quieras») y no
+   * recupera sus números: siguen con quien los atiende ahora.
+   */
+  async function undoArchive() {
+    const res = await actions.restore(ids);
+    if (!res.ok) return fail();
+    toast.success(t("builder.life.restored", { name: header.name }));
+    router.refresh();
   }
 
   async function restore() {
@@ -210,7 +228,9 @@ export function AgentMenu({
           onHeader={onHeader}
           onArchived={(archived) => {
             setArchiving(false);
-            toast.success(t("builder.life.archived.toast", { name: header.name }));
+            toast.success(t("builder.life.archived.toast", { name: header.name }), {
+              action: { label: t("builder.life.undo"), onClick: () => void undoArchive() },
+            });
             onArchived?.(archived);
           }}
         />
