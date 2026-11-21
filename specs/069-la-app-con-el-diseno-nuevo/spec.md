@@ -467,4 +467,5 @@ En Ajustes, la persona ve:
 - La API de `main` es la que usará el build (producción); no hace falta ninguna ruta nueva.
 - Los clientes de ejemplo de staging bastan para probar; las capturas de las tiendas son de la 070.
 - La licencia de Helvena se confirmará fuera de esta spec. Mientras tanto, **ningún build la incrusta** y los títulos van con la fuente del sistema (1.5). El interruptor queda listo: con la licencia confirmada, un build con `APP_HELVENA=1` y los TTF originales en `assets/fonts/helvena/` la activa sin tocar código.
+  - **Confirmada por Luis el 2026-11-21.** Desde entonces todos los builds la llevan (1.4): los TTF se versionan y el interruptor queda solo para medir la fuente del sistema en local (`APP_HELVENA=0`).
 - El líquido de Entrar se dibuja con un motor gráfico nativo que entra como dependencia nueva, con su licencia leída en el plan.

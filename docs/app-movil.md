@@ -630,7 +630,7 @@ Contrato: [`specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md`](../specs
 
 - **Aspecto:**
   - iconos Lucide (cromo nativo con símbolos del sistema);
-  - títulos y cifras en la familia de títulos (Helvena solo con `APP_HELVENA=1` y su licencia confirmada; si no, la del sistema), pesos hasta 600;
+  - títulos y cifras en Helvena, incrustada en todos los builds desde que se confirmó su licencia (2026-11-21); `APP_HELVENA=0` en un build local deja la del sistema, para medir. Pesos hasta 600;
   - color por función con los roles propios de la app del generador (`controlBorder`, la tinta al 50 %, para el borde de chips, horas, huecos, bloques y el segmento elegido: 3:1 o más, R3.5);
   - radios del diseño;
   - las microinteracciones de `motion/micro.tsx`.

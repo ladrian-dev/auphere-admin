@@ -102,6 +102,7 @@ Versiones y licencias, abajo («Licencias»).
   - si no, `undefined`, que es la fuente del sistema.
 - **Hoy ningún build la lleva.** La licencia no está leída (analyze C1). Los archivos originales están en `~/Downloads/Helvena Font File/TTF/`, con estáticos `Regular`, `Medium` y `Semibold` (no hace falta convertir nada), y vienen, al parecer, de una descarga de Envato Elements sin texto de licencia.
 - Con la licencia confirmada, se copian a `assets/fonts/helvena/` (ignorado por git hasta entonces) y se construye con `APP_HELVENA=1`. Van incrustados por el plugin de `expo-font`, sin cargarse en tiempo de ejecución: no se pierde rendimiento.
+- **2026-11-21, tarde:** Luis confirmó la licencia. Los tres TTF se versionan y Helvena va en todos los builds; `APP_HELVENA=0` la quita en un build local, para medir. Si falta un archivo, `app.config.ts` para el build.
 - El texto corrido sigue en la fuente del sistema, con Dynamic Type.
 
 **D4 — Radios.** `theme/theme.ts` gana `RADII = { sm: 8, md: 12, lg: 16, xl: 20, sheet: 28, pill: 999 }`. `CARD_RADIUS` pasa a 16 (tarjetas del diseño). `concentric()` sigue.

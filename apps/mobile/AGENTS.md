@@ -79,7 +79,7 @@ El aspecto lo manda el diseño aprobado por el owner. La spec está en `specs/06
 - **Letra:**
   - Los títulos y las cifras del diseño son los estilos `screenTitle`, `sheetTitle`, `dialogTitle`, `name` y `figureLarge` de `theme/type.ts`. El resto, fuente del sistema con Dynamic Type.
   - Ningún peso por encima de 600.
-  - Helvena solo entra con `APP_HELVENA=1` y sus TTF en `assets/fonts/helvena/`, que git ignora. Hoy ningún build la lleva: falta leer su licencia.
+  - Helvena va en todos los builds (licencia confirmada el 2026-11-21): sus tres TTF están en `assets/fonts/helvena/`. Si falta uno, `app.config.ts` para el build. `APP_HELVENA=0` deja la fuente del sistema en un build local, para medir.
 - **Color:**
   - Los roles nuevos de la app (`selection`, `highlight*`, `bubbleAgent`, `toast*`) salen del generador (`scripts/gen-tokens.mts`, `APP_ROLES`), sin tocar `tokens.css`.
   - Los colores de marca de los canales están en `useTheme().brand`.

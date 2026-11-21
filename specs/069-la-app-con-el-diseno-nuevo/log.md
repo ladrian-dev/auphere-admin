@@ -304,6 +304,14 @@ Con texto grande, las tarjetas de Inicio pasan a una columna y «Conversaciones�
 
 - Deslizar una fila de la Bandeja desde la derecha fallaba a veces. Lo tapaba el botón flotante «Tools» del cliente de desarrollo. Escondiéndolo desde el menú de desarrollo, el gesto funciona. En un build de tienda ese botón no existe.
 
+## Helvena en todos los builds (tarde del 2026-11-21)
+
+- Luis confirmó la licencia de Helvena y la guarda él.
+- Los tres TTF estáticos (`Regular`, `Medium`, `Semibold`) se versionan en `apps/mobile/assets/fonts/helvena/`. Son los de `~/Downloads/Helvena Font File/TTF/`, con familia tipográfica «Helvena» y pesos 400, 500 y 600.
+- `app.config.ts` la incrusta siempre. `APP_HELVENA=0` la quita en un build local, para medir la fuente del sistema (R22). Si falta un archivo, el build se para en lugar de salir sin la marca.
+- Test: `version`, «every build carries Helvena».
+- **Ojo al probar en local:** si `ios/` o `android/` ya existían, `expo run` no los regenera y el build sale sin la fuente. Hay que pasar antes `npx expo prebuild`. Pasó aquí la primera vez.
+
 ## Pruebas que dependen de la fecha
 
 Dos suites construyen el negocio de ejemplo con la fecha real: `reservas-demo` y `v13-reservas-fuente`. Se pasaron con el reloj desplazado a domingo al mediodía, a lunes de madrugada, a sábado de noche y a domingo de madrugada (hora de Chile), con un parche de `Date` temporal. Las cuatro en verde. Las demás fijan la fecha.
