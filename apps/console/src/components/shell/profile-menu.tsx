@@ -1,6 +1,6 @@
 "use client";
 
-import { Languages, LogOut, type LucideIcon } from "lucide-react";
+import { ChevronUp, Languages, LogOut, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -75,6 +75,16 @@ export function ProfileMenu({ user, role, partnerName, account = [], variant, co
             <span className="truncate text-sm font-medium">{shown}</span>
             <span className="truncate text-xs text-muted-foreground">{t(roleKey(role))}</span>
           </span>
+        ) : null}
+        {/* Spec 069: un solo chevron que dice hacia dónde se abre. */}
+        {variant === "full" && side === "top" ? (
+          <ChevronUp
+            aria-hidden="true"
+            className={cn(
+              "ml-auto size-4 shrink-0 text-muted-foreground transition-opacity duration-(--duration-state) motion-reduce:transition-none",
+              collapsed && "opacity-0",
+            )}
+          />
         ) : null}
       </DropdownMenuTrigger>
       <DropdownMenuContent align={side === "top" ? "start" : "end"} side={side} className="w-64">
