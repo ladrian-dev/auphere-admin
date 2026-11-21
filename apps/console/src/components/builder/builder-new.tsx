@@ -436,7 +436,7 @@ export function BuilderNew({
       <Tabs value="build" className="min-w-0 flex-col gap-6">
         {/* Canales y Conectores son del agente: llegan cuando exista. Sin números (el owner, 2026-10-28). */}
         <TabsList floating aria-label={t("builder.screen.sections")}>
-          {/* Spec 069: la lente viaja a la pestaña activa. */}
+          {/* Spec 070: la lente viaja a la pestaña activa. */}
           <SlidingLens selector="[data-active]" variant="tabs" />
           <TabsTrigger value="build">{t("builder.screen.tab.build")}</TabsTrigger>
           <TabsTrigger value="channels" disabled>

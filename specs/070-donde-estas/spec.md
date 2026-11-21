@@ -1,6 +1,6 @@
 # Especificación: Dónde estás (el marco de la consola)
 
-**Rama**: `069-donde-estas` · **Creada**: 2026-11-21 · **Estado**: Borrador, pendiente de la revisión de Luis
+**Rama**: `069-donde-estas` (fusionada en el PR #44; la spec pasó a 070 el 2026-11-21 porque el 069 ya era de `069-la-app-con-el-diseno-nuevo`) · **Creada**: 2026-11-21 · **Estado**: Borrador, pendiente de la revisión de Luis
 
 **Entrada**: el owner (Andrés, 2026-11-21): «Sí, empieza» el lote 2 del roadmap de la consola (`[[nexus/UX-CONSOLA-PARTNERS-2026-11-20]]`).
 

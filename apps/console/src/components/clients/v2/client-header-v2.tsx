@@ -86,7 +86,7 @@ export function ClientHeaderV2({
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <nav aria-label={t("clients.v2.tabs")} className="min-w-0">
           <ul className={tabsListVariants({ floating: true })}>
-            {/* Spec 069: la lente viaja a la pestaña activa. */}
+            {/* Spec 070: la lente viaja a la pestaña activa. */}
             <li role="none" className="contents">
               <SlidingLens selector='[aria-current="page"]' variant="tabs" />
             </li>

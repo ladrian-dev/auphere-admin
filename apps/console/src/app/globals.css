@@ -77,7 +77,7 @@ body {
   }
 }
 
-/* ── Spec 069: la lente de vidrio que se desliza al activo ────────────────
+/* ── Spec 070: la lente de vidrio que se desliza al activo ────────────────
    El componente es `components/shell/sliding-lens.tsx`. Mientras no está
    colocada, el activo conserva su fondo; cuando el contenedor lleva
    `data-lens-ready`, el fondo lo pone la lente y el activo se queda limpio. */

@@ -36,12 +36,14 @@ type Props = {
  * Spec 047 (R47.1, R47.7, R47.11, R47.12) — el marco de la consola nueva.
  *
  * - Desde 901 px: el menú lateral, plegable a 64 px (cada entrada enseña su
- *   nombre como tooltip), como el prototipo aprobado: «Operar» y «Cuenta», cada
- *   grupo con su etiqueta, seguidos, y el menú de perfil al pie.
+ *   nombre como tooltip), solo con el grupo «Operar» y su etiqueta, y el menú
+ *   de perfil al pie. Equipo, Facturación y API viven en ese menú de perfil
+ *   (Andrés, 2026-10-28).
  * - Hasta 900 px: el menú pasa a una barra superior con las entradas en una
- *   fila que se desplaza de lado, y el menú de perfil (con el tema) se queda
+ *   fila que se desplaza de lado, y el menú de perfil (con la cuenta) se queda
  *   en la barra. El prototipo lo escondía en móvil (`01` §10); aquí no.
- * - Arriba, siempre: las migas, el buscador ⌘K y la campana, una vez cada uno.
+ * - Arriba, siempre: las migas, el buscador ⌘K, el interruptor del tema y la
+ *   campana, una vez cada uno.
  * - Cada entrada es un enlace: cada pantalla tiene su URL y el botón atrás del
  *   navegador vuelve a la anterior.
  * - Solo el contenido hace scroll; el marco mide la ventana.
@@ -98,7 +100,7 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
               title={t("shell.beta.hint")}
               aria-hidden={collapsed || undefined}
               className={cn(
-                // Spec 069: neutro. El ámbar es de los avisos y esto no avisa de nada.
+                // Spec 070: neutro. El ámbar es de los avisos y esto no avisa de nada.
                 "shrink-0 rounded-full bg-muted px-2 text-xs leading-5 font-medium text-muted-foreground ring-1 ring-border transition-opacity duration-(--duration-state) motion-reduce:transition-none",
                 collapsed && "opacity-0",
               )}
@@ -213,7 +215,7 @@ function NavGroup({ label, collapsed, children }: { label: string; collapsed: bo
       >
         {label}
       </span>
-      {/* Spec 069: la lente de vidrio va bajo el activo y viaja con él. */}
+      {/* Spec 070: la lente de vidrio va bajo el activo y viaja con él. */}
       <div className="relative min-w-0">
         <SlidingLens selector='[aria-current="page"]' variant="sidebar" />
         <ul aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
@@ -243,7 +245,7 @@ function NavEntry({
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        // Spec 069: 14 px (la escala compacta) y tinta plena; el gris al pasar.
+        // Spec 070: 14 px (la escala compacta) y tinta plena; el gris al pasar.
         // Donde estás lo marca la lente de vidrio; el verde suave queda debajo
         // solo hasta que la lente se coloca.
         "flex min-w-0 items-center gap-3 overflow-hidden rounded-md text-[14px] whitespace-nowrap text-sidebar-foreground transition-colors duration-(--duration-hover) hover:bg-muted",
