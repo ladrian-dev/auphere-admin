@@ -115,7 +115,8 @@ describe("«Entrar»", () => {
     await fill("valeria@flor.test", "");
     await fireEvent.press(screen.getByRole("button", { name: "Entrar" }));
     expect(mockSession.signInWithPassword).not.toHaveBeenCalled();
-    expect(screen.getByText("Escribe tu correo y tu contraseña.")).toBeTruthy();
+    // Spec 069 (R5.4, Historia 7): the missing one is said under its own field, not in one sentence for both.
+    expect(screen.getByText("Escribe tu contraseña.")).toBeTruthy();
   });
 
   it("signs in with what was written, trimmed", async () => {
