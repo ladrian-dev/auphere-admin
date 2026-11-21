@@ -422,4 +422,20 @@ describe("BusinessSectionsView", () => {
     expect(within(basics).getByText("EUR")).toBeVisible();
     expect(within(screen.getByRole("region", { name: "Servicios" })).getByText("Leído en inglés")).toBeVisible();
   });
+
+  it("lo leído en una sección que ya está completa cuenta como revisado: la barra puede llegar al final (revisión de staging)", () => {
+    page({
+      record: ok({
+        spec: {},
+        valid: true,
+        problems: [],
+        sections: [],
+        // Sedes está «Pendiente», no «Leída»: su dato leído no se puede marcar.
+        provenance: { "/services/0": web("pending"), "/services/1": web("pending"), "/locations/0": web("pending") },
+        suggestions: [],
+        allowed: ["edit" as const],
+      }),
+    });
+    expect(screen.getByRole("status", { name: "Revisión de lo leído" })).toHaveTextContent("1 de 3 datos revisados");
+  });
 });

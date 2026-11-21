@@ -38,6 +38,19 @@ test.describe("Auditoría (spec 073)", () => {
     await expectNoSeriousAxe(page);
   });
 
+  test("a 1024 px «Qué pasó» se lee: el cliente y la categoría van bajo la frase (revisión de staging)", async ({ page }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await page.goto("/audit");
+    const table = page.getByRole("table", { name: "Auditoría" });
+    await expect(table).toBeVisible();
+    const what = await table.locator("thead th", { hasText: "Qué pasó" }).evaluate((th) => th.getBoundingClientRect().width);
+    expect(what, "«Qué pasó» no se queda en una columna de una palabra").toBeGreaterThanOrEqual(240);
+    await expect(table.locator("thead th", { hasText: "Cliente" })).toBeHidden();
+    await expect(table.locator("[data-slot=audit-folded]").first()).toBeVisible();
+    const sideways = await page.locator("[data-slot=audit-card] [data-slot=table-container]").evaluate((el) => el.scrollWidth - el.clientWidth);
+    expect(sideways).toBeLessThanOrEqual(0);
+  });
+
   test("pasa axe en oscuro", async ({ page }) => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto("/audit");
