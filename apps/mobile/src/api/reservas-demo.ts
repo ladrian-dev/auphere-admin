@@ -18,12 +18,17 @@ import {
 import { ApiError } from "./errors";
 import type {
   Block,
+  CancelOptions,
+  CancelPreview,
   ConfigPatch,
   Demo,
   DayOccupancy,
   FreeSlot,
   Mode,
+  MoreAction,
+  MoveRequest,
   NewReservation,
+  Offer,
   ResAction,
   ResConfig,
   Reservation,
@@ -62,12 +67,16 @@ const SERVICES_CONFIG: ResConfig = {
   version: 1,
   waitlist: { enabled: true, leadHours: 2, editable: true },
   confirmation: { enabled: true, when: "24h", editable: true },
+  agent: { minNoticeMin: 60 },
+  reminders: true,
   services: {
     stepMin: 30,
+    // Spec 069 (R13.7): each calendar in its real state — Andrés was sent the link and has not authorized yet.
+    // As the adapter reads it: `calendarState` only where it says more than `calendar`.
     team: [
       { id: "p-javiera", name: "Javiera Muñoz", calendar: "google" },
       { id: "p-marcos", name: "Marcos Soto", calendar: "google" },
-      { id: "p-andres", name: "Andrés Pérez", calendar: "none" },
+      { id: "p-andres", name: "Andrés Pérez", calendar: "none", calendarState: "pending", calendarBusy: true },
     ],
     catalog: [
       { id: "s-corte", name: "Corte", durationMin: 30, price: 12000, proIds: null },
@@ -90,6 +99,8 @@ const CAPACITY_CONFIG = (today: LocalDate): ResConfig => ({
   version: 1,
   waitlist: { enabled: true, leadHours: 2, editable: true },
   confirmation: { enabled: true, when: "24h", editable: true },
+  agent: { minNoticeMin: 60 },
+  reminders: true,
   services: null,
   capacity: {
     unit: "comensales",
@@ -129,15 +140,27 @@ const at = (date: LocalDate, m: Minutes) => `${date}T${hhmm(m)}:00-03:00`;
 const notBefore = (when: string, after: string) => (when > after ? when : at(after.slice(0, 10) as LocalDate, parseHHMM(after.slice(11, 16)) + 2));
 /** A deep copy that every runtime has (Hermes may lack `structuredClone`). */
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+/** The API asks again only past half an hour (`ASK_AGAIN_AFTER`). */
+const ASK_AGAIN_MS = 30 * 60_000;
 
-export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null): Demo {
+/**
+ * `clock: "business"` (spec 069, R23): the business's own wall clock, the one
+ * the app reads when the example answers through the wire (`reservas.ts`,
+ * `range`). Without it, spec 044's fixed mid-morning, for its own screens.
+ */
+export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null, opts: { clock?: "business" } = {}): Demo {
   const born = wallClock(TZ);
   const today = born.date;
-  const clock: BizNow = { date: today, minutes: mode === "services" ? 11 * 60 + 20 : 13 * 60 + 20, readAt: Date.now() };
+  const clock: BizNow =
+    opts.clock === "business"
+      ? { ...born, readAt: Date.now() }
+      : { date: today, minutes: mode === "services" ? 11 * 60 + 20 : 13 * 60 + 20, readAt: Date.now() };
   const now = (): WallTime => sinceMinutes(clock);
   let config: ResConfig = mode === "services" ? clone(SERVICES_CONFIG) : CAPACITY_CONFIG(today);
   const days = new Map<LocalDate, Reservation[]>();
   const keys = new Map<string, Reservation>();
+  /** When each reservation was last asked to confirm, for «Pedir confirmación» (spec 069). */
+  const asked = new Map<string, number>();
   let seq = 0;
   let notices = {
     kinds: ["inbox.waiting", "inbox.message_for_you", "client.balance", "reservas.agent_change", "reservas.cancelled_today"],
@@ -173,6 +196,13 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
     return { origin: "waitlist", channel: "whatsapp", by: null };
   }
 
+  /** No history ahead of the clock (spec 069): an instant after now becomes a minute ago. */
+  const sofar = (iso: string): string => {
+    const n = now();
+    const ago = at(n.date, n.minutes) > iso ? iso : n.minutes > 0 ? at(n.date, n.minutes - 1) : at(addDays(n.date, -1), 24 * 60 - 1);
+    return ago;
+  };
+
   /** The history the API would keep (043 §4 `events`); the screen puts the words. */
   function events(res: Reservation): Reservation["events"] {
     const out: Reservation["events"] = [];
@@ -180,10 +210,10 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
     out.push({ kind: "created", at: created, actor: res.origin === "person" ? (res.by ?? ME) : null, data: { channel: res.channel, origin: res.origin } });
     if (res.origin === "waitlist") out.push({ kind: "waitlist_accepted", at: created, actor: null, data: {} });
     // The day before at 9:00, or just after it was made when it was made later than that.
-    const asked = notBefore(at(addDays(res.date, -1), 9 * 60), created);
+    const asked = sofar(notBefore(at(addDays(res.date, -1), 9 * 60), created));
     if (res.state === "pending") out.push({ kind: "confirmation_requested", at: asked, actor: null, data: {} });
-    if (res.state === "confirmed" && res.origin === "agent") out.push({ kind: "replied_yes", at: notBefore(at(addDays(res.date, -1), 9 * 60 + 12), asked), actor: null, data: {} });
-    if (res.state === "cancelled") out.push({ kind: "cancelled", at: at(res.date, 8 * 60), actor: null, data: { by: "customer" } });
+    if (res.state === "confirmed" && res.origin === "agent") out.push({ kind: "replied_yes", at: sofar(notBefore(at(addDays(res.date, -1), 9 * 60 + 12), asked)), actor: null, data: {} });
+    if (res.state === "cancelled") out.push({ kind: "cancelled", at: sofar(notBefore(at(res.date, 8 * 60), created)), actor: null, data: { by: "customer" } });
     return out;
   }
 
@@ -197,7 +227,7 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
       state: stateFor(r, date, end),
       customer: { name: `${pick(r, FIRST)} ${pick(r, LAST)}`, phone: o.channel === "whatsapp" || r() < 0.7 ? phone(r) : null },
       ...o,
-      createdAt: at(addDays(date, -1 - Math.floor(r() * 5)), 10 * 60 + Math.floor(r() * 600)),
+      createdAt: sofar(at(addDays(date, -1 - Math.floor(r() * 5)), 10 * 60 + Math.floor(r() * 600))),
       arrivedAt: null,
       service: null,
       pro: null,
@@ -212,6 +242,15 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
     };
     res.events = events(res);
     return res;
+  }
+
+  /** The first day after `from` the business opens, within a week. */
+  function nextOpenDay(from: LocalDate): LocalDate {
+    for (let i = 1; i <= 7; i++) {
+      const d = addDays(from, i);
+      if (!isClosed(config, d)) return d;
+    }
+    return addDays(from, 1);
   }
 
   function generate(date: LocalDate): Reservation[] {
@@ -271,8 +310,9 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
         out.push(walkin(date, 13 * 60, 2, ""), walkin(date, 13 * 60, 3, "Ignacio"));
       }
     }
-    // The contact of the local inbox, so «Próxima reserva» has something to show.
-    if (date === addDays(today, 1)) {
+    // The contact of the local inbox, so «Próxima reserva» has something to show:
+    // on the next open day, which on a Saturday is Monday (the Sunday is closed).
+    if (date === nextOpenDay(today)) {
       const lucia = mode === "services"
         ? make(r, date, 17 * 60, 17 * 60 + 45, {
             service: { id: "s-peinado", name: "Corte y peinado", durationMin: 45, price: 18000 },
@@ -358,13 +398,25 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
     return out;
   }
 
+  /** Spec 069: moving and asking to confirm, as `allowed_actions` gives them. */
+  function more(x: Reservation): MoreAction[] {
+    const n = now();
+    const future = x.date > n.date || (x.date === n.date && x.start > n.minutes);
+    const expected = x.state === "pending" || x.state === "confirmed";
+    const out: MoreAction[] = [];
+    if (expected && future && x.origin !== "walkin") out.push("move");
+    const last = asked.get(x.id);
+    if (x.state === "pending" && future && x.customer.phone && (last === undefined || Date.now() - last >= ASK_AGAIN_MS)) out.push("request_confirmation");
+    return out;
+  }
+
   const view = (x: Reservation): Reservation => {
     const n = now();
     const stay = config.capacity?.stayMin ?? 90;
     const expected = x.state === "pending" || x.state === "confirmed";
     // The API's `late_minutes` (043 §4): Aforo, still expected, 15 min or more past its time, within the stay.
     const late = config.mode === "capacity" && expected && x.date === n.date && n.minutes - x.start >= 15 && n.minutes < x.start + stay ? n.minutes - x.start : null;
-    return { ...x, actions: allowed(x), lateMinutes: late, events: [...x.events] };
+    return { ...x, actions: allowed(x), moreActions: more(x), lateMinutes: late, events: [...x.events] };
   };
 
   function find(id: string): Reservation {
@@ -406,7 +458,7 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
     return { date, pct: Math.min(100, Math.round((booked / ((span.close - span.open) * team)) * 100)), closed: false };
   }
 
-  function freeServices(date: LocalDate, serviceId: string | undefined, proId: string | null | undefined): FreeSlot[] {
+  function freeServices(date: LocalDate, serviceId: string | undefined, proId: string | null | undefined, exclude?: string): FreeSlot[] {
     const s = config.services;
     const svc = s?.catalog.find((c) => c.id === serviceId);
     const span = openSpan(config, date);
@@ -416,25 +468,28 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
     const out: FreeSlot[] = [];
     for (let t = span.open; t + svc.durationMin <= span.close; t += s.stepMin) {
       if (date < n.date || (date === n.date && t <= n.minutes)) continue;
-      const free = pros.find((p) => !day(date).some((x) => x.pro?.id === p.id && x.state !== "cancelled" && x.start < t + svc.durationMin && t < x.end));
+      const free = pros.find((p) => !day(date).some((x) => x.id !== exclude && x.pro?.id === p.id && x.state !== "cancelled" && x.start < t + svc.durationMin && t < x.end));
       if (free) out.push({ time: t, pro: { id: free.id, name: free.name }, left: null, full: false });
     }
     return out;
   }
 
-  function leftAt(date: LocalDate, t: Minutes): number {
+  function leftAt(date: LocalDate, t: Minutes, exclude?: string): number {
     const cap = config.capacity!;
+    const own = exclude ? day(date).find((x) => x.id === exclude && x.state !== "cancelled") : undefined;
     const window = slotsOf(date).filter((s) => s.time >= t && s.time < t + cap.stayMin);
     if (window.some((s) => s.blocked)) return 0;
-    return Math.min(...window.map((s) => cap.capacity - cap.walkinReserved - s.inside), cap.capacity - cap.walkinReserved);
+    // A reservation being moved does not count against its own new time.
+    const mine = (s: Slot) => (own && own.start <= s.time && s.time < own.start + cap.stayMin ? (own.partySize ?? 0) : 0);
+    return Math.min(...window.map((s) => cap.capacity - cap.walkinReserved - s.inside + mine(s)), cap.capacity - cap.walkinReserved);
   }
 
-  function freeCapacity(date: LocalDate, party: number): FreeSlot[] {
+  function freeCapacity(date: LocalDate, party: number, exclude?: string): FreeSlot[] {
     const n = now();
     return slotsOfDay(config, date)
       .filter((s) => !(date === n.date && s.time <= n.minutes))
       .map((s) => {
-        const left = Math.max(0, leftAt(date, s.time));
+        const left = Math.max(0, leftAt(date, s.time, exclude));
         return { time: s.time, pro: null, left, full: left < party };
       });
   }
@@ -508,6 +563,48 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
             },
           ];
 
+  // ── the offers of freed slots (spec 069, R16.2) ──────────────────────
+
+  /** One running offer in Servicios: a cancelled 16:00 with Javiera, Florencia's turn and Cristóbal next. */
+  let offers: Offer[] =
+    state === "empty" || mode !== "services"
+      ? []
+      : [
+          {
+            id: "o-1",
+            status: "running",
+            createdAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+            windowMin: 5,
+            slot: { date: today, start: 16 * 60, end: 16 * 60 + 30, service: "Corte", pro: "Javiera Muñoz", seats: null },
+            candidates: [
+              { name: "Florencia Araya", position: 1, status: "waiting", deadlineAt: new Date(Date.now() + 4 * 60_000).toISOString() },
+              { name: "Cristóbal Reyes", position: 2, status: "queued", deadlineAt: null },
+            ],
+            cancelledBy: "Valentina Rojas",
+          },
+        ];
+
+  /** Who on the list would fit a freed slot (Servicios): those waiting for that service, with that person or anyone. */
+  function candidatesFor(x: Reservation): WaitEntry[] {
+    return waitlist.filter(
+      (w) => w.state === "waiting" && (!w.wants.service || w.wants.service === x.service?.name) && (!w.wants.pro || w.wants.pro === x.pro?.name),
+    );
+  }
+
+  function preview(x: Reservation): CancelPreview {
+    if (config.mode !== "services") return { canOffer: false, candidates: 0, whyNot: "not_services" };
+    if (!config.waitlist.enabled) return { canOffer: false, candidates: 0, whyNot: "waitlist_off" };
+    const n = now();
+    const minutesAhead = (Date.parse(`${x.date}T00:00:00Z`) - Date.parse(`${n.date}T00:00:00Z`)) / 60_000 + x.start - n.minutes;
+    if (minutesAhead < config.waitlist.leadHours * 60) return { canOffer: false, candidates: 0, whyNot: "too_soon" };
+    const found = candidatesFor(x);
+    return found.length ? { canOffer: true, candidates: found.length, whyNot: null } : { canOffer: false, candidates: 0, whyNot: "nobody_fits" };
+  }
+
+  function stale(x: Reservation, version: number) {
+    if (version !== x.version) throw new ApiError(412, "stale");
+  }
+
   const demo: Demo = {
     mode,
 
@@ -553,8 +650,8 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
         const dates = datesBetween(from, to);
         return { slots: config.mode === "capacity" ? dates.flatMap(slotsOf) : [], days: dates.map(dayPct) };
       }),
-    freeSlots: ({ date, serviceId, proId, partySize }) =>
-      read(() => (config.mode === "services" ? freeServices(date, serviceId, proId) : freeCapacity(date, partySize ?? 2))),
+    freeSlots: ({ date, serviceId, proId, partySize, exclude }) =>
+      read(() => (config.mode === "services" ? freeServices(date, serviceId, proId, exclude) : freeCapacity(date, partySize ?? 2, exclude))),
 
     create: (b: NewReservation, key) =>
       write(() => {
@@ -623,6 +720,101 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
         return view(x);
       }),
 
+    cancel: (r, opts: CancelOptions) =>
+      write(() => {
+        const x = find(r.id);
+        stale(x, r.version);
+        if (!allowed(x).includes("cancel")) throw new ApiError(409, "invalid_transition");
+        const p = preview(x);
+        const stamp = new Date().toISOString();
+        x.version += 1;
+        x.state = "cancelled";
+        x.events.push({ kind: "cancelled", at: stamp, actor: ME, data: { by: "business" } });
+        if (opts.notify && x.customer.phone) x.events.push({ kind: "notified", at: stamp, actor: null, data: {} });
+        // Offered to the waitlist: a running offer, the first who fits has the turn (5 minutes).
+        if (opts.offerSlot && p.canOffer) {
+          const found = candidatesFor(x).slice(0, 5);
+          offers = [
+            {
+              id: `o-${seq++}`,
+              status: "running",
+              createdAt: stamp,
+              windowMin: 5,
+              slot: { date: x.date, start: x.start, end: x.end, service: x.service?.name ?? null, pro: x.pro?.name ?? null, seats: x.partySize },
+              candidates: found.map((w, i) => ({
+                name: w.name,
+                position: i + 1,
+                status: i === 0 ? "waiting" : "queued",
+                deadlineAt: i === 0 ? new Date(Date.now() + 5 * 60_000).toISOString() : null,
+              })),
+              cancelledBy: ME,
+            },
+            ...offers,
+          ];
+        }
+        return view(x);
+      }),
+
+    cancelPreview: (id) => read(() => preview(find(id))),
+
+    move: (r, b: MoveRequest) =>
+      write(() => {
+        const x = find(r.id);
+        stale(x, r.version);
+        if (!more(x).includes("move")) throw new ApiError(409, "invalid_transition");
+        if (isClosed(config, b.date)) throw new ApiError(422, "closed");
+        let end: Minutes;
+        let pro = x.pro;
+        if (config.mode === "services") {
+          const svc = config.services?.catalog.find((c) => c.id === x.service?.id);
+          const slot = freeServices(b.date, x.service?.id, b.proId ?? x.pro?.id ?? null, x.id).find((s) => s.time === b.time);
+          if (!svc || !slot?.pro) throw new ApiError(409, "slot_taken");
+          pro = slot.pro;
+          end = b.time + svc.durationMin;
+        } else {
+          const party = b.partySize ?? x.partySize ?? 2;
+          const slot = freeCapacity(b.date, party, x.id).find((s) => s.time === b.time);
+          if (!slot || slot.full) throw new ApiError(409, "slot_taken");
+          x.partySize = party;
+          end = b.time + (config.capacity?.stayMin ?? 90);
+        }
+        const stamp = new Date().toISOString();
+        const from = { date: x.date, start: hhmm(x.start) };
+        // Off the old day, onto the new one.
+        days.set(x.date, day(x.date).filter((y) => y.id !== x.id));
+        x.date = b.date;
+        x.start = b.time;
+        x.end = end;
+        x.pro = pro;
+        x.version += 1;
+        x.events.push({ kind: "moved", at: stamp, actor: ME, data: { from } });
+        if (b.notify && x.customer.phone) x.events.push({ kind: "notified", at: stamp, actor: null, data: {} });
+        day(b.date).push(x);
+        day(b.date).sort((a, c) => a.start - c.start);
+        return view(x);
+      }),
+
+    requestConfirmation: (r) =>
+      write(() => {
+        const x = find(r.id);
+        stale(x, r.version);
+        if (!more(x).includes("request_confirmation")) throw new ApiError(409, "invalid_transition");
+        asked.set(x.id, Date.now());
+        x.version += 1;
+        x.events.push({ kind: "confirmation_requested", at: new Date().toISOString(), actor: ME, data: {} });
+        return view(x);
+      }),
+
+    offers: () => read(() => offers.filter((o) => o.status === "running").map((o) => clone(o))),
+    stopOffer: (id) =>
+      write(() => {
+        const o = offers.find((x) => x.id === id);
+        if (!o) throw new ApiError(404, "not_found");
+        const next: Offer = { ...o, status: "stopped", candidates: o.candidates.map((c) => (c.status === "waiting" || c.status === "queued" ? { ...c, status: "stopped" } : c)) };
+        offers = offers.map((x) => (x.id === id ? next : x));
+        return clone(next);
+      }),
+
     walkIn: (b, key) =>
       write(() => {
         const seen = keys.get(key);
@@ -644,13 +836,18 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
     waitlist: () => read(() => waitlist.map((w) => ({ ...w, wants: { ...w.wants } }))),
     joinWaitlist: (b) =>
       write(() => {
+        // At the door no phone is asked (064 R3.7); by hand from the list it is required, as the API checks.
+        const inPerson = b.inPerson ?? !b.phone;
+        if (!inPerson && !b.phone?.trim()) throw new ApiError(422, "phone_required");
+        const svc = config.services?.catalog.find((c) => c.id === b.serviceId) ?? null;
+        const pro = config.services?.team.find((p) => p.id === b.proId) ?? null;
         const entry: WaitEntry = {
           id: `w-${seq++}`,
           name: b.name?.trim() || "Sin nombre",
-          phone: null,
-          wants: { date: b.date, time: b.time, partySize: b.partySize, service: null, pro: null, text: null },
+          phone: b.phone?.trim() || null,
+          wants: { date: b.date, time: b.time, until: b.until ?? null, partySize: b.partySize, service: svc?.name ?? null, pro: pro?.name ?? null, text: null },
           state: "waiting",
-          fits: false,
+          fits: config.mode === "services" ? null : false,
           offeredUntil: null,
           joinedBy: "person",
           by: ME,
@@ -680,6 +877,8 @@ export function createDemo(mode: Mode, state: "empty" | "error" | "slow" | null)
           waitlist: { ...config.waitlist, ...b.waitlist },
           confirmation: { ...config.confirmation, ...b.confirmation },
           capacity: config.capacity ? { ...config.capacity, ...b.capacity } : null,
+          agent: b.agent ? { ...b.agent } : config.agent,
+          reminders: b.reminders ?? config.reminders,
         };
         return clone(config);
       }),

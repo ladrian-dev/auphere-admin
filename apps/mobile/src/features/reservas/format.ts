@@ -1,5 +1,5 @@
-import type { Reservation } from "@/api/reservas";
-import type { Locale, T } from "@/i18n/t";
+import type { CalendarState, Pro, Reservation } from "@/api/reservas";
+import type { Locale, MessageKey, T } from "@/i18n/t";
 import { addDays, hhmm, type LocalDate } from "@/lib/reservas-model";
 
 /**
@@ -22,6 +22,18 @@ export function dayShort(d: LocalDate, locale: Locale): string {
 /** «mié». */
 export function weekdayShort(d: LocalDate, locale: Locale): string {
   return at(d).toLocaleDateString(locale, { weekday: "short", timeZone: "UTC" }).replace(".", "");
+}
+
+/**
+ * The word over a day in the strips: its short weekday, or «hoy» / «Today» —
+ * in the case the locale writes its weekdays in (lower in Spanish, capitalised
+ * in English), so «today» never sits small beside «Mon» (review H17).
+ */
+export function stripWeekday(d: LocalDate, isToday: boolean, t: T, locale: Locale): string {
+  const weekday = weekdayShort(d, locale);
+  if (!isToday) return weekday;
+  const word = t("reservas.today");
+  return weekday === weekday.toLocaleLowerCase(locale) ? word.toLocaleLowerCase(locale) : word;
 }
 
 export function dayNumber(d: LocalDate): string {
@@ -63,13 +75,62 @@ export function durationShort(min: number, t: T): string {
   return h === 0 || m === 0 ? duration(min, t) : t("reservas.duration.hmShort", { h, min: m });
 }
 
-/** Prices of the business, in its own currency (CLP has no cents). */
-export function price(amount: number, currency: string, locale: Locale): string {
+/**
+ * ISO 4217 minor digits, as the API has them (`services_catalog.exponent`) and
+ * the web's `lib/amount.ts` reads them: not Intl's (it says 0 for COP or HUF
+ * while the stored minor unit has 2).
+ */
+const ZERO_DECIMALS = new Set(["BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF", "UGX", "VND", "VUV", "XAF", "XOF", "XPF"]);
+const THREE_DECIMALS = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
+
+export function minorDigits(currency: string): number {
+  const code = currency.toUpperCase();
+  return ZERO_DECIMALS.has(code) ? 0 : THREE_DECIMALS.has(code) ? 3 : 2;
+}
+
+/**
+ * A price of the business (spec 069, R14.4, R21.1): the API sends it in the
+ * currency's minor unit (`amount_minor`), so 18000 CLP is $18.000 and 1850
+ * EUR is 18,50 €. Spanish is Chile's for its own peso (the pilot), and plain
+ * Spanish for the rest («18,50 €», not «EUR 18,50»).
+ */
+export function price(amountMinor: number, currency: string, locale: Locale): string {
+  const digits = minorDigits(currency);
+  const value = amountMinor / 10 ** digits;
+  const tag = locale === "es" ? (currency.toUpperCase() === "CLP" ? "es-CL" : "es") : "en-US";
   try {
-    return new Intl.NumberFormat(locale === "es" ? "es-CL" : "en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat(tag, { style: "currency", currency, minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
   } catch {
-    return `${amount} ${currency}`;
+    // A code Intl refuses: the number in the language and its code, never ×100.
+    return `${new Intl.NumberFormat(tag, { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)} ${currency}`;
   }
+}
+
+/**
+ * A professional's Google calendar, in words (spec 069, R13.7): every state
+ * the API keeps — connected, waiting for them to authorize, a calendar still
+ * to choose, to connect again, or failing — and, beside it, when the
+ * business's own Google still blocks their hours. A team read without the
+ * state (an older answer) says what `calendar` says.
+ */
+export function calendarText(p: Pro, t: T): string {
+  const state: CalendarState = p.calendarState ?? (p.calendar === "google" ? "connected" : "none");
+  const text = t(CALENDAR_KEY[state]);
+  return p.calendarBusy ? t("reservas.calendar.withBusy", { state: text }) : text;
+}
+
+const CALENDAR_KEY: Record<CalendarState, MessageKey> = {
+  connected: "reservas.settings.team.google",
+  none: "reservas.settings.team.none",
+  pending: "reservas.calendar.pending",
+  needs_calendar: "reservas.calendar.needs_calendar",
+  needs_reauth: "reservas.calendar.needs_reauth",
+  error: "reservas.calendar.error",
+};
+
+/** The states that need someone to act: said on the day too, not only in Ajustes. */
+export function calendarNeedsAttention(p: Pick<Pro, "calendarState">): boolean {
+  return p.calendarState === "needs_calendar" || p.calendarState === "needs_reauth" || p.calendarState === "error";
 }
 
 export function party(n: number, unit: string, t: T): string {

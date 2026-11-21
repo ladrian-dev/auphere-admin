@@ -1,38 +1,59 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { router, Stack, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Platform, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/errors";
-import { demo } from "@/api/reservas";
+import { invalidateReservas } from "@/api/query";
+import { demo, reservasSource } from "@/api/reservas";
 import type { Reservation, ResAction } from "@/api/reservas";
-import { useBizNow, useBizToday, useOccupancy, useReservaAction, useReservasConfig, useReservasRange } from "@/api/reservas-hooks";
+import {
+  useBizNow,
+  useBizToday,
+  useOccupancy,
+  useReservaAction,
+  useReservasConfig,
+  useReservasRange,
+  useWaitlist,
+  useWithPendingCancels,
+  useWithPendingRemovals,
+} from "@/api/reservas-hooks";
 import { useLocale, useT, type T } from "@/i18n/t";
 import { clock } from "@/lib/format";
-import { addDays, monthEnd, monthStart, weekStart, type LocalDate } from "@/lib/reservas-model";
+import { addDays, monthEnd, monthStart, weekStart, type LocalDate, type Minutes } from "@/lib/reservas-model";
 import { usePullRefresh } from "@/lib/use-pull-refresh";
 import { haptics } from "@/motion/haptics";
-import { useTheme } from "@/theme/theme";
+import { RADII, useTheme } from "@/theme/theme";
 import { useActions } from "@/ui/actions";
 import { IconButton } from "@/ui/button";
 import { Fab } from "@/ui/fab";
-import { icons } from "@/ui/icon";
+import { Icon, icons } from "@/ui/icon";
+import { Text } from "@/ui/text";
 import { useOnline } from "@/ui/online";
 import { useToast } from "@/ui/toast";
 import { Skeleton } from "@/ui/states";
 
+import { arrives, useArrivalSignal } from "./arrival";
+import { WaitlistCard } from "./waitlist-card";
 import { ReservasBody, showsOtherPeriod } from "./body";
 import { DayCapacity } from "./day-capacity";
 import { DayGrid } from "./day-grid";
 import { DayServices } from "./day-services";
+import { calendarNeedsAttention, calendarText, firstName } from "./format";
 import { DayHeader, type DayView, type Period } from "./header";
 import { MonthGrid } from "./month";
 import { WeekHeat, WeekServices } from "./week";
 
 /**
- * Reservas (spec 044, Historia 1; R1–R3, R5.1, R6.1, R16, R17): the day by
- * default, the week and the month, in the one mode the API says. The way in
- * from Inicio, a contact or a notice is the route itself:
+ * Reservas (spec 044, Historia 1; R1–R3, R5.1, R6.1, R16, R17; spec 069,
+ * Requisito 13): the day by default — its week read at once, so the strip
+ * marks the days with bookings —, the week and the month, in the one mode the
+ * API says. A free band of the grid books that time (R13.3); an empty day
+ * offers to book it; the waitlist is a card after the bookings; a calendar
+ * that needs someone is said on the day. A booking just saved enters its day
+ * (micro 3); one being cancelled shows cancelled while «Deshacer» lasts. The
+ * way in from Inicio, a contact or a notice is the route itself:
  * `/reservas?date=…&open=<id>&slot=<HH*60+MM>`.
  */
 export default function ReservasScreen() {
@@ -68,15 +89,35 @@ export default function ReservasScreen() {
     }
   }, [params.open]);
 
+  // A booking just saved or moved: Reservas goes to its day, and that one row arrives (micro 3).
+  const arrival = useArrivalSignal();
+  const [seen, setSeen] = useState(0);
+  if (arrival && arrival.seq !== seen) {
+    setSeen(arrival.seq);
+    setPeriod("day");
+    setPicked(arrival.date);
+  }
+
   const mode = config.data?.mode;
+  // The day reads its whole week: the strip marks the days with bookings, and moving within it is instant.
   const [from, to] =
-    date === null ? [null, null] : period === "day" ? [date, date] : period === "week" ? [weekStart(date), addDays(weekStart(date), 6)] : [monthStart(date), monthEnd(date)];
+    date === null ? [null, null] : period === "month" ? [monthStart(date), monthEnd(date)] : [weekStart(date), addDays(weekStart(date), 6)];
   const range = useReservasRange(from, to);
-  const occupancy = useOccupancy(from, to, mode === "capacity" || period === "month");
+  const occupancy = useOccupancy(from, to, mode === "capacity" || period !== "day");
   const now = useBizNow(range.data?.now);
   const act = useActOn(t);
+  const items = useWithPendingCancels(range.data?.items) ?? [];
+  const waitlist = useWithPendingRemovals(useWaitlist(config.data?.waitlist.enabled ?? false).data) ?? [];
+  const live = items.filter((r) => r.state !== "cancelled");
+  const marks = new Set(live.map((r) => r.date));
+  const counts: Record<LocalDate, number> = {};
+  for (const r of live) counts[r.date] = (counts[r.date] ?? 0) + 1;
+  const arrivedId = arrival && arrives(arrival, arrival.id) ? arrival.id : null;
 
   const open = (r: Reservation) => router.push({ pathname: "/reserva/[id]", params: { id: r.id, date: r.date } });
+  const book = (d: LocalDate, time: Minutes | null = null, proId: string | null = null) =>
+    router.push({ pathname: "/reserva/nueva", params: { date: d, ...(time !== null ? { time: String(time) } : {}), ...(proId ? { pro: proId } : {}) } });
+  const attention = mode === "services" && period === "day" ? (config.data?.services?.team ?? []).filter(calendarNeedsAttention) : [];
   const goDay = (d: LocalDate, s: number | null = null) => {
     setPicked(d);
     setPeriod("day");
@@ -104,6 +145,7 @@ export default function ReservasScreen() {
           demo={demo !== null}
           offlineSince={offlineSince}
           partial={occupancy.isError && !occupancy.data}
+          skeleton="day"
           onRetry={() => {
             void config.refetch();
             void range.refetch();
@@ -127,19 +169,49 @@ export default function ReservasScreen() {
                 config={config.data}
                 view={view}
                 onView={setView}
+                marks={marks}
                 t={t}
                 locale={locale}
               />
-              {showsOtherPeriod(range, occupancy, mode === "capacity" || period === "month") ? (
+              {attention.map((p) => (
+                <CalendarNotice key={p.id} text={t("reservas.calendar.attention", { name: firstName(p.name), state: calendarText(p, t) })} t={t} />
+              ))}
+              {showsOtherPeriod(range, occupancy, mode === "capacity" || period !== "day") ? (
                 <Skeleton rows={5} label={t("reservas.loading")} />
               ) : period === "day" && mode === "services" && view === "list" ? (
-                <DayServices config={config.data} items={range.data.items} now={now} date={date} pro={pro} onPro={setPro} onOpen={open} t={t} locale={locale} />
+                <DayServices
+                  config={config.data}
+                  items={items}
+                  now={now}
+                  date={date}
+                  pro={pro}
+                  onPro={setPro}
+                  onOpen={open}
+                  onNew={online ? (d) => book(d) : undefined}
+                  onDay={(d) => setPicked(d)}
+                  arrivedId={arrivedId}
+                  t={t}
+                  locale={locale}
+                />
               ) : period === "day" && mode === "services" ? (
-                <DayGrid config={config.data} items={range.data.items} now={now} date={date} onOpen={open} onList={() => setView("list")} t={t} locale={locale} />
+                <DayGrid
+                  config={config.data}
+                  items={items}
+                  now={now}
+                  date={date}
+                  pro={pro}
+                  onPro={setPro}
+                  onOpen={open}
+                  onList={() => setView("list")}
+                  onFree={online ? (d, time, p) => book(d, time, p) : undefined}
+                  arrivedId={arrivedId}
+                  t={t}
+                  locale={locale}
+                />
               ) : period === "day" ? (
                 <DayCapacity
                   config={config.data}
-                  items={range.data.items}
+                  items={items}
                   slots={occupancy.data?.slots ?? []}
                   now={now}
                   date={date}
@@ -152,12 +224,13 @@ export default function ReservasScreen() {
                   locale={locale}
                 />
               ) : period === "week" && mode === "services" ? (
-                <WeekServices config={config.data} items={range.data.items} from={weekStart(date)} onOpen={open} onDay={goDay} t={t} locale={locale} />
+                <WeekServices config={config.data} items={items} days={occupancy.data?.days ?? []} from={weekStart(date)} today={today} onDay={goDay} t={t} locale={locale} />
               ) : period === "week" ? (
                 <WeekHeat config={config.data} slots={occupancy.data?.slots ?? []} from={weekStart(date)} onCell={goDay} t={t} locale={locale} />
               ) : (
-                <MonthGrid month={date} days={occupancy.data?.days ?? []} today={today} onDay={(d) => goDay(d)} t={t} locale={locale} />
+                <MonthGrid month={date} days={occupancy.data?.days ?? []} counts={counts} today={today} selected={date} onDay={(d) => goDay(d)} t={t} locale={locale} />
               )}
+              {waitlist.length > 0 ? <WaitlistCard items={waitlist} onPress={() => router.push("/reservas/espera")} t={t} /> : null}
               {/* Room for the floating buttons over the last rows. */}
               <View style={{ height: Platform.OS === "android" ? 96 : capacityToday ? 72 : 0 }} />
             </View>
@@ -172,6 +245,26 @@ export default function ReservasScreen() {
         t={t}
       />
     </View>
+  );
+}
+
+/** A professional's calendar that needs someone (spec 069, R13.7): said on the day, with the way to see it. */
+function CalendarNotice({ text, t }: { text: string; t: T }) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={text}
+      accessibilityHint={t("reservas.calendar.attention.open")}
+      onPress={() => router.push("/reservas/ajustes")}
+      style={({ pressed }) => [styles.notice, { backgroundColor: pressed ? colors.muted : colors.warningBg, borderRadius: RADII.md }]}
+    >
+      <Icon name={icons.warning} size={18} tone="warningText" />
+      <Text variant="footnote" tone="warningText" style={styles.flex}>
+        {text}
+      </Text>
+      <Icon name={icons.chevron} size={16} tone="warningText" />
+    </Pressable>
   );
 }
 
@@ -258,6 +351,7 @@ function Floating({ capacityToday, online, onNew, onWalkIn, t }: { capacityToday
 /** «Llegó», «No vino» and «Marcar confirmada» from a row or the sheet, with the brief notice and «Deshacer» (R4.4, R16.7). */
 export function useActOn(t: T) {
   const toast = useToast();
+  const qc = useQueryClient();
   const mutation = useReservaAction();
   const said: Record<ResAction, Parameters<T>[0]> = {
     confirm: "reservas.done.confirm",
@@ -279,7 +373,18 @@ export function useActOn(t: T) {
           toast.show({
             text: opts.text ?? t(said[action]),
             action: undoable
-              ? { label: t("reservas.action.undo"), onPress: () => mutation.mutate({ r: next, action: "undo" }, { onSuccess: () => toast.show({ text: t("reservas.done.undo") }) }) }
+              ? {
+                  label: t("reservas.action.undo"),
+                  // A plain promise: from a sheet, the mutation's caller is gone by the time «Deshacer» is tapped (spec 069).
+                  onPress: () =>
+                    void reservasSource()
+                      .act(next, "undo")
+                      .then(
+                        () => toast.show({ text: t("reservas.done.undo") }),
+                        (e: unknown) => toast.show({ text: errorText(e, t), tone: "warn" }),
+                      )
+                      .finally(() => invalidateReservas(qc)),
+                }
               : undefined,
           });
         },
@@ -305,5 +410,7 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 16, paddingBottom: 32 },
   stack: { gap: 16 },
   headerRight: { flexDirection: "row", alignItems: "center" },
+  flex: { flex: 1, minWidth: 0 },
+  notice: { flexDirection: "row", alignItems: "center", gap: 10, padding: 12 },
   fabs: { position: "absolute", right: 16, alignItems: "flex-end", gap: 16 },
 });
