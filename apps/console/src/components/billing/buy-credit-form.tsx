@@ -22,10 +22,12 @@
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Input, cn, formatCurrency, formatNumber } from "@nexus/ui";
+import { Button, Input, cn, formatNumber } from "@nexus/ui";
 
 import { buyCreditAction } from "@/app/(console)/billing/actions";
+import { AmountOption } from "@/components/money/amount-option";
 import { useLocale, useT } from "@/i18n/client";
+import { formatUnits } from "@/lib/amount";
 
 /** Los mismos límites que valida la API, en unidades enteras de la moneda del cobro. */
 const MIN_AMOUNT = 5;
@@ -52,7 +54,13 @@ export function initialCreditAmount(raw: string | number | null | undefined): st
 /**
  * Comprar saldo como en el prototipo: cuatro cantidades rápidas, «Otro importe»
  * y «Comprar», que se apaga fuera de 5 a 5000 en números enteros. Las cifras
- * salen de `Intl` con la moneda del cobro, nunca de un texto con «US$».
+ * salen de `formatUnits` con la moneda del cobro: «50,00 USD», nunca «US$».
+ *
+ * Spec 072 §6: se elige el importe igual que en Asignar saldo. Un clic en un
+ * importe rápido **lo elige** (un `radio`, marcado con un tinte), no compra.
+ * El campo libre sigue disponible y escribir en él quita la marca. El botón
+ * dice cuánto compra («Comprar 50,00 USD»), y apagado lleva como descripción
+ * la línea que dice por qué.
  */
 export function BuyCreditForm({
   initialAmount,
@@ -70,7 +78,7 @@ export function BuyCreditForm({
   const amount = quick ?? Number(typed);
   const valid = Number.isFinite(amount) && Number.isInteger(amount) && amount >= MIN_AMOUNT && amount <= MAX_AMOUNT && (quick !== null || typed !== "");
   const invalidTyped = quick === null && typed !== "" && !valid;
-  const money = (n: number) => formatCurrency(n, CHECKOUT_CURRENCY, locale);
+  const money = (n: number) => formatUnits(n, CHECKOUT_CURRENCY, locale);
   const range = { min: formatNumber(MIN_AMOUNT, locale), max: formatNumber(MAX_AMOUNT, locale) };
 
   function submit(event: React.FormEvent) {
@@ -94,23 +102,20 @@ export function BuyCreditForm({
   return (
     <form onSubmit={submit} className="grid min-w-0 gap-2" data-slot="buy-credit">
       {label ? <p className="text-sm font-medium" id={`${id}-label`}>{label}</p> : null}
-      <div role="group" aria-label={t("proto.billing.quick")} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div role="radiogroup" aria-label={t("proto.billing.quick")} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {QUICK.map((n) => (
-          <button
+          <AmountOption
             key={n}
-            type="button"
-            aria-pressed={quick === n}
-            onClick={() => {
+            size="lg"
+            name={`${id}-quick`}
+            checked={quick === n}
+            onChange={() => {
               setQuick(n);
               setValue("");
             }}
-            className={cn(
-              "h-12 rounded-lg border border-input bg-card text-md font-medium tabular-nums transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-              quick === n && "border-primary bg-status-positive-bg ring-1 ring-primary",
-            )}
           >
             {money(n)}
-          </button>
+          </AmountOption>
         ))}
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -133,8 +138,8 @@ export function BuyCreditForm({
           aria-invalid={invalidTyped || undefined}
           aria-describedby={`${id}-hint`}
         />
-        <Button type="submit" disabled={pending || !valid}>
-          {t("membership.credit.buy")}
+        <Button type="submit" disabled={pending || !valid} aria-describedby={valid ? undefined : `${id}-hint`}>
+          {valid ? t("membership.credit.buyAmount", { amount: money(amount) }) : t("membership.credit.buy")}
         </Button>
       </div>
       <p id={`${id}-hint`} className={cn("text-sm text-pretty", invalidTyped ? "text-destructive" : "text-muted-foreground")} aria-live="polite">

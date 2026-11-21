@@ -113,7 +113,9 @@ async def test_the_three_figures_the_lines_and_the_table(client: Any, db_session
     assert out["in_bags"] == money(in_bags, "USD")
     assert out["in_bags_approx"] is True, "hay una bolsa en euros"
     conversations = 2 * UNIT + spent_es_usd
-    assert out["month_spend"] == money(conversations + UNIT // 2, "USD")
+    # Spec 072 (3.1, 4.3, D2): el gasto del mes es lo que gastan las bolsas de sus
+    # clientes. Companion y teammates (la cuenta) solo van en el detalle.
+    assert out["month_spend"] == money(conversations, "USD")
     assert out["projected"]["amount_micros"] >= out["month_spend"]["amount_micros"]
 
     lines = {line["line"]: line for line in out["lines"]}
@@ -235,3 +237,20 @@ async def test_the_technical_detail_and_the_csv(client: Any, db_session: Any) ->
     csv = await client.get("/console/usage/export.csv?days=7&lang=es", headers=world.headers())
     assert csv.status_code == 200
     assert world.us.ref in csv.text
+
+
+async def test_the_panel_month_spend_adds_up_to_its_parts(client: Any, db_session: Any) -> None:
+    """Spec 072 (3.1, 3.2): las partes del «Gasto del mes» del Panel son solo las
+    bolsas de los clientes. Construcción (Auphere), Meta (el negocio) y Companion
+    (la cuenta) no entran; las partes suman el total, el mismo de Consumo."""
+    world = await _seed(client, db_session)
+    home = await client.get("/console/home", headers=world.headers())
+    assert home.status_code == 200, home.text
+    spend = home.json()["panel"]["spend"]
+    assert {s["kind"] for s in spend["shares"]} <= {"client", "rest"}
+    assert (
+        sum(s["amount"]["amount_micros"] for s in spend["shares"])
+        == spend["total"]["amount_micros"]
+    )
+    summary = (await client.get("/console/usage/summary", headers=world.headers())).json()
+    assert spend["total"] == summary["month_spend"]

@@ -4,13 +4,15 @@ import { ArrowDown, ArrowRight, ArrowUp, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
-import { BlockChart, Button, Card, CardContent, formatNumber } from "@nexus/ui";
+import { BlockChart, Button, Card, CardContent, cn, formatNumber } from "@nexus/ui";
 
 import { attentionKey, isPartnerRow } from "@/components/attention/attention-model";
 import { AttentionRow } from "@/components/attention/attention-row";
+import { BuildExtensionButton } from "@/components/attention/build-extension-button";
 import { moneyText } from "@/components/money/money-model";
 import { useLocale, useT } from "@/i18n/client";
 import type { HomePanel, PanelAttention } from "@/lib/backend/home-usage";
+import type { BuildBudget } from "@/lib/backend/money-types";
 
 import { trendDelta } from "./home-model";
 import { conversationColumns, conversationTotal, failed, monthPeriod, shareLabel } from "./panel-model";
@@ -27,7 +29,16 @@ const SERIES = ["bg-series-1", "bg-series-2", "bg-accent-mid", "bg-muted-foregro
  * su atención, con su arreglo en el sitio cuando se puede. Cada bloque dice su
  * periodo. Sin cuerpos de mensaje: solo cifras y nombres.
  */
-export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?: { current: number; previous: number | null } | null }) {
+export function PartnerPanel({
+  panel,
+  trend = null,
+  buildBudget = null,
+}: {
+  panel: HomePanel;
+  trend?: { current: number; previous: number | null } | null;
+  /** Spec 072 (3.4): el tope de construcción, para su línea aunque vaya por debajo del 80 %. */
+  buildBudget?: BuildBudget | null;
+}) {
   const t = useT();
   const locale = useLocale();
   const n = (v: number) => formatNumber(v, locale);
@@ -77,7 +88,9 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
                     {spend.shares.map((s, i) => (
                       <li key={`${s.kind}-${s.external_client_ref ?? s.line ?? i}`} className="flex min-w-0 items-center gap-2">
                         <span className={`size-2 shrink-0 rounded-sm ${SERIES[i % SERIES.length]}`} />
-                        <span className="min-w-0 flex-1 truncate">{shareLabel(t, s)}</span>
+                        <span className="min-w-0 flex-1 text-pretty break-words" title={shareLabel(t, s)}>
+                          {shareLabel(t, s)}
+                        </span>
                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{`${n(Math.round(sharePct(s.amount.amount_micros, spend.total.amount_micros)))} %`}</span>
                         <span className="shrink-0 font-medium tabular-nums">
                           {s.approx ? `${t("money.approxPrefix")} ` : ""}
@@ -90,26 +103,7 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
               ) : (
                 <p className="text-sm text-muted-foreground">{t("panel.v2.spend.none")}</p>
               )}
-              {build?.data?.spent && build.data.cap && build.data.pct != null ? (
-                <div className="mt-1 grid gap-2 border-t border-border pt-3" data-slot="panel-build" data-code={build.code}>
-                  <p className={`text-sm ${build.code === "build_cap_exhausted" ? "text-status-danger-text" : "text-status-warning-text"}`}>
-                    {t("att.panel.build", { spent: moneyText(build.data.spent), cap: moneyText(build.data.cap), pct: build.data.pct })}
-                  </p>
-                  <div
-                    className="h-2 w-full overflow-hidden rounded-full bg-muted"
-                    role="meter"
-                    aria-label={t("att.title.build")}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={Math.min(100, build.data.pct)}
-                  >
-                    <span
-                      className={`block h-full rounded-full ${build.code === "build_cap_exhausted" ? "bg-status-danger" : "bg-status-warning"}`}
-                      style={{ width: `${Math.min(100, build.data.pct)}%` }}
-                    />
-                  </div>
-                </div>
-              ) : null}
+              <BuildLine row={build} budget={buildBudget} />
             </CardContent>
           </Card>
         ) : null}
@@ -145,10 +139,19 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
               <CardContent className="grid min-w-0 content-start gap-2" data-slot="panel-balance">
                 <h2 className="text-xs text-muted-foreground">{t("money.figure.available")}</h2>
                 <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{moneyText(balance.available, "down")}</p>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                {/* Spec 072 (2.5): la barra es lo disponible, como dice la cifra de encima. */}
+                <div
+                  className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                  role="meter"
+                  aria-label={t("panel.v2.balance.meter", { amount: moneyText(balance.available, "down") })}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(sharePct(balance.available.amount_micros, balance.in_bags.amount_micros + balance.available.amount_micros))}
+                  data-slot="panel-balance-bar"
+                >
                   <span
                     className="block h-full rounded-full bg-primary"
-                    style={{ width: `${sharePct(balance.in_bags.amount_micros, balance.in_bags.amount_micros + balance.available.amount_micros)}%` }}
+                    style={{ width: `${sharePct(balance.available.amount_micros, balance.in_bags.amount_micros + balance.available.amount_micros)}%` }}
                   />
                 </div>
                 <p className="text-sm text-muted-foreground">
@@ -309,5 +312,44 @@ function TrendLine({ trend }: { trend: { current: number; previous: number | nul
       {delta.kind === "up" ? <ArrowUp aria-hidden="true" className="size-3 shrink-0" /> : delta.kind === "down" ? <ArrowDown aria-hidden="true" className="size-3 shrink-0" /> : null}
       {t(`hu.home.kpi.delta.${delta.kind}`, { pct })}
     </p>
+  );
+}
+
+/**
+ * «Construcción y pruebas» bajo las partes del gasto — spec 072 (3.4). Siempre
+ * que se pueda leer el tope: neutra por debajo del 80 % («la paga Auphere hasta
+ * el tope»); desde el 80 %, la línea de la 071 en ámbar (rojo al 100 %) con
+ * «Pedir ampliación».
+ */
+function BuildLine({ row, budget }: { row: PanelAttention | null; budget: BuildBudget | null }) {
+  const t = useT();
+  const flagged = row?.data?.spent && row.data.cap && row.data.pct != null ? row : null;
+  const spent = flagged?.data?.spent ?? budget?.spent ?? null;
+  const cap = flagged?.data?.cap ?? budget?.cap ?? null;
+  if (!spent || !cap) return null;
+  const pct = flagged?.data?.pct ?? (cap.amount_micros > 0 ? Math.round((spent.amount_micros / cap.amount_micros) * 100) : 0);
+  const tone = !flagged ? "calm" : flagged.code === "build_cap_exhausted" ? "danger" : "warn";
+  return (
+    <div className="mt-1 grid gap-2 border-t border-border pt-3" data-slot="panel-build" data-code={flagged?.code ?? "build_cap_ok"} data-tone={tone}>
+      <p className={cn("text-sm", tone === "danger" ? "text-status-danger-text" : tone === "warn" ? "text-status-warning-text" : "text-muted-foreground")}>
+        {tone === "calm"
+          ? t("att.panel.buildCalm", { spent: moneyText(spent), cap: moneyText(cap) })
+          : t("att.panel.build", { spent: moneyText(spent), cap: moneyText(cap), pct })}
+      </p>
+      <div
+        className="h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="meter"
+        aria-label={t("att.title.build")}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.min(100, pct)}
+      >
+        <span
+          className={cn("block h-full rounded-full", tone === "danger" ? "bg-status-danger" : tone === "warn" ? "bg-status-warning" : "bg-muted-foreground/40")}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+      {tone !== "calm" ? <BuildExtensionButton /> : null}
+    </div>
   );
 }

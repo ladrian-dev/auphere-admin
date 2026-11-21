@@ -57,7 +57,9 @@ describe("Consumo · como el prototipo", () => {
 
   it("el periodo de «Gasto por día» es el conmutador de vidrio y cambia la URL", async () => {
     const user = userEvent.setup();
-    wrap(<SpendFilters days={30} client="" line={null} clients={[{ ref: "flor", name: "Flor" }]} />);
+    wrap(<SpendFilters days={30} client="" clients={[{ ref: "flor", name: "Flor" }]} />);
+    // Spec 072 (4.2, D3): el periodo y el cliente; sin el desplegable de partida.
+    expect(screen.getAllByRole("combobox").map((c) => c.getAttribute("aria-label"))).toEqual(["Cliente"]);
     const period = screen.getByRole("group", { name: "Periodo" });
     expect(period).toHaveAttribute("data-slot", "segmented-control");
     expect(period.className).toMatch(/\bglass\b/);

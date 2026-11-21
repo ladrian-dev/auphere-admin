@@ -14,7 +14,7 @@ vi.mock("@/app/(console)/clients/new-client-actions", () => ({
 }));
 
 const { ClientPanelView } = await import("../client-panel");
-const { periodLabel, spendSegments } = await import("../client-v2-model");
+const { periodLabel } = await import("../client-v2-model");
 
 /**
  * Spec 047 (T067, historia 16) con el prototipo aprobado (`clientes.md` §4 y
@@ -43,7 +43,7 @@ function card(title: string): HTMLElement {
 }
 
 describe("ClientPanelView", () => {
-  it("Saldo: lo que queda, lo consumido, lo disponible y la barra contra lo asignado (escenario 1)", async () => {
+  it("Saldo: lo que queda, lo consumido, lo disponible y la barra de lo que queda (escenario 1, spec 072)", async () => {
     const { container } = show();
     // Dos columnas, 1,35 : 1.
     expect(container.querySelector("[data-slot=client-panel-grid]")?.className).toContain("minmax(0,1.35fr)");
@@ -51,18 +51,16 @@ describe("ClientPanelView", () => {
     expect(within(saldo).getByRole("button", { name: "Asignar saldo" }).querySelector("svg")).toBeTruthy();
     expect(within(saldo).getByText("Quedan")).toBeTruthy();
     expect(saldo.querySelector("[data-slot=panel-left]")?.textContent?.trim()).toMatch(/^6,00\sUSD$/);
-    // Los días de la consola se quedan.
-    expect(within(saldo).getByText("Unos 4 días al ritmo de los últimos 7 días.")).toBeTruthy();
     expect(within(saldo).getByText(/Consumido/).textContent).toMatch(/^Consumido 10,00\sUSD de 16,00\sUSD · 63 %$/);
     expect(within(saldo).getByText("37 % disponible · saldo compartido por sus agentes")).toBeTruthy();
-    // La barra apilada mide contra lo asignado: lo vacío es lo disponible.
-    const stack = within(saldo).getByRole("img", { name: /^Consumo por agente sobre el saldo asignado/ });
-    const widths = Array.from(stack.children).map((s) => (s as HTMLElement).style.width);
-    expect(widths).toEqual(["50%", "12.5%"]);
-    expect(stack.getAttribute("aria-label")).toMatch(/Citas: 8,00\sUSD, Ventas: 2,00\sUSD/);
-    expect(stack.getAttribute("aria-label")).toMatch(/Disponible: 37 %$/);
-    const legend = saldo.querySelector("[data-slot=panel-legend]")!;
-    expect(Array.from(legend.children).map((li) => li.textContent)).toEqual(["Citas", "Ventas", "Disponible"]);
+    // Spec 072 (2.1–2.4): la barra es lo que queda, con cuánto dura; sin barra apilada por agente.
+    const meter = within(saldo).getByRole("meter");
+    expect(meter.getAttribute("aria-valuenow")).toBe(String(Math.round(Number((meter.firstElementChild as HTMLElement).style.width.replace("%", "")))));
+    expect(Number((meter.firstElementChild as HTMLElement).style.width.replace("%", ""))).toBeGreaterThan(30);
+    expect(meter.getAttribute("aria-label")?.replace(/\s/g, " ")).toBe("6,00 USD · quedan de 16,00 USD. Unos 4 días a este ritmo");
+    expect(saldo.querySelector("[data-slot=bag-pace]")?.textContent).toBe("Unos 4 días a este ritmo");
+    expect(within(saldo).queryByRole("img", { name: /^Consumo por agente sobre el saldo asignado/ })).toBeNull();
+    expect(saldo.querySelector("[data-slot=panel-legend]")).toBeNull();
     // Sin la insignia de atención en la cabecera.
     expect(saldo.querySelector("[data-slot=status-badge]")).toBeNull();
     expect(await axeViolations(container)).toEqual([]);
@@ -230,9 +228,9 @@ describe("ClientPanelView", () => {
     expect(screen.getByText(/Sin saldo: las conversaciones pasan a la Bandeja/)).toBeTruthy();
   });
 
-  it("con menos de 3 días de consumo dice que aún no se puede estimar", () => {
+  it("con menos de 3 días de consumo dice qué falta para estimarlo (spec 072, 2.2)", () => {
     show(panel({ bag: bag({ days_left: null, days_estimable: false }) }));
-    expect(screen.getByText("Aún no hay datos para estimarlo.")).toBeTruthy();
+    expect(screen.getByText("Aún no hay gasto para calcular cuánto dura")).toBeTruthy();
   });
 
   it("sin saldo asignado pinta el bloque igual, con la pista vacía y el aviso rojo", async () => {
@@ -243,7 +241,8 @@ describe("ClientPanelView", () => {
     expect(saldo.querySelector("[data-slot=panel-left]")?.textContent?.trim()).toMatch(/^0,00\sUSD$/);
     expect(within(saldo).getByText(/Consumido/).textContent).toMatch(/^Consumido 0,00\sUSD de 0,00\sUSD$/);
     expect(within(saldo).getByText("Saldo compartido por sus agentes")).toBeTruthy();
-    expect(within(saldo).getByRole("img", { name: /^Consumo por agente sobre el saldo asignado/ }).children).toHaveLength(0);
+    const meter = within(saldo).getByRole("meter", { name: "Sin saldo asignado" });
+    expect((meter.firstElementChild as HTMLElement).style.width).toBe("0%");
     expect(saldo.querySelector("[data-slot=panel-legend]")).toBeNull();
     expect(within(saldo).getByText("Sin saldo asignado.").tagName).toBe("STRONG");
     expect(within(saldo).getByText(/Sus agentes pueden crearse y probarse, pero no responderán a clientes reales/)).toBeTruthy();
@@ -261,26 +260,6 @@ describe("ClientPanelView", () => {
 });
 
 describe("el modelo del Panel", () => {
-  it("los tramos de la barra reparten lo consumido según el mes y miden contra lo asignado", () => {
-    const p = panel();
-    expect(spendSegments(p.bag, p.spend_by_agent).map((s) => [s.name, s.pct])).toEqual([
-      ["Citas", 50],
-      ["Ventas", 12.5],
-    ]);
-    // Sin saldo asignado, la pista vacía; sin gasto, sin tramos.
-    expect(spendSegments({ ...p.bag, state: "unassigned", assigned: null, pct_spent: null }, p.spend_by_agent)).toEqual([]);
-    expect(spendSegments(p.bag, [{ agent_id: "x", name: "X", spent: USD(0), share_pct: 0 }])).toEqual([]);
-    // Ordenados de más a menos y nunca por encima del 100 %.
-    const over = spendSegments(bag({ pct_spent: 140 }), [
-      { agent_id: "b", name: "B", spent: USD(1), share_pct: 25 },
-      { agent_id: "a", name: "A", spent: USD(3), share_pct: 75 },
-    ]);
-    expect(over.map((s) => [s.name, s.pct])).toEqual([
-      ["A", 75],
-      ["B", 25],
-    ]);
-  });
-
   it("el periodo va del día 1 a hoy, sin pasar del fin de mes", () => {
     expect(periodLabel("2026-10-01", "2026-10-31", NOW, "es")).toBe("1–25 oct");
     expect(periodLabel("2026-10-01", "2026-10-31", new Date("2026-11-03T00:00:00Z"), "es")).toBe("1–31 oct");

@@ -11,8 +11,10 @@ import { SpendCard } from "@/components/home/spend-card";
 import { TodayDate } from "@/components/home/today-date";
 import { resolveConsoleVersion } from "@/components/shell/console-version";
 import { getT } from "@/i18n/server";
-import { backendFor, type Me } from "@/lib/backend";
+import { backendFor, callFor, type Me } from "@/lib/backend";
 import type { Home } from "@/lib/backend/home-usage";
+import { moneyApi } from "@/lib/backend/money";
+import type { BuildBudget } from "@/lib/backend/money-types";
 import { formatMoneyCompact } from "@/lib/money";
 import { LitePanel } from "@/components/lite/lite-panel";
 import {
@@ -44,7 +46,12 @@ export default async function HomePage() {
 async function PartnerHome({ principal }: { principal: PartnerPrincipal }) {
   const { t, locale } = await getT(principal.locale);
   const api = backendFor(principal);
-  const [home, me] = await Promise.all([api.home().catch((): Home | null => null), api.me().catch((): Me | null => null)]);
+  const [home, me, buildBudget] = await Promise.all([
+    api.home().catch((): Home | null => null),
+    api.me().catch((): Me | null => null),
+    // Spec 072 (3.4): la línea de construcción del Panel, también por debajo del 80 %.
+    can(principal.role, "usage:read") ? moneyApi(callFor(principal)).buildBudget().catch((): BuildBudget | null => null) : null,
+  ]);
   const readClients = can(principal.role, "clients:read");
   const writeClients = can(principal.role, "clients:write");
   const n = (v: number) => formatNumber(v, locale);
@@ -94,7 +101,7 @@ async function PartnerHome({ principal }: { principal: PartnerPrincipal }) {
           // Sin botón: «Nuevo cliente» ya está en la cabecera (un primario por vista).
           <EmptyState title={t("clients.empty.title")} description={t("clients.empty.body")} readonly />
         ) : (
-          <PartnerPanel panel={home.panel} trend={trend ? { current: trend.current, previous: trend.previous } : null} />
+          <PartnerPanel panel={home.panel} trend={trend ? { current: trend.current, previous: trend.previous } : null} buildBudget={buildBudget} />
         )}
       </>
     );

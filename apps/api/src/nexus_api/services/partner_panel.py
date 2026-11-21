@@ -140,7 +140,8 @@ async def build_panel(
             tenant_ids=[c.tenant_id for c in clients],
             since=since,
             until=now,
-            with_outside=True,
+            with_outside=False,
+            lines=("conversations", "client_tests"),
         )
         per_client: dict[uuid.UUID, int] = defaultdict(int)
         for (_d, line, tid), amount in month.cells.items():
@@ -156,14 +157,11 @@ async def build_panel(
         rest = sum(amount for _tid, amount in ranked[TOP_CLIENTS:])
         if rest:
             panel.spend.append(SpendShare("rest", None, None, "conversations", rest))
-        for line in ("companion", "build", "meta"):
-            amount = month.total(lines=(line,))
-            if amount:
-                panel.spend.append(
-                    SpendShare("line", None, None, line, amount, line in month.approx_lines)
-                )
-        # El total es lo que paga el partner, como «Gasto del mes» de Consumo.
-        panel.spend_total = month.total(lines=("conversations", "client_tests", "companion"))
+        # Spec 072 (3.1, 3.2, D2): las partes son solo las bolsas de sus clientes y
+        # suman el total, el mismo «Gasto del mes» de Consumo. Construcción (la paga
+        # Auphere), Meta (el negocio) y Companion (la cuenta) no entran: Construcción
+        # tiene su línea propia y Companion vive en el detalle de Consumo.
+        panel.spend_total = sum(per_client.values())
     except Exception as exc:
         log.warning("partner_panel.money_failed", error=type(exc).__name__)
         panel.errors.append("money")

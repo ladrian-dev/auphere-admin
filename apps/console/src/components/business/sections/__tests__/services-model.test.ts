@@ -18,7 +18,7 @@ describe("priceText", () => {
     expect(priceText({ kind: "amount" }, "CLP", "es", WORDS)).toBe("Sin precio");
     expect(priceText({ kind: "amount", amount_minor: 15000 }, "CLP", "es", WORDS).replace(/\s/g, " ")).toBe("15.000 CLP");
     expect(priceText({ kind: "amount", amount_minor: 1550 }, "EUR", "es", WORDS).replace(/\s/g, " ")).toBe("15,50 €");
-    expect(priceText({ kind: "amount", amount_minor: 1000 }, "USD", "es", WORDS).replace(/\s/g, " ")).toBe("10,00 US$");
+    expect(priceText({ kind: "amount", amount_minor: 1000 }, "USD", "es", WORDS).replace(/\s/g, " ")).toBe("10,00 USD");
     expect(priceText({ kind: "amount", amount_minor: 1550 }, "EUR", "en", WORDS)).toBe("€15.50");
   });
 });

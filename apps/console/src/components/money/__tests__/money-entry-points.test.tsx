@@ -44,7 +44,6 @@ const { SeedRequested, resetRequested } = await import("../request-balance");
 const { UsageClientsTable } = await import("../usage-clients-table");
 const { AgentCapForm } = await import("../agent-cap");
 const { MigrationWizard } = await import("../migration-wizard");
-const { UsageLines } = await import("../usage-lines");
 const { ClientMenu } = await import("@/components/clients/v2/client-menu");
 
 /**
@@ -214,36 +213,6 @@ describe("el tope del agente (44.1)", () => {
     wrap(<AgentCapForm refId="r" agentId="00000000-0000-4000-8000-0000000000a1" agentName="Citas" cap={M(10, "EUR")} currency="EUR" canWrite={false} />);
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(plain(screen.getByText(/Tope de hoy/).textContent)).toBe("Tope de hoy: 10,00 € al mes.");
-  });
-});
-
-describe("las partidas (46.4, 46.5)", () => {
-  it("cada una con quién paga, y la construcción con su tope en dinero y «Pedir ampliación»", async () => {
-    const user = userEvent.setup();
-    const requestMore = vi.fn(async () => ok({ status: "requested" }));
-    const { container } = wrap(
-      <UsageLines
-        lines={[
-          { line: "conversations", amount: M(30), payer: "client_bag", approx: false },
-          { line: "meta", amount: M(4), payer: "business_meta", approx: true },
-          { line: "build", amount: M(42), payer: "auphere", approx: false, cap: M(50), state: "warning" },
-          { line: "companion", amount: M(2), payer: "account", approx: false },
-        ]}
-        build={{ cap: M(50), spent: M(42), remaining: M(8), state: "warning", paid_by: "auphere" }}
-        actions={{ requestMore }}
-      />,
-    );
-    const items = screen.getAllByRole("listitem");
-    expect(items.map((i) => i.querySelector("h3")?.textContent)).toEqual(["Conversaciones", "Mensajes de Meta", "Construcción y pruebas", "Companion y teammates"]);
-    expect(plain(items[1]!.textContent)).toContain("aprox. 4,00 €");
-    expect(items[1]!.textContent).toMatch(/La paga el negocio, a Meta/);
-    expect(plain(items[2]!.textContent)).toContain("42,00 € de 50,00 € · 84 %");
-    expect(items[2]!.textContent).toMatch(/más del 80 %/);
-    expect(container.textContent).not.toMatch(/tokens?/i);
-    expect(await axeViolations(container)).toEqual([]);
-    await user.click(within(items[2]!).getByRole("button", { name: "Pedir ampliación" }));
-    await waitFor(() => expect(requestMore).toHaveBeenCalled());
-    expect(within(items[2]!).getAllByText("Pedido a Auphere. Te avisamos cuando suba el tope.").length).toBeGreaterThan(0);
   });
 });
 

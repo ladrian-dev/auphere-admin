@@ -34,9 +34,9 @@ describe("Saldo por cliente (spec 028)", () => {
   it("each row says cap, spent this month and what is left, in dollars, with no field to edit", () => {
     pintar();
     const flor = screen.getByRole("link", { name: "Flor y Encanto" }).closest("tr")!;
-    expect(plain(flor.textContent)).toContain("40,00 US$");
-    expect(plain(flor.textContent)).toContain("31,20 US$");
-    expect(plain(flor.textContent)).toContain("8,80 US$");
+    expect(plain(flor.textContent)).toContain("40,00 USD");
+    expect(plain(flor.textContent)).toContain("31,20 USD");
+    expect(plain(flor.textContent)).toContain("8,80 USD");
     expect(screen.queryByRole("textbox")).toBeNull();
     const lola = screen.getByRole("link", { name: "Lola Mento" }).closest("tr")!;
     expect(within(lola).getByText("Sin saldo")).toBeTruthy();
@@ -61,11 +61,11 @@ describe("Saldo por cliente (spec 028)", () => {
     await user.click(screen.getByRole("button", { name: "Opciones de Flor y Encanto" }));
     await user.click(await screen.findByRole("menuitem", { name: "Mover saldo a otro cliente" }));
     expect(await screen.findByText("Mover saldo desde Flor y Encanto")).toBeTruthy();
-    expect(plain(screen.getByText(/Puedes mover hasta/).textContent)).toBe("Puedes mover hasta 40,00 US$.");
+    expect(plain(screen.getByText(/Puedes mover hasta/).textContent)).toBe("Puedes mover hasta 40,00 USD.");
     await user.type(screen.getByLabelText("Importe a mover"), "50");
     await user.click(screen.getByRole("button", { name: "Mover saldo" }));
     expect(move).not.toHaveBeenCalled();
-    expect(plain(screen.getByRole("alert").textContent)).toContain("solo tiene 40,00 US$ de tope");
+    expect(plain(screen.getByRole("alert").textContent)).toContain("solo tiene 40,00 USD de tope");
     await user.clear(screen.getByLabelText("Importe a mover"));
     await user.type(screen.getByLabelText("Importe a mover"), "10");
     await user.click(screen.getByRole("button", { name: "Mover saldo" }));

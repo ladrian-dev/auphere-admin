@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Button, cn } from "@nexus/ui";
 
 import type { Locale, MessageKey } from "@/i18n/messages";
+import { amountParts, formatAmount } from "@/lib/amount";
 import type { HomeSpend } from "@/lib/backend/home-usage";
 
 import { spendShares } from "./home-model";
@@ -14,12 +15,12 @@ type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 const SLICE = ["bg-primary", "bg-primary-deep", "bg-accent-mid", "bg-muted-foreground/40", "bg-status-info"] as const;
 
 function money(cents: number, currency: string, locale: Locale): string {
-  return new Intl.NumberFormat(locale, { style: "currency", currency }).format(cents / 100);
+  return formatAmount({ amount_minor: cents, currency }, locale);
 }
 
-/** «12,40 US$» with the cents smaller, as a person reads an amount. */
+/** «12,40 USD» with the cents smaller, as a person reads an amount (spec 072, D1). */
 function BigAmount({ cents, currency, locale }: { cents: number; currency: string; locale: Locale }) {
-  const parts = new Intl.NumberFormat(locale, { style: "currency", currency }).formatToParts(cents / 100);
+  const parts = amountParts({ amount_minor: cents, currency }, locale);
   return (
     <p className="text-3xl font-semibold tracking-tight tabular-nums" aria-label={money(cents, currency, locale)}>
       {parts.map((p, i) => (
