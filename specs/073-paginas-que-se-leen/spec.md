@@ -212,7 +212,7 @@ Si el coste no se puede calcular, el botón no inventa una cifra: dice lo que ya
 - arriba de Negocio, una barra dice cuánto queda: «0 de 13 datos revisados»;
 - el índice de secciones enseña cuántos faltan en cada una, no un globo;
 - «Es correcto» por sección, en la cabecera de cada sección, con la API de hoy (`POST /sections/{section}/confirm`). Dato a dato no entra (D1);
-- «Marcar todo como correcto», con Deshacer;
+- «Marcar todo como correcto», que pregunta antes. **Cambio en el plan (2026-11-21):** iba con Deshacer, pero la API no sabe «desconfirmar» (confirmar no deja historial) y D1 pide no tocar la API;
 - el botón sale siempre que haya algo leído sin revisar y la persona pueda editar Negocio. Hoy, en staging, no salía; el plan averigua por qué.
 
 4.6 **Etiquetas que dicen qué son**: «Zona horaria: Europe/Madrid» y «Moneda de los precios: EUR». Lo leído en inglés dice «Leído en inglés» al lado.
