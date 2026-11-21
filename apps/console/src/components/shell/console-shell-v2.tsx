@@ -18,6 +18,7 @@ import { navV2 } from "./nav-v2";
 import { NotificationsBellMenu } from "./notifications-bell";
 import { ProfileMenu } from "./profile-menu";
 import { ShellBreadcrumbs } from "./shell-breadcrumbs";
+import { SlidingLens } from "./sliding-lens";
 import { ThemeSwitch } from "./theme-switch";
 
 type Props = {
@@ -97,7 +98,8 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
               title={t("shell.beta.hint")}
               aria-hidden={collapsed || undefined}
               className={cn(
-                "shrink-0 rounded-full bg-status-warning-bg px-2 text-xs leading-5 font-semibold text-status-warning-text ring-1 ring-status-warning-border transition-opacity duration-(--duration-state) motion-reduce:transition-none",
+                // Spec 069: neutro. El ámbar es de los avisos y esto no avisa de nada.
+                "shrink-0 rounded-full bg-muted px-2 text-xs leading-5 font-medium text-muted-foreground ring-1 ring-border transition-opacity duration-(--duration-state) motion-reduce:transition-none",
                 collapsed && "opacity-0",
               )}
             >
@@ -211,9 +213,13 @@ function NavGroup({ label, collapsed, children }: { label: string; collapsed: bo
       >
         {label}
       </span>
-      <ul aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
-        {children}
-      </ul>
+      {/* Spec 069: la lente de vidrio va bajo el activo y viaja con él. */}
+      <div className="relative min-w-0">
+        <SlidingLens selector='[aria-current="page"]' variant="sidebar" />
+        <ul aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
+          {children}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -237,9 +243,10 @@ function NavEntry({
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        // Como el prototipo: 15 px y tinta plena; el gris al pasar y el verde
-        // suave solo para donde estás.
-        "flex min-w-0 items-center gap-3 overflow-hidden rounded-md text-[15px] whitespace-nowrap text-sidebar-foreground transition-colors duration-(--duration-hover) hover:bg-muted",
+        // Spec 069: 14 px (la escala compacta) y tinta plena; el gris al pasar.
+        // Donde estás lo marca la lente de vidrio; el verde suave queda debajo
+        // solo hasta que la lente se coloca.
+        "flex min-w-0 items-center gap-3 overflow-hidden rounded-md text-[14px] whitespace-nowrap text-sidebar-foreground transition-colors duration-(--duration-hover) hover:bg-muted",
         active && "bg-sidebar-accent font-medium text-sidebar-accent-foreground hover:bg-sidebar-accent",
         variant === "sidebar" ? "h-9 px-3" : "h-9 gap-2 px-3",
       )}

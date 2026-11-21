@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button, Callout, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@nexus/ui";
 
+import { SlidingLens } from "@/components/shell/sliding-lens";
 import { agentAgendaAction } from "@/app/(console)/clients/[ref]/agents/agenda-actions";
 import { builderDraftAction, decideProposalAction, saveAgentSpecAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
 import { agentHeaderAction } from "@/app/(console)/clients/[ref]/agents/life-actions";
@@ -770,6 +771,8 @@ export function AgentBuilder({
 
       <Tabs value={shown} onValueChange={(value) => setTab(value as AgentTab)} className="min-w-0 flex-col gap-6">
         <TabsList floating aria-label={t("builder.screen.sections")}>
+          {/* Spec 069: la lente viaja a la pestaña activa. */}
+          <SlidingLens selector="[data-active]" variant="tabs" />
           {tabs.map((x) => (
             <TabsTrigger key={x.id} value={x.id}>
               {x.label}
