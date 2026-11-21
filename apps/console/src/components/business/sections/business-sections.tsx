@@ -170,18 +170,22 @@ export function BusinessSectionsView({
   // Spec 073 (4.5, D1): lo leído que queda por revisar. Se revisa por sección, como
   // la API; lo que ya se confirmó aquí (con «Es correcto» o «Marcar todo») cuenta
   // como revisado sin volver a leer la ficha.
-  const progress = React.useMemo(() => {
+  // Sin memo: depende del estado de cada sección (`stateOf`), y la cuenta es pequeña.
+  const progress = (() => {
     const base = reviewProgress(record?.provenance ?? {});
     let reviewed = base.reviewed;
     const pending = { ...base.pending };
     for (const [section, n] of Object.entries(pending) as [Key, number][]) {
-      if (reported[section] === "complete") {
+      // Revisión de staging: lo leído en una sección que ya no está «Leída» (completa,
+      // pendiente…) no se puede confirmar desde aquí; cuenta como revisado, o la
+      // barra no llegaría nunca al final.
+      if (reported[section] === "complete" || stateOf(section) !== "read_pending") {
         reviewed += n;
         delete pending[section];
       }
     }
     return { pending, reviewed, total: base.total };
-  }, [record, reported]);
+  })();
   // Spec 073 (4.6): en qué idioma se leyó cada sección, si no era el de la consola.
   const readIn = React.useMemo(() => {
     const out: Record<string, string> = {};

@@ -135,7 +135,7 @@ describe("AuditTable · lo que gana con la spec 047", () => {
 describe("AuditTable · una página que se lee (spec 073)", () => {
   it("cabe sin desplazarse de lado: tabla fija, «Qué pasó» sin ancho mínimo y lo largo cortado con su texto (1.1)", () => {
     const { container } = table([entry()]);
-    expect(container.querySelector("table")?.className).toMatch(/\btable-fixed\b/);
+    expect(container.querySelector("table")?.className).toMatch(/(^|\s)xl:table-fixed(\s|$)/);
     expect(container.innerHTML).not.toMatch(/min-w-80/);
     expect(screen.getByRole("link", { name: "Flor y Encanto" })).toHaveAttribute("title", "Flor y Encanto");
   });
@@ -163,5 +163,19 @@ describe("AuditTable · una página que se lee (spec 073)", () => {
     expect(roles).toEqual(["tú · partner", "partner", "cliente · Flor y Encanto", "plataforma"]);
     // La frase no repite a la persona: su nombre ya va en su columna.
     expect(screen.getByText("cambió el horario")).toBeVisible();
+  });
+
+  it("entre 768 y 1279 px, el cliente y la categoría van bajo la frase, no en su columna (revisión de staging)", () => {
+    const { container } = table([entry()]);
+    const heads = [...container.querySelectorAll("thead th")];
+    for (const name of ["Cliente", "Categoría"]) {
+      const th = heads.find((h) => h.textContent === name)!;
+      expect(th.className).toMatch(/(^|\s)hidden(\s|$)/);
+      expect(th.className).toMatch(/xl:table-cell/);
+      expect(th.className).not.toMatch(/(^|\s)md:table-cell/);
+    }
+    const folded = container.querySelector("tbody [data-slot=audit-folded]")!;
+    expect(folded.className).toMatch(/xl:hidden/);
+    expect(folded.textContent).toBe("Flor y Encanto · Dinero");
   });
 });

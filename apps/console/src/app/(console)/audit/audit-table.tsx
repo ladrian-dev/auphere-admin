@@ -81,14 +81,18 @@ export function AuditTable({ first, query, people, categories, me }: Props) {
     <div className="overflow-hidden rounded-lg bg-card ring-1 ring-foreground/10" data-slot="audit-card">
       {/* Spec 073 (1.1): tabla fija. «Qué pasó» toma lo que queda y lo demás se corta
           con su texto entero en `title`: a 1280 px no se desplaza de lado. */}
-      <Table aria-label={t("audit.title")} className="table-fixed">
+      {/* Fija solo desde 1280 px, cuando están las seis columnas: por debajo, las filas de
+          día (colSpan 6) crearían columnas fantasma que le quitan el ancho a «Qué pasó». */}
+      <Table aria-label={t("audit.title")} className="xl:table-fixed">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <Head className="w-16 md:w-20">{t("hu.audit.col.when")}</Head>
             <Head className="hidden w-44 md:table-cell">{t("hu.audit.col.who")}</Head>
             <Head>{t("hu.audit.col.what")}</Head>
-            <Head className="hidden w-36 md:table-cell">{t("hu.audit.col.client")}</Head>
-            <Head className="hidden w-32 md:table-cell">{t("hu.audit.col.category")}</Head>
+            {/* Revisión de staging (spec 073): por debajo de 1280 px, cliente y categoría
+                van bajo la frase; en su columna dejaban «Qué pasó» en 78 px a 1024. */}
+            <Head className="hidden w-36 xl:table-cell">{t("hu.audit.col.client")}</Head>
+            <Head className="hidden w-32 xl:table-cell">{t("hu.audit.col.category")}</Head>
             <Head className="w-12 text-right">
               <span className="sr-only">{t("hu.audit.col.actions")}</span>
             </Head>
@@ -228,10 +232,12 @@ function EntryCells({ item, when, people, categories, me, sub = false }: Cells &
           </StatusBadge>
         ) : null}
         {item.client_name || category ? (
-          <span className="mt-1 block text-xs text-muted-foreground md:hidden">{[item.client_name, category].filter(Boolean).join(" · ")}</span>
+          <span className="mt-1 block text-xs text-muted-foreground xl:hidden" data-slot="audit-folded">
+            {[item.client_name, category].filter(Boolean).join(" · ")}
+          </span>
         ) : null}
       </TableCell>
-      <TableCell className="hidden px-4 py-3 md:table-cell">
+      <TableCell className="hidden px-4 py-3 xl:table-cell">
         {item.external_client_ref && item.client_name ? (
           <Link
             href={`/clients/${encodeURIComponent(item.external_client_ref)}`}
@@ -244,7 +250,7 @@ function EntryCells({ item, when, people, categories, me, sub = false }: Cells &
           <span className="text-muted-foreground">—</span>
         )}
       </TableCell>
-      <TableCell className="hidden px-4 py-3 md:table-cell">
+      <TableCell className="hidden px-4 py-3 xl:table-cell">
         <Category item={item} label={category} />
       </TableCell>
     </>
