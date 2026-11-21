@@ -1,6 +1,6 @@
 # Especificación: Dinero que cuadra
 
-**Rama**: `072-dinero-que-cuadra` · **Creada**: 2026-11-21 · **Estado**: Borrador, pendiente de las decisiones del owner (P1–P4) y de la revisión de Luis
+**Rama**: `072-dinero-que-cuadra` · **Creada**: 2026-11-21 · **Estado**: Borrador, decisiones del owner cerradas el 2026-11-21 (D1–D4); pendiente de la revisión de Luis
 
 **Entrada**: el owner pidió escribir la spec del lote 4 del roadmap de la consola (`[[nexus/UX-CONSOLA-PARTNERS-2026-11-20]]`) mientras avanza el lote 3: «Escribe la spec 072 del lote 4 mientra siguen el lote 3 avanza». El lote dice:
 - Consumo con el gráfico primero;
@@ -80,13 +80,14 @@ Según el recorrido del 2026-11-20:
 
 **Cada cifra dice qué cuenta, de cuándo es y quién la paga. Cada barra se llena con lo que dice su texto.**
 
-- **Un solo formato de dinero** para toda la consola, con el código «USD» y nunca «US$» (P1).
+- **Un solo formato de dinero** para toda la consola, con el código «USD» y nunca «US$» (D1).
 - **Barras con lo que queda**:
   - la barra de una bolsa se llena con lo que queda;
   - su texto dice cuánto queda y cuántos días dura a este ritmo;
   - su ámbar sale de la regla de la 071, no de un umbral propio.
-- **El gasto del mes cuenta lo que paga el partner**:
-  - las partes son sus clientes (y lo de su cuenta, P2), suman 100 % y llevan los nombres enteros;
+- **El gasto del mes cuenta lo que gastan los clientes del partner**:
+  - las partes son sus clientes, suman 100 % y llevan los nombres enteros;
+  - Companion y teammates solo se ven en el detalle de Consumo (D2);
   - Construcción sale de las partes y queda siempre en una línea propia, «la paga Auphere hasta el tope»;
   - Meta tampoco entra en las partes.
 - **Consumo, de arriba abajo**:
@@ -111,7 +112,7 @@ Según el recorrido del 2026-11-20:
 - `lib/amount.ts` y `@nexus/ui` `formatMoney` / `<Money>` dan el mismo texto para el mismo importe;
 - una de las dos delega en la otra.
 
-1.2 El dólar se escribe con su código, **«USD»**, nunca «US$» ni «$». El euro sigue con «€». Cómo queda en inglés, según P1.
+1.2 El dólar se escribe con su código, **«USD»**, nunca «US$» ni «$». El euro sigue con «€». En español, «10,00 USD»; en inglés, «USD 10.00», el formato de Intl con código (D1).
 
 1.3 Las monedas sin símbolo propio (CLP, COP…) no cambian: siguen con su código.
 
@@ -145,13 +146,12 @@ El ámbar va solo en la barra, el icono y el texto, nunca de relleno de fila (re
 
 ### 3. El gasto del mes del Panel
 
-3.1 `HomeSpend.shares` (bloque `panel` de `/console/home`) solo lleva lo que paga el partner:
-- las bolsas de sus clientes;
-- y, según P2, lo de su cuenta (Companion y teammates).
+3.1 `HomeSpend.shares` (bloque `panel` de `/console/home`) solo lleva **las bolsas de los clientes** del partner. No entran en las partes:
+- `build`, que paga Auphere;
+- `meta`, que paga el negocio a Meta;
+- `companion` (Companion y teammates), que solo se ve en el detalle de Consumo (D2).
 
-Ni `build` ni `meta` entran en las partes.
-
-3.2 Las partes suman el total y sus porcentajes suman 100 %. Un test lo comprueba con los datos de staging del estudio: 4,21 USD y una sola parte.
+3.2 «Gasto del mes» es la suma de esas partes, y sus porcentajes suman 100 %. Un test lo comprueba con los datos de staging del estudio: 4,21 USD y una sola parte.
 
 3.3 Los nombres de cliente salen enteros:
 - pasan de línea si hace falta;
@@ -176,20 +176,20 @@ Ni `build` ni `meta` entran en las partes.
 4.2 **«Gasto por día»**:
 - el periodo, 7, 30 o 90 días, en la cápsula de vidrio (`SegmentedControl`, ya existe);
 - el filtro de cliente al lado;
-- la partida, según P3.
+- sin el desplegable de partida (D3): lo que quede por partida se ve en el detalle plegado.
 
 Los filtros siguen siendo la URL. El título dice su ventana: «Gasto por día · últimos 30 días».
 
 4.3 **Las cuatro cifras**, en una fila en escritorio y dos por fila en el teléfono:
 - **Saldo disponible**: lo que se puede asignar;
 - **En bolsas de clientes**: su nota dice cuántos clientes tienen bolsa, no lo disponible otra vez;
-- **Gasto del mes**: lo que paga el partner, con su periodo y la proyección al ritmo de 7 días, como hoy;
+- **Gasto del mes**: lo que gastan las bolsas de sus clientes (3.1), con su periodo y la proyección al ritmo de 7 días, como hoy;
 - **Mensajes de Meta**: con la marca de Meta y la cifra sin «≈». Su nota dice que es una estimación que el negocio paga a Meta, aparte del saldo.
 
 4.4 **Las tarjetas de partidas desaparecen** (`usage-lines.tsx`):
-- el tope de construcción vive en la línea del Panel (3.4) y en el aviso de Consumo (071);
+- el tope de construcción vive en la línea del Panel (3.4) y, desde el 80 %, en el aviso de Consumo de la 071. Por debajo del 80 % no sale en Consumo (D4);
 - Meta vive en su cifra (4.3);
-- Companion, según P2.
+- Companion y teammates viven en el detalle plegado, con su importe y «la paga tu cuenta» (D2).
 
 Antes de borrar `UsageLines`, «Pedir ampliación» (`requestBuildExtensionAction`) tiene que seguir disponible desde la línea del Panel y desde el aviso.
 
@@ -241,24 +241,12 @@ Ninguna cifra sale repetida con otro nombre.
 
 7.3 Se comprueba en staging, contra el recorrido del estudio, antes de pasar al lote 5.
 
-## Preguntas para el owner
+## Decisiones (owner, 2026-11-21)
 
-- **P1 · Cómo se escribe el dólar en inglés.** En español es «10,00 USD». En inglés hay dos opciones:
-  - «USD 10.00», el formato de Intl con código;
-  - «10.00 USD», que se lee igual que en español.
-
-  **Propuesta:** «USD 10.00». Es lo que da el idioma y no hay que forzarlo.
-
-  Esta decisión cambia la D9 de la 056, que había elegido «US$» con Intl.
-- **P2 · Companion y teammates en el gasto del mes.** Lo paga la cuenta del partner, así que es dinero suyo.
-  - **Propuesta:** que entre como una parte más, «Tu cuenta (Companion)», para que el gasto del mes sea todo lo que sale de su dinero.
-  - La otra opción es dejarlo solo en el detalle de Consumo.
-- **P3 · El filtro de partida en «Gasto por día».** La demo aprobada solo lleva el periodo y el cliente.
-  - **Propuesta:** quitar el desplegable de partida. Con Meta y Construcción fuera del gasto, la partida casi siempre es «Conversaciones».
-  - Lo que quede por partida se ve en el detalle plegado.
-- **P4 · Construcción por debajo del 80 % en Consumo.**
-  - **Propuesta:** solo en la línea del Panel (3.4). En Consumo aparece cuando hay aviso, como en la demo.
-  - La otra opción es poner también una línea neutra bajo las cuatro cifras.
+- **D1 · El dólar**: «10,00 USD» en español y «USD 10.00» en inglés, el formato de Intl con código. Sustituye a la D9 de la spec 056, que escribía «US$».
+- **D2 · Companion y teammates**: no entran en el gasto del mes del Panel ni en sus partes. Solo se ven en el detalle de Consumo. Se descartó ponerlos como una parte más, «Tu cuenta (Companion)».
+- **D3 · El filtro de partida**: se quita de «Gasto por día», que se queda con el periodo y el cliente, como en la demo aprobada.
+- **D4 · Construcción por debajo del 80 %**: solo en la línea del Panel. En Consumo aparece cuando hay aviso, desde el 80 %. Se descartó una línea neutra bajo las cuatro cifras.
 
 ## Fuera de alcance
 
