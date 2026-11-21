@@ -76,3 +76,78 @@ body {
     scale: none;
   }
 }
+
+/* ── Spec 069: la lente de vidrio que se desliza al activo ────────────────
+   El componente es `components/shell/sliding-lens.tsx`. Mientras no está
+   colocada, el activo conserva su fondo; cuando el contenedor lleva
+   `data-lens-ready`, el fondo lo pone la lente y el activo se queda limpio. */
+[data-slot="lens"] {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.32s var(--ease-enter),
+    width 0.32s var(--ease-enter),
+    height 0.32s var(--ease-enter),
+    opacity 0.2s ease;
+}
+[data-lens-ready] {
+  position: relative;
+}
+[data-lens-ready] > :not([data-slot="lens"]),
+[data-lens-ready] > * > :not([data-slot="lens"]) {
+  position: relative;
+  z-index: 1;
+}
+[data-lens-ready] [aria-current="page"],
+[data-lens-ready] [data-active] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* En las pestañas: la misma pastilla que el activo tenía (la tarjeta, con su sombra). */
+[data-slot="lens"][data-variant="tabs"] {
+  border-radius: 999px;
+  background: var(--tab-on);
+  box-shadow:
+    0 1px 2px oklch(0.161 0.033 115.3 / 0.1),
+    0 4px 12px -4px oklch(0.161 0.033 115.3 / 0.16);
+}
+
+/* En el lateral: vidrio sobre el hueso (o la tinta), sin trazo lateral. */
+[data-slot="lens"][data-variant="sidebar"] {
+  border-radius: 8px;
+  background: oklch(1 0 0 / 0.72);
+  border: 0.5px solid oklch(1 0 0 / 0.95);
+  box-shadow:
+    0 1px 2px oklch(0.161 0.033 115.3 / 0.08),
+    0 4px 14px -6px oklch(0.161 0.033 115.3 / 0.18),
+    inset 0 1px 0 oklch(1 0 0 / 0.9);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  backdrop-filter: blur(12px) saturate(180%);
+}
+[data-theme="dark"] [data-slot="lens"][data-variant="sidebar"] {
+  background: oklch(0.96 0.01 182 / 0.1);
+  border-color: oklch(0.96 0.01 182 / 0.14);
+  box-shadow:
+    0 1px 2px oklch(0 0 0 / 0.3),
+    inset 0 1px 0 oklch(1 0 0 / 0.12);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-slot="lens"] {
+    transition: opacity 0.2s ease;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  [data-slot="lens"][data-variant="sidebar"] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: var(--card);
+  }
+}

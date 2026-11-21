@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { StatusBadge, buttonVariants, formatDate, tabsListVariants } from "@nexus/ui";
 
 import { CrumbName } from "@/components/shell/crumb-names";
+import { SlidingLens } from "@/components/shell/sliding-lens";
 import { clientHref, type ClientTab } from "@/components/shell/routes-v2";
 import { ShellBackButton } from "@/components/shell/shell-back-button";
 import { useLocale, useT } from "@/i18n/client";
@@ -85,6 +86,10 @@ export function ClientHeaderV2({
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <nav aria-label={t("clients.v2.tabs")} className="min-w-0">
           <ul className={tabsListVariants({ floating: true })}>
+            {/* Spec 069: la lente viaja a la pestaña activa. */}
+            <li role="none" className="contents">
+              <SlidingLens selector='[aria-current="page"]' variant="tabs" />
+            </li>
             {tabs.map((tab) => (
               <li key={tab} className="shrink-0">
                 <Link
