@@ -76,7 +76,7 @@ export function ProfileMenu({ user, role, partnerName, account = [], variant, co
             <span className="truncate text-xs text-muted-foreground">{t(roleKey(role))}</span>
           </span>
         ) : null}
-        {/* Spec 069: un solo chevron que dice hacia dónde se abre. */}
+        {/* Spec 070: un solo chevron que dice hacia dónde se abre. */}
         {variant === "full" && side === "top" ? (
           <ChevronUp
             aria-hidden="true"

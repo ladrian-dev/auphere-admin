@@ -771,7 +771,7 @@ export function AgentBuilder({
 
       <Tabs value={shown} onValueChange={(value) => setTab(value as AgentTab)} className="min-w-0 flex-col gap-6">
         <TabsList floating aria-label={t("builder.screen.sections")}>
-          {/* Spec 069: la lente viaja a la pestaña activa. */}
+          {/* Spec 070: la lente viaja a la pestaña activa. */}
           <SlidingLens selector="[data-active]" variant="tabs" />
           {tabs.map((x) => (
             <TabsTrigger key={x.id} value={x.id}>

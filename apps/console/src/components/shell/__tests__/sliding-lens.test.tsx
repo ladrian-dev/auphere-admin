@@ -31,7 +31,7 @@ function Tabs({ active }: { active: number }) {
 
 afterEach(() => vi.restoreAllMocks());
 
-describe("SlidingLens (spec 069)", () => {
+describe("SlidingLens (spec 070)", () => {
   it("se coloca bajo el activo, contra la lista aunque esté en un `li` sin caja, y lo marca listo", () => {
     fakeRects();
     const { getByTestId, container } = render(<Tabs active={1} />);

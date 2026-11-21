@@ -4,9 +4,10 @@ import type { PartnerModule } from "@/lib/principal-access";
 import { navForPartner, type NavItem } from "./nav";
 
 /**
- * Spec 047 (R47.1): el menú de la consola nueva. Sin etiquetas de grupo:
- * arriba lo de operar (Panel, Clientes, Consumo, Auditoría, Guía del partner y
- * Teammate) y abajo lo de la cuenta (Equipo, Facturación y API).
+ * Spec 047 (R47.1): el menú de la consola nueva. `top` es lo de operar (Panel,
+ * Clientes, Consumo, Auditoría, Guía del partner y Teammate), que va en el
+ * lateral bajo «Operar»; `bottom` es lo de la cuenta (Equipo, Facturación y
+ * API), que va en el menú del perfil (Andrés, 2026-10-28).
  *
  * Las entradas son las de `NAV`, con sus permisos y sus módulos: este archivo
  * solo las reparte. `nav.ts` no cambia, porque la app de escritorio lo lee en

@@ -3,7 +3,7 @@
 import * as React from "react";
 
 /**
- * La lente de vidrio que se desliza al elemento activo — spec 069.
+ * La lente de vidrio que se desliza al elemento activo — spec 070.
  *
  * Va dentro del contenedor de una navegación (el lateral, las pestañas de un
  * cliente, las de un agente) y se coloca debajo del elemento que cumple
