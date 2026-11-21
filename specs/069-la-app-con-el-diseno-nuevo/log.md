@@ -4,7 +4,7 @@ Luis dejó trabajar toda la noche sin preguntas y lo revisa por la mañana. Aqu�
 
 ## Para revisar primero
 
-- **iOS se vio la mañana del 2026-11-21** en el simulador iPhone 13 (iOS 26.0, Xcode 26.0.1), con el negocio de ejemplo. Lo que salió está en «iOS en el simulador (mañana del 2026-11-21)», más abajo. Lo más importante: **con el build hecho aquí (Xcode 26.0.1), el código de `develop` se cae al arrancar en iOS** al registrar las categorías de los avisos, por un fallo de Expo sin arreglo publicado. La 069 lo evita al arrancar. Falta saber si pasa con un build de EAS (T061).
+- **iOS se vio la mañana del 2026-11-21** en el simulador iPhone 13 (iOS 26.0, Xcode 26.0.1), con el negocio de ejemplo. Lo que salió está en «iOS en el simulador (mañana del 2026-11-21)», más abajo. Lo más importante: **con el build hecho aquí (Xcode 26.0.1), el código de `develop` se cae al arrancar en iOS** al registrar las categorías de los avisos, por un fallo de Expo sin arreglo publicado. **Con el build de EAS (Xcode 27.1) no se cae**: 0 de 21 arranques, la tarde del mismo día. No es un P0.
 - **Android sí se verificó** en el emulador Pixel 9, con datos de ejemplo.
 - **Dónde la app se aparta ahora del diseño, por accesibilidad** (revisión de calidad; capturas `evidence/android-claro-reservas-bordes.png` y `android-oscuro-reservas-bordes.png`):
   - los bordes de chips, horas, huecos y bloques son más marcados (tinta al 50 %, 3:1);
@@ -280,19 +280,25 @@ Con texto grande, las tarjetas de Inicio pasan a una columna y «Conversaciones�
   - el mismo código corrió en este simulador en las specs 042 y 044, con builds de EAS (Xcode 27), sin que conste una caída;
   - los tres informes del issue de Expo son de Xcode 26.0.1.
 - El arreglo va en su propio commit, el primero del guion, para poder llevarlo a `develop` solo. Test: `push`, «categories one at a time».
-  - Si T061 confirma la caída con un build de EAS, es un P0: se lleva ya, con la spec retroactiva en 48 h (`docs/spec-driven-development.md`).
-  - Si no, va con el resto.
+  - Con EAS no se reprodujo (abajo), así que no es un P0: entra con el resto de la 069. Luis ya hizo los commits (`5feb963e`).
 - **El arreglo solo estrecha la ventana.** Si JS está ocupado cuando llega la respuesta, se cae igual, como al recargar el bundle en pleno arranque (cosa de desarrollo).
   - La caída de las 13:17 fue con ediciones seguidas y recargas a mano; no se sabe si hubo recarga en ese momento.
 - Llamar a la función una sola vez no evita la conversión. Comprobar antes con `getNotificationCategoriesAsync` tampoco sirve, porque devuelve lo mismo por el mismo camino.
 
-**Lo que no se sabe:** si pasa en un build de tienda.
+**Con el build de EAS (tarde del 2026-11-21, T061).**
 
-- Los tres informes del issue son del simulador iOS 26.0 con Xcode 26.0.1, como el nuestro.
-- Con iOS 26.5 y Xcode 27.1, Expo no lo reprodujo en 800 rondas.
-- Los builds de EAS del SDK 58 se hacen con Xcode 27.
+- El build `development-simulator` de EAS, del commit `3c4ccb11`, se compiló con **Xcode 27.1**. Lo dice `DTXcode` 2710 en su `Info.plist`; el local tenía 2601. Se instaló en el mismo simulador iPhone 13 con iOS 26.0, con el mismo Metro: solo cambia la versión de Xcode.
+- Con la sesión iniciada y en Inicio, igual que por la mañana:
 
-Es la tarea T061, puerta de la 070. La prueba que separa las dos causas: el código de `develop` en el build `development-simulator` de EAS, en este mismo simulador de iOS 26.0. Así solo cambia la versión de Xcode. Si se cae ahí o en un iPhone, la salida es registrar las categorías en nativo (un config plugin con `UNUserNotificationCenter.setNotificationCategories`), que no pasa por esa conversión.
+  | Código | Arranque normal | Arranque y recarga del bundle a los 3 s |
+  |---|---|---|
+  | `develop`: las cinco a la vez | **0 de 6** (y 0 de 3 sin sesión) | 0 de 6 por las categorías |
+  | 069: una a una | **0 de 6** | — |
+
+- La recarga tiró la app una vez de seis, pero no por las categorías. Fue en el hilo de JavaScript, en el renderizador de React, mientras la recarga deshacía la pantalla. No hay ningún marco del camino de las categorías en ningún hilo. Es cosa de recargar en desarrollo.
+- **Conclusión: el fallo de Expo depende del build hecho con Xcode 26.0.1.** Coincide con el issue: sus tres informes son de esa versión, y con Xcode 27.1 Expo tampoco lo reprodujo. `develop` no se cae con lo que publica EAS.
+- El arreglo de la 069 se queda: no cuesta nada y cubre a quien compile en local con un Xcode antiguo. Para compilar iOS en local hace falta Xcode 26.4 o posterior (`docs/app-movil.md`); este Mac tiene el 26.0.1.
+- Falta, de T061, arrancar el build de staging en un iPhone. Si alguna vez se cae ahí, la salida es registrar las categorías en nativo (un config plugin con `UNUserNotificationCenter.setNotificationCategories`), que no pasa por esa conversión.
 
 **No es de la app:**
 

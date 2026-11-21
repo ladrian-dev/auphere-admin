@@ -659,7 +659,7 @@ Contrato: [`specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md`](../specs
   - En el SDK 58, Expo convierte la respuesta fuera del hilo de JS (expo/expo#52462, sin arreglo publicado a 2026-11-21).
   - Con las cinco a la vez, la app se caía al arrancar en el simulador de iOS 26.0, con un build local de Xcode 26.0.1: 5 de 5. En cola, 0 de 6.
   - Sigue cayéndose si JS está ocupado cuando llega la respuesta, como al recargar el bundle en pleno arranque.
-  - Con builds de EAS (Xcode 27) no consta: comprobarlo es puerta de la 070 (069, T061).
+  - Con el build de EAS (Xcode 27.1), en el mismo simulador, no se cae: 0 de 21 arranques, también con el código anterior. Es del build local con un Xcode por debajo del mínimo (069, T061).
 - **Lo que falta para enviarla:** es la spec 070 (fichas, capturas, cuenta de revisión, configuración de producción). Antes, las medidas de rendimiento y las puertas de la 069 (R22.5: T056, T057, T058 y T061).
 - **La hoja de una reserva:** cada botón toma el ancho de sus palabras en una línea; van juntos si caben y, si no, uno por línea. Con mitades iguales, «Pedir confirmación» se partía dentro de la palabra junto a la campana (069, T052).
 

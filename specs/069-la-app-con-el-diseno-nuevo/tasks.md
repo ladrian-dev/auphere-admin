@@ -125,7 +125,7 @@
   _Requisitos: 1.2, 1.10, 4.1_
 - [ ] T061 **Puerta de la 070:** iOS con builds de EAS, no con el de Xcode 26.0.1 de este Mac (`log.md`, «iOS en el simulador»).
   - **La caída de las categorías de avisos** (fallo de Expo expo/expo#52462, sin arreglo publicado):
-    - primero, la prueba que separa las causas: el código de `develop` en el build `development-simulator` de EAS (Xcode 27), en el mismo simulador iPhone 13 con iOS 26.0. Así solo cambia la versión de Xcode. Si se cae, el commit 0 del guion es un P0: a `develop` ya, con la spec retroactiva en 48 h;
+    - la prueba que separa las causas, **hecha la tarde del 2026-11-21**: con el build `development-simulator` de EAS (Xcode 27.1) en el mismo simulador, 0 caídas en 21 arranques, también con el código de `develop` y con recarga. El fallo es del build local con Xcode 26.0.1; no es un P0 (`log.md`, «Con el build de EAS»);
     - después, diez arranques en frío del build de staging de la 069 en un iPhone real, con la app recién instalada;
     - si alguno se cae, registrar las categorías en nativo (config plugin con `UNUserNotificationCenter.setNotificationCategories` y los textos en `InfoPlist.strings`) y quitar la llamada de JS;
     - si sale un expo-modules-jsi con el arreglo, subirlo es otro cambio, con su lockfile y su `/cso`.
