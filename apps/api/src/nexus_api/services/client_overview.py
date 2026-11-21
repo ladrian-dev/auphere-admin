@@ -220,14 +220,24 @@ async def read_client(
                 visible=agent_visible_state(facts),
             )
         )
-    out.reauth = int(
-        await session.scalar(
-            sa.select(sa.func.count())
-            .select_from(TenantCredentials)
-            .where(TenantCredentials.needs_reauth.is_(True))
-        )
-        or 0
-    )
+    # Las integraciones que hay que volver a autorizar: la credencial marcada o el
+    # conector en ``needs_reauth`` (Composio solo cambia el conector, y es lo que
+    # avisa ``integration.reauth_required``; spec 071, research.md §R8). Una vez cada
+    # una aunque las dos lo digan.
+    from nexus_api.db.models.connector import Connector, TenantConnector, TenantConnectorStatus
+
+    stale = sa.union(
+        sa.select(TenantCredentials.integration.label("key")).where(
+            TenantCredentials.tenant_id == tenant_id, TenantCredentials.needs_reauth.is_(True)
+        ),
+        sa.select(Connector.slug.label("key"))
+        .join(TenantConnector, TenantConnector.connector_id == Connector.id)
+        .where(
+            TenantConnector.tenant_id == tenant_id,
+            TenantConnector.status == TenantConnectorStatus.NEEDS_REAUTH.value,
+        ),
+    ).subquery()
+    out.reauth = int(await session.scalar(sa.select(sa.func.count()).select_from(stale)) or 0)
     out.sections = {
         section: state
         for section, state in (
@@ -362,6 +372,7 @@ async def _bags_from_wallets(
                 out[tenant_id] = BagBlock(
                     "unassigned", bag.currency if bag else "USD", False, False, None, None,
                     None, None, None, None, False, ("empty",), True,
+                    bag.balance_micros if bag else None,
                 )  # fmt: skip
                 continue
             # El gasto del mes es el que lee la consola lite (``bags.bag_spend``).
@@ -389,6 +400,7 @@ async def _bags_from_wallets(
                 days_estimable=pace is not None,
                 alerts=alerts,
                 empty=empty,
+                balance_micros=balance,
             )
     return out
 

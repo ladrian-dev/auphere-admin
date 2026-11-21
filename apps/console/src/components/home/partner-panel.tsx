@@ -6,16 +6,14 @@ import * as React from "react";
 
 import { BlockChart, Button, Card, CardContent, formatNumber } from "@nexus/ui";
 
-import { reasonText } from "@/components/clients/v2/client-v2-model";
-import { BalanceDialogs } from "@/components/money/balance-button";
-import { RowActions } from "@/components/row-actions";
+import { attentionKey, isPartnerRow } from "@/components/attention/attention-model";
+import { AttentionRow } from "@/components/attention/attention-row";
 import { moneyText } from "@/components/money/money-model";
-import { clientHref } from "@/components/shell/routes-v2";
 import { useLocale, useT } from "@/i18n/client";
 import type { HomePanel, PanelAttention } from "@/lib/backend/home-usage";
 
 import { trendDelta } from "./home-model";
-import { attentionFix, conversationColumns, conversationTotal, failed, monthPeriod, shareLabel } from "./panel-model";
+import { conversationColumns, conversationTotal, failed, monthPeriod, shareLabel } from "./panel-model";
 
 /** Los colores de las partes del gasto: las series de las gráficas y, después, tonos del mismo sistema. */
 const SERIES = ["bg-series-1", "bg-series-2", "bg-accent-mid", "bg-muted-foreground/50", "bg-muted-foreground/25"];
@@ -34,7 +32,10 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
   const locale = useLocale();
   const n = (v: number) => formatNumber(v, locale);
   const { spend, clients, balance, conversations_per_day: daily, attention } = panel;
-  const flagged = new Set((attention ?? []).map((row) => row.external_client_ref)).size;
+  const flagged = new Set((attention ?? []).filter((row) => !isPartnerRow(row)).map((row) => row.external_client_ref)).size;
+  // Spec 071 (4.2, 4.3): la cuenta y el tope de construcción se ven en sus cifras, no solo en la lista.
+  const account = (attention ?? []).find((row) => row.code === "account_empty" || row.code === "account_low") ?? null;
+  const build = (attention ?? []).find((row) => row.code === "build_cap_exhausted" || row.code === "build_cap_warning") ?? null;
 
   return (
     <div className="grid min-w-0 gap-6" data-slot="partner-panel">
@@ -89,6 +90,26 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
               ) : (
                 <p className="text-sm text-muted-foreground">{t("panel.v2.spend.none")}</p>
               )}
+              {build?.data?.spent && build.data.cap && build.data.pct != null ? (
+                <div className="mt-1 grid gap-2 border-t border-border pt-3" data-slot="panel-build" data-code={build.code}>
+                  <p className={`text-sm ${build.code === "build_cap_exhausted" ? "text-status-danger-text" : "text-status-warning-text"}`}>
+                    {t("att.panel.build", { spent: moneyText(build.data.spent), cap: moneyText(build.data.cap), pct: build.data.pct })}
+                  </p>
+                  <div
+                    className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                    role="meter"
+                    aria-label={t("att.title.build")}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.min(100, build.data.pct)}
+                  >
+                    <span
+                      className={`block h-full rounded-full ${build.code === "build_cap_exhausted" ? "bg-status-danger" : "bg-status-warning"}`}
+                      style={{ width: `${Math.min(100, build.data.pct)}%` }}
+                    />
+                  </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         ) : null}
@@ -133,6 +154,15 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
                 <p className="text-sm text-muted-foreground">
                   {t("panel.v2.balance.assigned", { amount: `${balance.in_bags_approx ? `${t("money.approxPrefix")} ` : ""}${moneyText(balance.in_bags, "down")}` })}
                 </p>
+                {account ? (
+                  <p
+                    className={`flex items-center gap-2 text-sm font-medium ${account.code === "account_empty" ? "text-status-danger-text" : "text-status-warning-text"}`}
+                    data-slot="panel-balance-state"
+                  >
+                    <span aria-hidden="true" className={`size-2 rounded-full ${account.code === "account_empty" ? "bg-status-danger" : "bg-status-warning"}`} />
+                    {t(account.code === "account_empty" ? "att.panel.balance.empty" : "att.panel.balance.low")}
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
@@ -228,7 +258,8 @@ function Attention({
     return (
       <div className="flex items-center gap-3 rounded-md bg-card px-4 py-3 ring-1 ring-foreground/10" role="status" data-slot="panel-all-serving">
         <CheckCircle2 aria-hidden="true" className="size-5 shrink-0 text-status-positive" />
-        <p className="text-sm">{allServing ? t("panel.v2.allServing") : t("panel.v2.attention.none")}</p>
+        {/* Spec 071 (4.4): la lista ya no es solo de clientes. */}
+        <p className="text-sm">{allServing ? t("att.none") : t("panel.v2.attention.none")}</p>
       </div>
     );
   }
@@ -243,7 +274,7 @@ function Attention({
       </div>
       <ul className="divide-y divide-border px-4">
         {(all ? rows : rows.slice(0, SHOWN)).map((row) => (
-          <AttentionRow key={`${row.external_client_ref}-${row.code}`} row={row} />
+          <AttentionRow key={attentionKey(row)} row={row} />
         ))}
       </ul>
       {rows.length > SHOWN ? (
@@ -256,39 +287,6 @@ function Attention({
 }
 
 const SHOWN = 4;
-
-/**
- * Una fila de «Necesita tu atención». Sin botones sueltos (Andrés,
- * 2026-10-28): el arreglo que pide la fila es la primera opción del «⋯», y el
- * saldo se asigna o se pide aquí mismo, sin salir del Panel.
- */
-function AttentionRow({ row }: { row: PanelAttention }) {
-  const t = useT();
-  const [dialog, setDialog] = React.useState<"assign" | "request" | null>(null);
-  const name = row.client_name ?? row.external_client_ref;
-  const fix = attentionFix(row);
-  const first =
-    fix.kind === "link"
-      ? { label: t(fix.label), href: fix.href, primary: true }
-      : { label: t(fix.kind === "assign" ? "money.assign.cta" : "money.request.cta"), onSelect: () => setDialog(fix.kind), primary: true };
-  return (
-    <li className="flex min-w-0 items-center gap-x-4 gap-y-2 py-3" data-code={row.code}>
-      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${row.code === "no_balance" || row.code === "channel_problem" ? "bg-status-danger" : "bg-status-warning"}`} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Link href={clientHref(row.external_client_ref)} className="truncate text-sm font-medium hover:underline">
-          {name}
-        </Link>
-        <span className="text-sm text-pretty text-muted-foreground">{reasonText(t, row.code, row.count, null)}</span>
-      </div>
-      <RowActions
-        menu
-        ariaLabel={t("panel.v2.attention.more", { name })}
-        actions={[first, { label: t("panel.v2.attention.open"), href: clientHref(row.external_client_ref) }]}
-      />
-      {fix.kind === "link" ? null : <BalanceDialogs refId={row.external_client_ref} name={name} open={dialog} onClose={() => setDialog(null)} />}
-    </li>
-  );
-}
 
 /** «↑ 28 % más que los 7 días anteriores» en verde, o «↓ … menos …» en ámbar (prototipo). */
 function TrendLine({ trend }: { trend: { current: number; previous: number | null } | null }) {

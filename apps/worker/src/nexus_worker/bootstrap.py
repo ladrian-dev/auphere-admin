@@ -111,6 +111,7 @@ from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_exp
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
 from nexus_worker.streams.wallet_crons import (
+    run_attention_resolve_cron,
     run_bag_alerts_cron,
     run_bag_refill_cron,
     run_fx_rates_cron,
@@ -226,6 +227,9 @@ SCHEDULER_TASK_NAMES = frozenset(
         "bag-refill-cron",
         "bag-alerts-cron",
         "ledger-reconciliation-cron",
+        # Spec 071 (2.3): cada hora, los avisos de condición que ya no pasan. También
+        # en ``_spawn`` y en ``ALL_EXPECTED``.
+        "attention-resolve-cron",
         # Spec 047, 51.7 (enmienda del 2026-11-10): las sugerencias semanales
         # (``weekly-suggestions-cron``) ya no arrancan. El módulo se queda.
     }
@@ -602,6 +606,8 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("bag-refill-cron", run_bag_refill_cron(stop=ctx.stop)),
         _spawn("bag-alerts-cron", run_bag_alerts_cron(stop=ctx.stop)),
         _spawn("ledger-reconciliation-cron", run_ledger_reconciliation_cron(stop=ctx.stop)),
+        # Spec 071 (2.3): los avisos de condición que ya no pasan se resuelven solos.
+        _spawn("attention-resolve-cron", run_attention_resolve_cron(stop=ctx.stop)),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.

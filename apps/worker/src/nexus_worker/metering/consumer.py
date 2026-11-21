@@ -567,7 +567,7 @@ async def _record_build_line(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -
     if partner_id is None:
         return
     from nexus_api.core.partner_context import apply_partner_to_session
-    from nexus_api.services.channel_config import announce
+    from nexus_api.services import console_notifications
     from nexus_api.services.wallet import build_budget
 
     amount = int(cost * Decimal("2.2") * 100_000)
@@ -578,14 +578,19 @@ async def _record_build_line(tenant_id: uuid.UUID, rows: list[dict[str, Any]]) -
     except Exception as exc:
         log.warning("metering.build_budget_failed", tenant_id=str(tenant_id), error=str(exc))
         return
+    # Spec 071 (2.4): la partida es del partner, no del cliente cuyo uso cruzó el
+    # umbral: el aviso va sin ``external_client_ref``.
     for kind in notices:
-        await announce(
-            tenant_id=tenant_id,
-            kind=kind,
-            severity="warning" if kind.endswith("warning") else "critical",
-            data={"line": "build"},
-            dedupe_key=f"{kind}:{partner_id}:{datetime.now(UTC).strftime('%Y-%m')}",
-        )
+        try:
+            await console_notifications.emit_detached(
+                partner_id=partner_id,
+                kind=kind,
+                severity="warning" if kind.endswith("warning") else "critical",
+                data={"line": "build"},
+                dedupe_key=f"{kind}:{partner_id}:{datetime.now(UTC).strftime('%Y-%m')}",
+            )
+        except Exception as exc:
+            log.warning("metering.build_notice_failed", kind=kind, error=type(exc).__name__)
 
 
 _PARTNER_SQL = sa.text("SELECT partner_id FROM partner_tenants WHERE tenant_id = :t LIMIT 1")

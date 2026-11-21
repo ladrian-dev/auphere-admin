@@ -10,7 +10,7 @@ import type { HomePanel } from "@/lib/backend/home-usage";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }) }));
-const money = vi.hoisted(() => ({ bagContextAction: vi.fn(), assignBalanceAction: vi.fn(), lowerBalanceAction: vi.fn(), requestBalanceAction: vi.fn() }));
+const money = vi.hoisted(() => ({ bagContextAction: vi.fn(), assignBalanceAction: vi.fn(), lowerBalanceAction: vi.fn(), requestBalanceAction: vi.fn(), requestBuildExtensionAction: vi.fn() }));
 vi.mock("@/app/(console)/usage/money-actions", () => money);
 
 const { PartnerPanel } = await import("../partner-panel");
@@ -156,10 +156,54 @@ describe("PartnerPanel", () => {
     expect(within(region).getByRole("button", { name: "Ver menos" })).toBeVisible();
   });
 
-  it("sin nada que arreglar: «Todos tus clientes están atendiendo»", () => {
+  it("sin nada que arreglar: «Nada te necesita ahora» (spec 071, 4.4)", () => {
     show(panel({ attention: [], all_serving: true }));
-    expect(screen.getByText("Todos tus clientes están atendiendo.")).toBeTruthy();
+    expect(screen.getByText("Nada te necesita ahora.")).toBeTruthy();
     expect(screen.queryByRole("region", { name: /Necesita tu atención/ })).toBeNull();
+  });
+
+  it("spec 071: lo del partner va en la lista sin enlace a un cliente, y se ve en sus cifras", async () => {
+    const build = {
+      scope: "partner" as const,
+      severity: "warning" as const,
+      external_client_ref: null,
+      client_name: null,
+      code: "build_cap_warning" as const,
+      count: 1,
+      action: "request_build_extension" as const,
+      href: "/usage",
+      data: { pct: 84, spent: EUR(52.23), cap: EUR(62) },
+    };
+    const account = {
+      scope: "partner" as const,
+      severity: "warning" as const,
+      external_client_ref: null,
+      client_name: null,
+      code: "account_low" as const,
+      count: 1,
+      action: "buy_balance" as const,
+      href: "/billing",
+      data: { available: EUR(60), days_left: 5 },
+    };
+    const { container } = show(panel({ attention: [build, account, ...panel().attention!] }));
+    // La tarjeta del gasto lleva el tope con su barra.
+    const line = container.querySelector("[data-slot=panel-build]")!;
+    expect(plain(line.textContent)).toContain("Construcción y pruebas: 52,23 € de 62,00 € (84 %)");
+    expect(within(line as HTMLElement).getByRole("meter", { name: "Construcción y pruebas" })).toHaveAttribute("aria-valuenow", "84");
+    // «Saldo disponible» dice que está bajo, con texto.
+    expect(container.querySelector("[data-slot=panel-balance-state]")).toHaveTextContent("Saldo bajo");
+    // En la lista: sin enlace a un cliente, con su texto y su arreglo.
+    const region = screen.getByRole("region", { name: /Necesita tu atención/ });
+    const row = region.querySelector("[data-code=build_cap_warning]") as HTMLElement;
+    expect(row).toHaveAttribute("data-scope", "partner");
+    expect(within(row).queryByRole("link")).toBeNull();
+    expect(plain(row.textContent)).toContain("Construcción y pruebas");
+    expect(within(row).getByRole("button", { name: "Pedir ampliación" })).toBeInTheDocument();
+    money.requestBuildExtensionAction.mockResolvedValue({ ok: true, data: { status: "requested" } });
+    await userEvent.click(within(row).getByRole("button", { name: "Pedir ampliación" }));
+    expect(money.requestBuildExtensionAction).toHaveBeenCalledTimes(1);
+    expect(plain(region.querySelector("[data-code=account_low]")!.textContent)).toContain("Te queda saldo para unos 5 días a este ritmo.");
+    expect(await axeViolations(container)).toEqual([]);
   });
 
   it("si un bloque no se pudo leer, lo dice y no pinta ceros", () => {

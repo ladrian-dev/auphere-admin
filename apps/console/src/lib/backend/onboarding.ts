@@ -33,6 +33,10 @@ export type Notification = {
   created_at: string;
   /** Spec 047 (T165, 49.6): dónde se arregla, si la API lo sabe (`notifications.LINKS`). */
   href?: string | null;
+  /** Spec 056: se cerró sola (la condición pasó). Spec 071 lo enseña como «Resuelto». */
+  handled?: boolean;
+  /** Spec 071: es de una condición (saldo, tope, canal…): se resuelve sola y no se marca a mano. */
+  condition?: boolean;
 };
 export type NotificationPage = { items: Notification[]; next_cursor: string | null; unread: number };
 

@@ -460,6 +460,9 @@ class BagBlock:
     alerts: tuple[str, ...]
     #: Para la regla de atención (``attention.ClientFacts``).
     empty: bool
+    #: Spec 071: lo que queda en la bolsa, en cien milésimas de ``currency``, para la
+    #: cifra de la fila de saldo. ``None`` sin bolsa (o con el cupo de antes).
+    balance_micros: int | None = None
 
 
 def pace(daily_credits: list[int]) -> tuple[float, int]:

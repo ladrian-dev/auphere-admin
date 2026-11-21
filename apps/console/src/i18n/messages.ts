@@ -11,6 +11,7 @@ import { agendaMessages } from "./lanes/agenda";
 import { agentImproveMessages } from "./lanes/agent-improve";
 import { amendmentMessages } from "./lanes/amendment";
 import { amendment1030Messages } from "./lanes/amendment-1030";
+import { attentionMessages } from "./lanes/attention";
 import { authAltaMessages } from "./lanes/auth-alta";
 import { authEntrarMessages } from "./lanes/auth-entrar";
 import { agentProtoMessages } from "./lanes/agent-proto";
@@ -625,6 +626,8 @@ const messages = {
   ...authEntrarMessages,
   // Spec 067: crear cuenta.
   ...authAltaMessages,
+  // Spec 071: lo que te necesita.
+  ...attentionMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

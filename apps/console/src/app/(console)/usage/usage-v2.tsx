@@ -4,6 +4,8 @@ import { Bell } from "lucide-react";
 
 import { Button, Callout, Card, CardContent, ErrorState, PageHeader, Section } from "@nexus/ui";
 
+import { MONEY_CODES, attentionKey } from "@/components/attention/attention-model";
+import { AttentionRow } from "@/components/attention/attention-row";
 import { migrationPending, moneyText, parseDays, parseLine } from "@/components/money/money-model";
 import { SpendByDay, SpendFilters } from "@/components/money/spend-by-day";
 import { UsageClientsTable } from "@/components/money/usage-clients-table";
@@ -12,7 +14,7 @@ import { UsageFigure } from "@/components/money/usage-figure";
 import { UsageLines } from "@/components/money/usage-lines";
 import { SeedRequested } from "@/components/money/request-balance";
 import { getT } from "@/i18n/server";
-import { callFor } from "@/lib/backend";
+import { backendFor, callFor } from "@/lib/backend";
 import { moneyApi } from "@/lib/backend/money";
 import { can, type PartnerPrincipal } from "@/lib/principal";
 
@@ -45,14 +47,18 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
   const client = (searchParams.client ?? "").slice(0, 255);
   const canWrite = can(principal.role, "usage:write");
   const api = moneyApi(callFor(principal));
-  const [summary, daily, build, detail, migration, bags] = await Promise.all([
+  const [summary, daily, build, detail, migration, bags, attention] = await Promise.all([
     api.usageSummary().catch(() => null),
     api.usageDaily({ days, client: client || undefined, line: line ?? undefined }).catch(() => null),
     api.buildBudget().catch(() => null),
     api.usageDetail({ days, client: client || undefined }).catch(() => null),
     api.getMigration().catch(() => null),
     canWrite ? null : api.listBags().catch(() => null),
+    // Spec 071 (5): los avisos de dinero salen de la misma lista del Panel y de la campana.
+    backendFor(principal).attention().catch(() => null),
   ]);
+  const notices = (attention?.items ?? []).filter((row) => MONEY_CODES.has(row.code));
+  const low = new Set(notices.filter((row) => row.code === "low_balance" && row.external_client_ref).map((row) => row.external_client_ref as string));
   const pending = migrationPending(migration);
   const clients = summary?.clients ?? [];
   const names = Object.fromEntries(clients.map((c) => [c.ref, c.name ?? c.ref]));
@@ -114,7 +120,7 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
                 <h2 className="text-base font-semibold">{t("money.table.title")}</h2>
                 <p className="text-sm text-pretty text-muted-foreground">{t("money.table.description")}</p>
               </div>
-              <UsageClientsTable clients={clients} canWrite={canWrite} days={days} />
+              <UsageClientsTable clients={clients} canWrite={canWrite} days={days} low={low} />
             </CardContent>
           </Card>
         </>
@@ -137,6 +143,21 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
       ) : null}
 
       <UsageDetailPanel detail={detail} names={names} days={days} client={client} />
+
+      {/* Spec 071 (5.1), como la demo aprobada: los avisos de dinero cierran la
+          página, cada uno con su acción. */}
+      {notices.length ? (
+        <Card data-slot="usage-notices">
+          <CardContent className="grid min-w-0 gap-1">
+            <h2 className="text-base font-semibold">{t("att.usage.title")}</h2>
+            <ul className="divide-y divide-border">
+              {notices.map((row) => (
+                <AttentionRow key={attentionKey(row)} row={row} />
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      ) : null}
     </>
   );
 }

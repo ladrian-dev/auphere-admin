@@ -45,6 +45,8 @@ from nexus_api.db.models import (
     WalletMigrationProposal,
 )
 from nexus_api.services import agent_states
+from nexus_api.services.attention_live import resolve_cleared_detached
+from nexus_api.services.business.writes import after_commit
 from nexus_api.services.wallet import alerts as wallet_alerts
 from nexus_api.services.wallet import bags, build_budget, fx
 from nexus_api.services.wallet.turns import after_balance_up
@@ -319,6 +321,8 @@ async def assign(
     )
     if before == 0 and receipt.client_balance_after.amount_micros > 0:
         await after_balance_up(tenant_id)
+    # Spec 071 (2.3): subió el saldo; lo que su bolsa decía y ya no pasa, resuelto.
+    await resolve_cleared_detached(partner_id, refs=[ref])
     return receipt
 
 
@@ -396,6 +400,7 @@ async def move(
     )
     if target_before == 0 and out[1].balance.amount_micros > 0:
         await after_balance_up(target)
+    await resolve_cleared_detached(partner_id, refs=[body.from_ref, body.to_ref])
     return out
 
 
@@ -559,6 +564,13 @@ async def set_agent_cap(
             if cap is None or spent < wallet_alerts.CAP_WARN_SHARE * cap:
                 spend.warned_at = None
         await agent_states.resume_after_cap(scope.session, agent_id=agent.id)
+        # Spec 071 (2.3): con el tope nuevo confirmado, su aviso se resuelve.
+        partner_id, ref = scope.principal.partner.id, scope.ref
+
+        async def _resolve() -> None:
+            await resolve_cleared_detached(partner_id, refs=[ref])
+
+        after_commit(scope.session, _resolve)
     scope.session.add(
         AuditLog(
             tenant_id=scope.tenant.id,

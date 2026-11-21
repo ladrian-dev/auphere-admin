@@ -130,6 +130,10 @@ async def set_build_budget(
         partner_id=partner_id,
         data={"cap_micros": body.cap.amount_micros, "reason": body.reason},
     )
+    # Spec 071 (2.3): con la partida nueva, sus avisos que ya no pasan, resueltos.
+    from nexus_api.services.attention_live import resolve_cleared_detached
+
+    await resolve_cleared_detached(partner_id, refs=())
     return {"cap": body.cap.model_dump(), "month": month.isoformat()}
 
 

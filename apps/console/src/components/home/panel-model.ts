@@ -8,8 +8,7 @@
 import type { BlockChartColumn } from "@nexus/ui";
 
 import { LINE_LABEL, type T } from "@/components/money/money-model";
-import type { MessageKey } from "@/i18n/messages";
-import type { HomePanel, PanelAttention, PanelSpendShare } from "@/lib/backend/home-usage";
+import type { HomePanel, PanelSpendShare } from "@/lib/backend/home-usage";
 
 const DAY = new Intl.DateTimeFormat("es-ES", { day: "numeric", month: "short", timeZone: "UTC" });
 const DAY_LONG = new Intl.DateTimeFormat("es-ES", { weekday: "long", day: "numeric", month: "short", timeZone: "UTC" });
@@ -49,22 +48,8 @@ export function conversationTotal(daily: NonNullable<HomePanel["conversations_pe
   return [...daily.resolved_without_person, ...daily.handed_to_person].reduce((a, b) => a + b, 0);
 }
 
-/**
- * El arreglo de una fila: el saldo se arregla en el sitio (el modal de asignar o
- * «Pedir saldo»); lo demás lleva a su pantalla con el `href` que manda la API.
- */
-export type AttentionFix = { kind: "assign" | "request" } | { kind: "link"; href: string; label: MessageKey };
-
-export function attentionFix(row: PanelAttention): AttentionFix {
-  switch (row.action) {
-    case "assign_balance":
-      return { kind: "assign" };
-    case "request_balance":
-      return { kind: "request" };
-    default:
-      return { kind: "link", href: row.href, label: `panel.v2.fix.${row.action}` as MessageKey };
-  }
-}
+/** Spec 071: el arreglo de una fila vive con el resto de la lista. */
+export { attentionFix, type AttentionFix } from "@/components/attention/attention-model";
 
 /** Los bloques que la API no pudo leer, para decirlo en vez de pintar ceros. */
 export function failed(panel: HomePanel, block: string): boolean {

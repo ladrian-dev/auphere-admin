@@ -37,6 +37,7 @@ from nexus_api.api.console import (
     agent_tests,
     agents,
     agents_list,
+    attention,
     audit,
     auth,
     auth_google,
@@ -181,6 +182,8 @@ router.include_router(seed_templates.router)
 router.include_router(notifications.router)
 router.include_router(onboarding.router)
 router.include_router(home.router)
+# Spec 071: «Lo que te necesita», la lista viva del partner (la misma del Panel).
+router.include_router(attention.router)
 router.include_router(workflow.router)
 router.include_router(workstation.router)
 router.include_router(workstation_partner.router)

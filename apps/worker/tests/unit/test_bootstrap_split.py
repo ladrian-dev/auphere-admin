@@ -105,6 +105,8 @@ ALL_EXPECTED = {
     "bag-refill-cron",
     "bag-alerts-cron",
     "ledger-reconciliation-cron",
+    # Spec 071 (2.3): cada hora, los avisos de condición que ya no pasan se resuelven.
+    "attention-resolve-cron",
     # Spec 047, 51.7 (enmienda del 2026-11-10): las sugerencias semanales ya no
     # arrancan. Ver ``test_the_weekly_suggestions_do_not_start``.
 }

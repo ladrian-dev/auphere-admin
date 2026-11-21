@@ -4470,6 +4470,11 @@
       },
       "NotificationOut": {
         "properties": {
+          "condition": {
+            "default": false,
+            "title": "Condition",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",

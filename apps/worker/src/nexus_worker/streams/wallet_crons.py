@@ -10,6 +10,11 @@ y 44; research D25 a D27).
   llega a fin de mes», «Agotada»), deduplicados en la propia bolsa.
 - ``ledger-reconciliation-cron``: cada día, el cuadre de cuenta + bolsas + gastado;
   una diferencia queda en el log como error y en las anomalías del admin.
+- ``attention-resolve-cron``: cada hora, spec 071 (2.3): los avisos de condición de
+  cada partner con la consola nueva cuya condición ya no está en su lista quedan
+  resueltos, por si algo se escapó a los sitios que resuelven en el acto (el cambio
+  de mes, la cuenta que vuelve a tener saldo, el cobro que se arregla, un canal que
+  sana solo). No avisa de nada.
 
 Corren en el planificador (un solo proceso), partner a partner y solo con los que
 cobran de las bolsas. Cada pasada es idempotente.
@@ -92,6 +97,10 @@ async def refill_tick(now: datetime | None = None) -> dict[str, Any]:
             )
         report[str(partner_id)] = shortfalls
         await _resume_capped(partner_id, now)
+        # Spec 071: el mes nuevo rearma; lo que ya no pasa, resuelto.
+        from nexus_api.services.attention_live import resolve_cleared_detached
+
+        await resolve_cleared_detached(partner_id)
     return report
 
 
@@ -153,6 +162,35 @@ async def alerts_tick() -> int:
     return sent
 
 
+async def _v2_partners() -> list[uuid.UUID]:
+    async with get_sessionmaker()() as session, session.begin():
+        return list(
+            (
+                await session.scalars(
+                    sa.select(Partner.id).where(Partner.console_v2_enabled_at.is_not(None))
+                )
+            ).all()
+        )
+
+
+async def attention_resolve_tick() -> int:
+    """Spec 071 (2.3): resuelve los avisos que ya no pasan de cada partner con la
+    consola nueva. Uno que falla no para a los demás. Devuelve cuántos resolvió."""
+    from nexus_api.services import attention_live
+
+    resolved = 0
+    for partner_id in await _v2_partners():
+        try:
+            resolved += await attention_live.resolve_cleared_detached(partner_id)
+        except Exception as exc:
+            log.warning(
+                "attention_resolve.partner_failed",
+                partner_id=str(partner_id),
+                error=type(exc).__name__,
+            )
+    return resolved
+
+
 async def reconciliation_tick() -> list[dict[str, Any]]:
     from nexus_api.services.wallet.ledger import reconcile
 
@@ -203,11 +241,17 @@ async def run_ledger_reconciliation_cron(*, stop: asyncio.Event) -> None:
     await _loop("ledger_reconciliation_cron", reconciliation_tick, stop, DAILY)
 
 
+async def run_attention_resolve_cron(*, stop: asyncio.Event) -> None:
+    await _loop("attention_resolve_cron", attention_resolve_tick, stop, HOURLY)
+
+
 __all__ = [
     "alerts_tick",
+    "attention_resolve_tick",
     "fx_tick",
     "reconciliation_tick",
     "refill_tick",
+    "run_attention_resolve_cron",
     "run_bag_alerts_cron",
     "run_bag_refill_cron",
     "run_fx_rates_cron",

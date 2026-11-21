@@ -16,6 +16,10 @@ Cinco bloques, cada uno con su periodo (48.3), y «Necesita tu atención»:
 «Necesita tu atención» es la regla única (``attention.py``) de cada cliente, de más
 a menos grave, cada fila con su arreglo (48.2). Sin nada que arreglar,
 ``all_serving``: «Todos tus clientes están atendiendo».
+
+Spec 071: la lista es **la de** ``attention_live.live_attention`` —lo del partner y lo de
+cada cliente—, la misma que ``GET /console/attention`` para quien mira. El Panel no
+vuelve a leer a los clientes: la lista le da las fichas que leyó.
 """
 
 from __future__ import annotations
@@ -34,37 +38,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
 from nexus_api.db.models import Channel, Conversation, ConversationStatus, TenantStatus
-from nexus_api.services import client_overview
-from nexus_api.services.attention import ATTENTION_REASONS
+from nexus_api.services import attention_live, client_overview
+from nexus_api.services.attention import AttentionItem
+from nexus_api.services.attention_live import Client, Gate
 from nexus_api.services.console_reporting import month_bounds
 from nexus_api.services.console_traffic import customer_conversation_ids
 from nexus_api.services.wallet.usage_lines import Balances, balances, spend
 
 log = structlog.get_logger(__name__)
 
-#: El arreglo de cada motivo: la acción que el Panel pinta y adónde lleva.
-#: ``{ref}`` es la referencia del cliente.
-FIXES: Final[dict[str, tuple[str, str]]] = {
-    "no_balance": ("assign_balance", "/clients/{ref}?assign=1"),
-    "low_balance": ("assign_balance", "/clients/{ref}?assign=1"),
-    "channel_problem": ("fix_channel", "/clients/{ref}/channels"),
-    "integration_reauth": ("reconnect", "/clients/{ref}/integrations"),
-    "agent_cap": ("raise_cap", "/clients/{ref}/agents"),
-    "agent_without_channel": ("connect_channel", "/clients/{ref}/channels"),
-    "no_agents": ("new_agent", "/clients/{ref}/agents/new"),
-}
-#: Quien no puede asignar pide (45.7).
-REQUEST_INSTEAD: Final = frozenset({"no_balance", "low_balance"})
 TOP_CLIENTS: Final = 3
 DAYS: Final = 7
-
-
-@dataclass(frozen=True)
-class Client:
-    tenant_id: uuid.UUID
-    ref: str
-    name: str | None
-    status: TenantStatus
 
 
 @dataclass(frozen=True)
@@ -75,17 +59,6 @@ class SpendShare:
     line: str | None
     amount: int
     approx: bool = False
-
-
-@dataclass(frozen=True)
-class AttentionRow:
-    ref: str
-    name: str | None
-    code: str
-    count: int
-    severity: int
-    action: str
-    href: str
 
 
 @dataclass
@@ -102,7 +75,7 @@ class Panel:
     days: list[date] = field(default_factory=list)
     resolved: list[int] = field(default_factory=list)
     handed: list[int] = field(default_factory=list)
-    attention: list[AttentionRow] = field(default_factory=list)
+    attention: list[AttentionItem] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
@@ -146,11 +119,11 @@ async def build_panel(
     *,
     partner_id: uuid.UUID,
     clients: list[Client],
-    can_assign: bool,
+    gate: Gate,
     now: datetime | None = None,
 ) -> Panel:
     """``reporting``: la sesión de la petición (las lecturas de varios clientes van
-    bajo el rol de informes, como en Consumo)."""
+    bajo el rol de informes, como en Consumo). ``gate``: quien mira (spec 071)."""
     now = now or datetime.now(UTC)
     since, until, _elapsed, _days = month_bounds(now)
     live = [c for c in clients if c.status is not TenantStatus.ARCHIVED]
@@ -197,39 +170,20 @@ async def build_panel(
 
     # ── clientes, atención y conversaciones por día ──────────────────────
     panel.not_archived = len(live)
-    try:
-        details = await client_overview.read_clients((c.tenant_id, c.status) for c in live)
-        bag_blocks = await client_overview.bags(
-            partner_id, [(c.tenant_id, False) for c in live], now=now
-        )
-        rows: list[AttentionRow] = []
+    # La lista, la misma de ``GET /console/attention`` (spec 071). Si la parte de
+    # clientes falla entera, el bloque sale ``null`` como antes; una parte que falla
+    # sin tumbarla se dice (research.md §R10).
+    listed = await attention_live.live_attention(partner_id, gate=gate, clients=clients, now=now)
+    if listed.clients_failed:
+        panel.errors.append("attention")
+    else:
         for c in live:
-            detail = details.get(c.tenant_id)
+            detail = listed.details.get(c.tenant_id)
             if detail is not None and any(a.visible.code == "serving" for a in detail.agents):
                 panel.serving += 1
-            found = client_overview.client_attention(
-                c.ref, archived=False, bag=bag_blocks.get(c.tenant_id), detail=detail
-            )
-            for reason in found.reasons:
-                action, href = FIXES[reason.code]
-                if reason.code in REQUEST_INSTEAD and not can_assign:
-                    action = "request_balance"
-                rows.append(
-                    AttentionRow(
-                        ref=c.ref,
-                        name=c.name,
-                        code=reason.code,
-                        count=reason.count,
-                        severity=ATTENTION_REASONS.index(reason.code),
-                        action=action,
-                        href=href.format(ref=c.ref),
-                    )
-                )
-        panel.attention = sorted(rows, key=lambda r: (r.severity, r.ref))
+        panel.attention = listed.items
         panel.onboarding = panel.not_archived - panel.serving
-    except Exception as exc:
-        log.warning("partner_panel.attention_failed", error=type(exc).__name__)
-        panel.errors.append("attention")
+        panel.errors += [f"attention.{part}" for part in listed.errors]
 
     today = now.date()
     panel.days = [today - timedelta(days=DAYS - 1 - i) for i in range(DAYS)]
@@ -258,4 +212,4 @@ async def build_panel(
     return panel
 
 
-__all__ = ["FIXES", "AttentionRow", "Client", "Panel", "SpendShare", "build_panel"]
+__all__ = ["Client", "Gate", "Panel", "SpendShare", "build_panel"]
