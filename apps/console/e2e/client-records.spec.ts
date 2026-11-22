@@ -37,9 +37,13 @@ test.describe("Spec 047 — la lista de clientes", () => {
       expect(res?.status()).toBeLessThan(400);
       await expect(page.locator("[data-slot=clients-list-v2]")).toBeVisible();
       await expect(page.getByRole("combobox", { name: "Filtrar clientes" })).toContainText("Necesitan atención (3)");
-      const table = page.getByRole("region", { name: "Clientes del partner" });
+      // Spec 074 (M01): por debajo de 760 px, una tarjeta por cliente en lugar de la tabla.
+      const table =
+        size.width < 760 ? page.getByRole("list", { name: "Clientes del partner" }) : page.getByRole("region", { name: "Clientes del partner" });
       await expect(table.getByText("Saldo bajo · quedan 4 días")).toBeVisible();
       await expect(table.getByText("Sin saldo").first()).toBeVisible();
+      await expect(table.getByRole("meter").first()).toBeVisible();
+      await expect(table.getByRole("button", { name: "Acciones de Barbería Cultor" })).toBeVisible();
       expect(await overflowOffenders(page)).toEqual([]);
       await expectNoSeriousAxe(page);
     });
@@ -52,6 +56,25 @@ test.describe("Spec 047 — la lista de clientes", () => {
       await expect(page.getByRole("menuitem", { name: item, exact: true })).toBeVisible();
     }
     await page.keyboard.press("Escape");
+  });
+
+  test("en el móvil, el ⋯ de cada tarjeta lleva lo mismo y mide 44 × 44 (spec 074, M01)", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto("/clients");
+    const cards = page.getByRole("list", { name: "Clientes del partner" });
+    await expect(page.getByRole("region", { name: "Clientes del partner" })).toBeHidden();
+    const more = cards.getByRole("button", { name: "Acciones de Barbería Cultor" });
+    const box = await more.boundingBox();
+    expect(box?.width).toBeGreaterThanOrEqual(44);
+    expect(box?.height).toBeGreaterThanOrEqual(44);
+    const name = await cards.getByRole("link", { name: "Barbería Cultor" }).boundingBox();
+    expect(name?.height).toBeGreaterThanOrEqual(44);
+    await more.click();
+    for (const item of ["Editar cliente", "Asignar saldo", "Archivar", "Eliminar…"]) {
+      await expect(page.getByRole("menuitem", { name: item, exact: true })).toBeVisible();
+    }
+    await page.keyboard.press("Escape");
+    expect(await overflowOffenders(page)).toEqual([]);
   });
 });
 

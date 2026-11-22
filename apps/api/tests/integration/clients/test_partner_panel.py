@@ -8,6 +8,7 @@ quien mira; y nada sale de los cuerpos de mensaje.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -42,8 +43,14 @@ async def test_the_panel_blocks_say_their_period_and_match_consumo(
     assert panel is not None
     assert panel["spend"]["period"] == "month"
     assert panel["clients"]["period"] == "now"
-    assert panel["conversations_per_day"]["period"] == "7d"
-    assert len(panel["conversations_per_day"]["days"]) == 7
+    # Owner, 2026-11-22: las métricas del Panel son del mes, del día 1 a hoy.
+    daily = panel["conversations_per_day"]
+    assert daily["period"] == "month"
+    today = datetime.now(UTC).date()
+    assert daily["days"][0] == today.replace(day=1).isoformat()
+    assert daily["days"][-1] == today.isoformat()
+    assert len(daily["days"]) == today.day
+    assert "previous_total" in daily, "el mismo tramo del mes pasado, para la tendencia"
 
     summary = (await client.get("/console/usage/summary", headers=world.headers())).json()
     assert panel["spend"]["total"] == summary["month_spend"], "la misma cifra que Consumo"

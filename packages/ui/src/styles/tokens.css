@@ -161,9 +161,11 @@
   /* ── Series de las gráficas de bloques — spec 047, R47.10 ───────────
      Dos verdes para dos series («Resueltas sin persona» y «Pasadas a una
      persona»), cada uno a 3:1 o más sobre el fondo y la tarjeta (WCAG 1.4.11),
-     y la pista: lo que dibujan los cuadros vacíos. El tema oscuro los redefine. */
-  --color-series-1: var(--color-bangladesh-green);
-  --color-series-2: var(--color-frog);
+     y la pista: lo que dibujan los cuadros vacíos. El tema oscuro los redefine.
+     Owner, 2026-11-22: «Bangladesh» y «frog» se distinguían a 1,7:1 y no se veía
+     la diferencia. Ahora un verde pino y uno claro, a 3,2:1 entre ellos. */
+  --color-series-1: var(--color-pine);
+  --color-series-2: oklch(0.625 0.11 172);
   --color-series-track: oklch(0.161 0.033 115.3 / 0.08);
 
   /* ── Typography ───────────────────────────────────────────────────── */
@@ -478,9 +480,10 @@
   --sidebar-border: oklch(0.971 0.006 185.3 / 0.14);
   --sidebar-ring: var(--color-primary);
 
-  /* Las series de las gráficas sobre tinta: la principal es el verde de marca. */
-  --color-series-1: var(--color-mountain-meadow);
-  --color-series-2: var(--color-frog);
+  /* Las series de las gráficas sobre tinta: la principal, un verde claro y vivo;
+     la segunda, uno medio. 3,4:1 entre ellas y 3:1 o más sobre la tarjeta. */
+  --color-series-1: oklch(0.88 0.14 162);
+  --color-series-2: oklch(0.55 0.095 172);
   --color-series-track: oklch(0.971 0.006 185.3 / 0.08);
 
   --glass-bg: oklch(0.24 0.015 182 / 0.62);

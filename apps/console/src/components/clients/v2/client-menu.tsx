@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@nexus/ui";
+import { ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, cn } from "@nexus/ui";
 
 import {
   archiveClientAction,
@@ -84,6 +84,7 @@ export function ClientMenu({
   detail,
   actions,
   afterDelete = "/clients",
+  triggerClassName,
 }: {
   refId: string;
   name: string;
@@ -94,6 +95,8 @@ export function ClientMenu({
   detail?: ClientDetailV2 | null;
   actions?: Partial<ClientMenuActions>;
   afterDelete?: string | null;
+  /** Spec 074 (M01): en el móvil el ⋯ mide 44 × 44; el resto, igual. */
+  triggerClassName?: string;
 }) {
   const t = useT();
   const router = useRouter();
@@ -158,7 +161,10 @@ export function ClientMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={t("clients.v2.menu", { name })}
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+            triggerClassName,
+          )}
           data-slot="client-menu"
         >
           <MoreHorizontal aria-hidden="true" className="size-4" />

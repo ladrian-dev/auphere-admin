@@ -29,6 +29,12 @@ export function shareLabel(t: T, share: PanelSpendShare): string {
   return t("panel.v2.spend.rest");
 }
 
+/** «Del 1 nov al 22 nov»: el tramo de días que cubre el bloque (owner, 2026-11-22: el mes). */
+export function daysPeriod(t: T, days: readonly string[]): string {
+  if (!days.length) return "";
+  return t("panel.v2.period.month", { from: DAY.format(asDate(days[0]!)), to: DAY.format(asDate(days[days.length - 1]!)) });
+}
+
 /** Las columnas de «Conversaciones por día»: resueltas sin persona y pasadas a una persona. */
 export function conversationColumns(t: T, daily: NonNullable<HomePanel["conversations_per_day"]>): BlockChartColumn[] {
   const n = daily.days.length;
@@ -37,7 +43,8 @@ export function conversationColumns(t: T, daily: NonNullable<HomePanel["conversa
     const title = DAY_LONG.format(d);
     return {
       key: day,
-      label: i === n - 1 ? t("money.chart.today") : WEEKDAY.format(d),
+      // Una semana con el día de la semana; el mes, con el número del día, como Consumo.
+      label: i === n - 1 ? t("money.chart.today") : n <= 7 ? WEEKDAY.format(d) : String(d.getUTCDate()),
       title: title.charAt(0).toUpperCase() + title.slice(1),
       values: [daily.resolved_without_person[i] ?? 0, daily.handed_to_person[i] ?? 0],
     };

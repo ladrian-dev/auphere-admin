@@ -36,7 +36,7 @@ async function openV2(page: Page, path: string = "/notifications") {
 }
 
 const sidebar = (page: Page) => page.locator("[data-slot=shell-sidebar]");
-const mobileNav = (page: Page) => page.locator("[data-slot=shell-mobile-nav]");
+const mobileNav = (page: Page) => page.locator("[data-slot=shell-tabbar]");
 
 /**
  * Equipo, Facturación y API viven en el menú del perfil, no en el lateral
@@ -128,36 +128,38 @@ test.describe("Spec 047 — el marco de la consola nueva", () => {
     await expect(page).toHaveURL(/\/notifications$/);
   });
 
-  test("390 px: la barra superior conserva el menú, el perfil y el tema, sin desbordar", async ({ page }) => {
+  test("390 px (spec 074): una sola navegación, la barra inferior; el tema y lo demás en el perfil, sin desbordar", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openV2(page);
     await expect(sidebar(page)).toBeHidden();
     const bar = mobileNav(page);
     await expect(bar).toBeVisible();
-    await expect(bar.getByRole("link", { name: "Clientes" })).toBeAttached();
-    await expect(bar.getByRole("link", { name: "API" })).toHaveCount(0);
+    // D1: abajo, a mano del pulgar, con las cuatro secciones de cada día.
+    const box = await bar.boundingBox();
+    expect(box && box.y + box.height).toBeGreaterThan(844 - 4);
+    await expect(bar.getByRole("link")).toHaveText(["Panel", "Clientes", "Consumo", "Auditoría"]);
+    for (const link of await bar.getByRole("link").all()) expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator("[data-slot=shell-mobile-nav]")).toHaveCount(0);
+    // Navega: la sección activa cambia.
+    await bar.getByRole("link", { name: "Clientes" }).click();
+    await expect(page).toHaveURL(/\/clients$/);
+    await expect(bar.getByRole("link", { name: "Clientes" })).toHaveAttribute("aria-current", "page");
     expect(await overflowOffenders(page)).toEqual([]);
     await expectNoSeriousAxe(page);
 
-    // El perfil de la barra lleva la cuenta y «Cerrar sesión».
+    // D2: arriba no está el interruptor del tema; vive en el perfil, con la cuenta y lo demás de «Operar».
+    await expect(page.getByRole("switch", { name: "Modo oscuro" })).toBeHidden();
     await page.locator("[data-slot=shell-mobile-profile] [data-slot=dropdown-menu-trigger]").click();
     const menu = page.getByRole("menu");
-    for (const name of ["Equipo", "Facturación", "API", "Cerrar sesión"]) await expect(menu.getByRole("menuitem", { name })).toBeVisible();
-    await page.keyboard.press("Escape");
-    // Se audita cuando el menú ha terminado de irse.
-    await expect(menu).toBeHidden();
-
-    // El tema es el interruptor de la barra, junto a la campana (Andrés, 2026-10-28).
-    const theme = page.getByRole("switch", { name: "Modo oscuro" });
-    await expect(theme).toBeVisible();
-    await theme.click();
+    for (const name of ["Guía del partner", "Equipo", "Facturación", "API", "Cerrar sesión"]) await expect(menu.getByRole("menuitem", { name })).toBeVisible();
+    await menu.getByRole("menuitem", { name: /Pasar a modo oscuro/ }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    await expect(theme).toHaveAttribute("aria-checked", "true");
+    await expect(menu).toBeHidden();
     expect(await overflowOffenders(page)).toEqual([]);
     await expectNoSeriousAxe(page);
   });
 
-  test("200 % de zoom: el marco pasa a la barra superior y nada se sale", async ({ page }) => {
+  test("200 % de zoom: el marco pasa a la barra inferior y nada se sale", async ({ page }) => {
     // Una ventana de 1280 × 800 al 200 % deja 640 × 400 px CSS: es lo que se mide.
     await page.setViewportSize({ width: 640, height: 400 });
     await openV2(page, "/team");

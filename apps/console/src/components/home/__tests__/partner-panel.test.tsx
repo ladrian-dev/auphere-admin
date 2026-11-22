@@ -271,7 +271,11 @@ describe("PartnerPanel", () => {
       </LocaleProvider>,
     );
     const balance = container.querySelector("[data-slot=panel-balance]") as HTMLElement;
-    await userEvent.click(within(balance).getByRole("button", { name: "Recargar saldo" }));
+    // Solo el «+»: el nombre es su etiqueta y su pista, sin texto a la vista.
+    const plus = within(balance).getByRole("button", { name: "Recargar saldo" });
+    expect(plus.textContent?.trim()).toBe("");
+    expect(plus).toHaveAttribute("title", "Recargar saldo");
+    await userEvent.click(plus);
     expect(await screen.findByRole("dialog", { name: "Comprar saldo" })).toBeInTheDocument();
     rerender(
       <LocaleProvider locale="es">
@@ -279,6 +283,28 @@ describe("PartnerPanel", () => {
       </LocaleProvider>,
     );
     expect(within(container.querySelector("[data-slot=panel-balance]") as HTMLElement).queryByRole("button", { name: "Recargar saldo" })).toBeNull();
+  });
+
+  it("las conversaciones son del mes, del día 1 a hoy, contra los mismos días del mes pasado (owner, 2026-11-22)", () => {
+    const days = Array.from({ length: 22 }, (_, i) => `2026-11-${String(i + 1).padStart(2, "0")}`);
+    const daily = {
+      period: "month" as const,
+      days,
+      resolved_without_person: days.map((_, i) => (i % 2 ? 2 : 1)),
+      handed_to_person: days.map(() => 0),
+      previous_total: 22,
+    };
+    const { container } = show(panel({ conversations_per_day: daily }));
+    const count = container.querySelector("[data-slot=panel-count]") as HTMLElement;
+    // 11 × 1 + 11 × 2 = 33, frente a 22 del mes pasado: +50 %.
+    expect(plain(count.textContent)).toContain("33");
+    expect(plain(count.querySelector("[data-slot=panel-period]")?.textContent)).toBe("50 % más que los mismos días del mes pasado");
+    const chart = container.querySelector("[data-slot=panel-conversations]") as HTMLElement;
+    expect(within(chart).getByText("Del 1 nov al 22 nov")).toBeTruthy();
+    expect(chart.querySelectorAll("table tbody tr")).toHaveLength(22);
+    // Sin el mes pasado con el que comparar, dice el periodo.
+    const { container: first } = show(panel({ conversations_per_day: { ...daily, previous_total: 0 } }));
+    expect(plain(first.querySelector("[data-slot=panel-count] [data-slot=panel-period]")?.textContent)).toBe("Del 1 nov al 22 nov");
   });
 
   it("si un bloque no se pudo leer, lo dice y no pinta ceros", () => {
