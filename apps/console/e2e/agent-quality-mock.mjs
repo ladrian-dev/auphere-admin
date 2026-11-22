@@ -482,6 +482,13 @@ const server = createServer(async (req, res) => {
     return send(res, 200, suiteView());
   }
   if (route === `POST ${agentBase}/test-runs`) {
+    const run = await json(req);
+    // Spec 047 (61.8, 66.5 y 68): la consola estima antes con `dry_run`. Auphere paga esta
+    // pasada y cabe en «Construcción y pruebas»: no pregunta y arranca.
+    if (run.dry_run) {
+      const tests = TESTS.length - Object.keys(state.notApplicable).length;
+      return send(res, 200, { tests, unknown_prices: [], payer: "auphere", charge: null, left: null, fits: true });
+    }
     if (state.model === "saving") return send(res, 409, { detail: { code: "suite_running" } });
     const id = randomUUID();
     state.jobs[id] = { kind: "tests", polls: 0 };

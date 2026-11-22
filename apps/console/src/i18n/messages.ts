@@ -88,6 +88,10 @@ const core = {
   "shell.theme.dark": { es: "Oscuro", en: "Dark" },
   "shell.theme.system": { es: "Sistema", en: "System" },
   "shell.theme.switch": { es: "Modo oscuro", en: "Dark mode" },
+  // Spec 074 (D2): en el teléfono, el tema en el menú del perfil.
+  "shell.theme.label": { es: "Tema", en: "Theme" },
+  "shell.theme.toDark": { es: "Pasar a modo oscuro", en: "Switch to dark mode" },
+  "shell.theme.toLight": { es: "Pasar a modo claro", en: "Switch to light mode" },
   "shell.back": { es: "Volver a {name}", en: "Back to {name}" },
   "shell.language": { es: "Idioma", en: "Language" },
   "shell.skip": { es: "Saltar al contenido", en: "Skip to content" },

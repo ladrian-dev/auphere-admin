@@ -241,10 +241,13 @@ class PanelBalanceOut(BaseModel):
 
 
 class PanelDailyOut(BaseModel):
-    period: Literal["7d"] = "7d"
+    #: Owner, 2026-11-22: del día 1 del mes a hoy (antes, los últimos 7 días).
+    period: Literal["month", "7d"] = "month"
     days: list[date]
     resolved_without_person: list[int]
     handed_to_person: list[int]
+    #: Las conversaciones de los mismos días del mes pasado (del 1 al mismo día).
+    previous_total: int | None = None
 
 
 class PanelAttentionOut(BaseModel):

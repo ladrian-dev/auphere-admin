@@ -435,6 +435,7 @@ async def _panel(
             days=built.days,
             resolved_without_person=built.resolved,
             handed_to_person=built.handed,
+            previous_total=built.previous_total,
         )
         if "conversations_per_day" not in built.errors
         else None,

@@ -38,7 +38,7 @@ const DOT: Record<AgentVisible, string> = {
  * USD», la minibarra de lo que queda y cuánto dura a este ritmo. La barra dice
  * lo mismo que se lee; el ámbar, en la barra y en su texto, nunca en la fila.
  */
-function BagCell({ bag }: { bag: Bag | null }) {
+function BagCell({ bag, wide = false }: { bag: Bag | null; wide?: boolean }) {
   const t = useT();
   const bar = bagBar(bag);
   if (!bar) return <span className="text-ui text-muted-foreground">{t("clients.v2.bag.unlimited")}</span>;
@@ -47,10 +47,10 @@ function BagCell({ bag }: { bag: Bag | null }) {
   const label = [assigned?.balance && assigned.assigned ? bagLeftText(t, assigned) : t("clients.v2.bag.unassigned"), pace].filter(Boolean).join(". ");
   return (
     <div className="grid min-w-0 gap-1">
-      <span data-slot="bag-line" className="text-ui whitespace-nowrap tabular-nums">
+      <span data-slot="bag-line" className={cn("text-ui tabular-nums", wide ? "min-w-0 break-words" : "whitespace-nowrap")}>
         {assigned ? <BagLine bag={assigned} /> : t("clients.v2.bag.unassigned")}
       </span>
-      <BagMeter bag={bag} bar={bar} label={label} pace={pace} className="w-30 max-w-full" />
+      <BagMeter bag={bag} bar={bar} label={label} pace={pace} className={wide ? "w-full" : "w-30 max-w-full"} />
     </div>
   );
 }
@@ -75,14 +75,49 @@ function BagLine({ bag }: { bag: Bag }) {
 }
 
 /**
+ * Los agentes de un cliente: un punto por agente y el texto (prototipo §1.3).
+ * En la tabla no se parte; en la tarjeta del móvil, si no cabe, baja de línea.
+ */
+function AgentsCell({ row, wrap = false }: { row: ClientRowV2; wrap?: boolean }) {
+  const t = useT();
+  const agents = liveAgents(row.agents);
+  return (
+    <div className={cn("flex min-w-0 items-center gap-2", wrap && "flex-wrap")}>
+      {agents.length ? (
+        <ul className={cn("flex shrink-0 items-center gap-1", wrap && "flex-wrap")} aria-label={t("clients.v2.col.agents")}>
+          {agents.map((a) => {
+            const label = t("clients.v2.agents.dot", { name: a.name, state: agentStateText(t, a.visible_state) });
+            return (
+              <li key={a.agent_id} title={label}>
+                <span role="img" aria-label={label} className={cn("block size-2 rounded-full", DOT[a.visible_state.code])} />
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      <span className={cn("text-ui text-muted-foreground", wrap ? "min-w-0" : "whitespace-nowrap")}>{agentsText(t, row.agents_summary, row.agents)}</span>
+    </div>
+  );
+}
+
+/** El punto de ruptura de la lista: la anchura que pide la tabla (`min-w-[760px]`). */
+const PHONE_ONLY = "min-[760px]:hidden";
+const WIDE_ONLY = "max-[760px]:hidden";
+
+/**
  * La lista de clientes de la consola nueva (spec 047, T065, requisito 7), como
  * el prototipo aprobado (`clientes.md` §2, hueco H6): el buscador con lupa que
  * filtra mientras se escribe, el filtro en un select con sus cuentas, y la
  * tabla con quién necesita algo («Al día» si nada), sus agentes en puntos y en
  * texto, su saldo con la minibarra de lo gastado y el menú ⋯. Toda la fila
  * abre el cliente; el nombre sigue siendo el enlace (el foco de teclado). La
- * tabla se desplaza dentro de su caja por debajo de 760 px: la página nunca.
- * El orden y la regla los pone la API.
+ * tabla se desplaza dentro de su caja si su caja no llega a 760 px: la página
+ * nunca. Por debajo de 760 px de pantalla (el móvil), spec 074 (M01): «una sola
+ * navegación en el móvil, sin perder acciones», así que cada cliente es una
+ * tarjeta con todo lo de su fila (nombre y nicho, estado, agentes, saldo con su
+ * barra y el mismo ⋯) en lugar de una tabla que esconde columnas. La tarjeta
+ * entera abre el cliente y el nombre sigue siendo el foco de teclado; el nombre
+ * y el ⋯ miden al menos 44 × 44. El orden y la regla los pone la API.
  */
 export function ClientsListV2({
   items,
@@ -148,7 +183,7 @@ export function ClientsListV2({
   }
 
   /** Toda la fila abre el cliente, salvo sus controles y lo que se abre desde ella (menú, ventanas). */
-  function openRow(event: React.MouseEvent<HTMLTableRowElement>, to: string) {
+  function openRow(event: React.MouseEvent<HTMLElement>, to: string) {
     const target = event.target as Element;
     if (!event.currentTarget.contains(target)) return;
     if (target.closest("a, button, input, select, textarea, [role=menuitem]")) return;
@@ -198,7 +233,7 @@ export function ClientsListV2({
       ) : (
         <div className="grid min-w-0 gap-3">
           <div
-            className="relative min-w-0 overflow-x-auto rounded-lg border border-border bg-card"
+            className={cn("relative min-w-0 overflow-x-auto rounded-lg border border-border bg-card", WIDE_ONLY)}
             role="region"
             aria-label={t("clients.v2.table.caption")}
             tabIndex={0}
@@ -230,7 +265,6 @@ export function ClientsListV2({
                 ) : (
                   items.map((row) => {
                     const state = stateView(t, row.lifecycle, row.attention, row.bag);
-                    const agents = liveAgents(row.agents);
                     const to = clientHref(row.external_client_ref);
                     return (
                       <tr
@@ -258,21 +292,7 @@ export function ClientsListV2({
                           </StatusBadge>
                         </td>
                         <td className="px-3 py-4">
-                          <div className="flex min-w-0 items-center gap-2">
-                            {agents.length ? (
-                              <ul className="flex shrink-0 items-center gap-1" aria-label={t("clients.v2.col.agents")}>
-                                {agents.map((a) => {
-                                  const label = t("clients.v2.agents.dot", { name: a.name, state: agentStateText(t, a.visible_state) });
-                                  return (
-                                    <li key={a.agent_id} title={label}>
-                                      <span role="img" aria-label={label} className={cn("block size-2 rounded-full", DOT[a.visible_state.code])} />
-                                    </li>
-                                  );
-                                })}
-                              </ul>
-                            ) : null}
-                            <span className="text-ui whitespace-nowrap text-muted-foreground">{agentsText(t, row.agents_summary, row.agents)}</span>
-                          </div>
+                          <AgentsCell row={row} />
                         </td>
                         <td className="px-3 py-4">
                           <BagCell bag={row.bag} />
@@ -287,6 +307,67 @@ export function ClientsListV2({
               </tbody>
             </table>
           </div>
+
+          {/* Spec 074 (M01): el móvil, una tarjeta por cliente con todo lo de su fila. */}
+          {items.length === 0 ? (
+            <div data-slot="clients-cards-empty" className={cn("rounded-lg border border-border bg-card px-5 py-10 text-center", PHONE_ONLY)}>
+              <p className="text-sm text-muted-foreground" role="status">
+                {q ? t("clients.v2.empty.search", { q }) : t("clients.v2.empty.filter")}
+              </p>
+            </div>
+          ) : (
+            <ul
+              data-slot="clients-cards"
+              aria-label={t("clients.v2.table.caption")}
+              className={cn("grid min-w-0 divide-y divide-border rounded-lg border border-border bg-card", PHONE_ONLY)}
+            >
+              {items.map((row) => {
+                const state = stateView(t, row.lifecycle, row.attention, row.bag);
+                const to = clientHref(row.external_client_ref);
+                return (
+                  <li
+                    key={row.external_client_ref}
+                    data-slot="client-card"
+                    onClick={(e) => openRow(e, to)}
+                    className="grid min-w-0 cursor-pointer gap-3 px-4 pt-1 pb-4 transition-colors duration-[120ms] first:rounded-t-lg last:rounded-b-lg hover:bg-muted motion-reduce:transition-none"
+                  >
+                    <div className="flex min-w-0 items-start gap-2">
+                      <div className="grid min-w-0 flex-1">
+                        {/* `py-3`: el nombre mide 44 px de alto, el objetivo táctil del móvil. */}
+                        <Link
+                          href={to}
+                          className="block min-w-0 truncate py-3 font-medium underline-offset-4 outline-none hover:underline focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring"
+                          title={row.name}
+                        >
+                          {row.name}
+                        </Link>
+                        {row.niche ? (
+                          <span className="-mt-2 block min-w-0 truncate text-ui text-muted-foreground" title={row.niche}>
+                            {row.niche}
+                          </span>
+                        ) : null}
+                      </div>
+                      <ClientMenu
+                        refId={row.external_client_ref}
+                        name={row.name}
+                        allowed={row.allowed}
+                        deleteBlocked={row.delete_blocked ?? null}
+                        afterDelete={null}
+                        triggerClassName="-mr-2 size-11"
+                      />
+                    </div>
+                    <div className="flex min-w-0">
+                      <StatusBadge tone={state.tone} className="max-w-full">
+                        {state.label}
+                      </StatusBadge>
+                    </div>
+                    <AgentsCell row={row} wrap />
+                    <BagCell bag={row.bag} wide />
+                  </li>
+                );
+              })}
+            </ul>
+          )}
           <p className="text-xs text-muted-foreground">{t("clients.proto.footer")}</p>
         </div>
       )}

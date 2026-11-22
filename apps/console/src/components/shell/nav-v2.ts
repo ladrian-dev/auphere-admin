@@ -20,3 +20,14 @@ export function navV2(role: Role, modules: readonly PartnerModule[]): NavV2 {
   const items = (labelKey: string) => groups.find((g) => g.labelKey === labelKey)?.items ?? [];
   return { top: items("nav.group.operate"), bottom: items("nav.group.account") };
 }
+
+/**
+ * Spec 074 (D1): en el teléfono la barra inferior lleva solo las cuatro
+ * secciones que se usan a diario (como mucho cinco caben a mano del pulgar). El
+ * resto de «Operar» (la Guía del partner, Teammate) va en el menú del perfil.
+ */
+export const TABBAR_HREFS: readonly string[] = ["/", "/clients", "/usage", "/audit"];
+
+export function splitForPhone(top: NavItem[]): { tabbar: NavItem[]; more: NavItem[] } {
+  return { tabbar: top.filter((i) => TABBAR_HREFS.includes(i.href)), more: top.filter((i) => !TABBAR_HREFS.includes(i.href)) };
+}

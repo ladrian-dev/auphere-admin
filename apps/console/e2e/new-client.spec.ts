@@ -35,7 +35,7 @@ async function openModal(page: Page) {
 }
 
 test.describe("Spec 047 — el alta en tres datos", () => {
-  test("los tres datos, los chips sin el correo y «Más ajustes» de una web .cl", async ({ page }) => {
+  test("los tres datos, los chips sin el correo y «Más ajustes» de una web .cl", async ({ page, request }) => {
     const { dialog } = await openModal(page);
     const create = dialog.getByRole("button", { name: "Crear cliente" });
     await expect(create).toBeDisabled();
@@ -53,14 +53,26 @@ test.describe("Spec 047 — el alta en tres datos", () => {
     await expect(chips.nth(1)).toContainText("Instagram");
     await expect(dialog.getByRole("combobox", { name: "Red de @florencanto" })).toBeVisible();
 
-    await dialog.getByRole("button", { name: "Más ajustes" }).click();
-    await expect(dialog.getByRole("combobox", { name: "País" })).toHaveValue("CL");
+    // «Más ajustes» dice, sin abrir, lo que se va a guardar.
+    const more = dialog.getByRole("button", { name: /^Más ajustes/ });
+    await expect(more).toHaveAccessibleName("Más ajustes · America/Santiago · CLP");
+    await more.click();
+    // Desde la spec 047 (prototipo aprobado) el país ya no se elige aquí: se
+    // deduce de la web y se cambia en Datos básicos. Lo que se ve son la zona y
+    // las dos monedas, cada una con su nombre (spec 055).
+    await expect(dialog.getByRole("combobox", { name: "País" })).toHaveCount(0);
     await expect(dialog.getByRole("combobox", { name: "Zona horaria" })).toHaveValue("America/Santiago");
     await expect(dialog.getByRole("combobox", { name: /Moneda de los precios/ })).toHaveValue("CLP");
-    await expect(dialog.getByRole("combobox", { name: /Moneda de la bolsa/ })).toHaveValue("USD");
+    await expect(dialog.getByRole("combobox", { name: /Moneda del saldo/ })).toHaveValue("USD");
 
     await expectNoSeriousAxe(page, "[data-slot=client-modal]");
     await expect(create).toBeEnabled();
+
+    // El país deducido de la web .cl viaja con el alta aunque no se vea.
+    await create.click();
+    await expect(page).toHaveURL(/\/clients\/flor-y-encanto$/);
+    const sent = (await (await request.get(`${API}/__created`)).json()) as { body: Record<string, unknown> }[];
+    expect(sent.at(-1)?.body).toMatchObject({ name: "Flor y Encanto", country: "CL", timezone: "America/Santiago", price_currency: "CLP", wallet_currency: "USD", eu_only: false });
   });
 
   test("crear lleva al Panel del cliente con el aviso y manda lo deducido", async ({ page, request }) => {
@@ -72,8 +84,11 @@ test.describe("Spec 047 — el alta en tres datos", () => {
     await expect(dialog.getByRole("list", { name: "Enlaces que irán a la ficha" }).getByRole("listitem")).toHaveCount(2);
     await dialog.getByRole("button", { name: "Crear cliente" }).click();
 
-    await expect(page).toHaveURL(/\/clients\/barberia-cultor$/);
+    // El aviso sale al volver el alta y dura unos segundos: se mira antes de que
+    // `next dev` termine de compilar la ficha, no después.
     await expect(page.getByText("Barbería Cultor creado.")).toBeVisible();
+    await expect(page).toHaveURL(/\/clients\/barberia-cultor$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Barbería Cultor" })).toBeVisible();
     const sent = (await (await request.get(`${API}/__created`)).json()) as { body: Record<string, unknown>; idempotency_key: string | null }[];
     const last = sent.at(-1);
     expect(last, "la API simulada no recibió el alta").toBeDefined();

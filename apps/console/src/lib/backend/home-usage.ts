@@ -155,7 +155,14 @@ export type HomePanel = {
   spend: { period: "month"; since: string; until: string; total: PanelMoney; shares: PanelSpendShare[] } | null;
   clients: { period: "now"; serving: number; not_archived: number; onboarding: number } | null;
   balance: { period: "now"; available: PanelMoney; in_bags: PanelMoney; in_bags_approx: boolean } | null;
-  conversations_per_day: { period: "7d"; days: string[]; resolved_without_person: number[]; handed_to_person: number[] } | null;
+  /** Owner, 2026-11-22: del día 1 del mes a hoy, con los mismos días del mes pasado (`previous_total`). */
+  conversations_per_day: {
+    period: "month" | "7d";
+    days: string[];
+    resolved_without_person: number[];
+    handed_to_person: number[];
+    previous_total?: number | null;
+  } | null;
   attention: PanelAttention[] | null;
   /** «Todos tus clientes están atendiendo». */
   all_serving: boolean;

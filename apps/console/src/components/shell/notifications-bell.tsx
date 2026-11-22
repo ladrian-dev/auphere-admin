@@ -17,12 +17,7 @@ import {
   formatRelative,
 } from "@nexus/ui";
 
-import {
-  attentionAction,
-  listNotificationsAction,
-  markAllNotificationsReadAction,
-  unreadCountAction,
-} from "@/app/(console)/notifications/actions";
+import { attentionAction, listNotificationsAction, markAllNotificationsReadAction } from "@/app/(console)/notifications/actions";
 import { attentionKey } from "@/components/attention/attention-model";
 import { AttentionRow } from "@/components/attention/attention-row";
 import { notificationText, severityTone } from "@/components/notifications/render";
@@ -34,6 +29,11 @@ import type { Notification } from "@/lib/backend/onboarding";
  * The unread count (CP-29): soft polling every 60 s, paused when the tab is
  * hidden, refreshed on route change. Never blocks render. Shared by today's
  * bell and the new one so both count the same way.
+ *
+ * It reads `GET /api/notifications/count`, not server actions: a server action
+ * goes through the router's queue, and one that was still running when a link
+ * was clicked put the page back to where it started once it finished (spec
+ * 074). A background read must never navigate.
  */
 function useUnreadNotifications(initialUnread: number | null) {
   const pathname = usePathname();
@@ -45,9 +45,11 @@ function useUnreadNotifications(initialUnread: number | null) {
       if (document.visibilityState === "hidden") return;
       try {
         // Spec 071 (3.1): el número es lo que te necesita ahora más los avisos
-        // sin leer. La API ya no cuenta como «sin leer» los de una condición.
-        const [res, now] = await Promise.all([unreadCountAction(), attentionAction().catch(() => null)]);
-        if (alive && res.ok) setUnread(res.data.unread + (now && now.ok ? now.data.items.length : 0));
+        // sin leer; la ruta ya lo suma. La API no cuenta como «sin leer» los de una condición.
+        const res = await fetch("/api/notifications/count", { cache: "no-store", headers: { accept: "application/json" } });
+        if (!res.ok) return;
+        const body = (await res.json()) as { unread: number };
+        if (alive) setUnread(body.unread);
       } catch {
         /* keep the last value */
       }

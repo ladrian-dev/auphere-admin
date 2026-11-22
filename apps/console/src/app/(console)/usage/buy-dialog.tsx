@@ -17,21 +17,37 @@ export function BuyDialog({
   variant = "default",
   size = "default",
   label,
+  iconOnly = false,
 }: {
   accountCurrency?: string | null;
   /** El Panel lo pone en «Saldo disponible» como secundario: el primario de la vista es «Nuevo cliente». */
   variant?: "default" | "outline";
   size?: "default" | "sm";
   label?: string;
+  /** Solo el «+», con `label` como nombre y como pista (owner, 2026-11-22: en el Panel). */
+  iconOnly?: boolean;
 }) {
   const t = useT();
   const [open, setOpen] = React.useState(false);
   return (
     <>
-      <Button variant={variant} size={size} onClick={() => setOpen(true)} data-slot="buy-balance">
-        <Plus aria-hidden="true" />
-        {label ?? t("membership.credit.title")}
-      </Button>
+      {iconOnly ? (
+        <Button
+          variant={variant}
+          size="icon-sm"
+          onClick={() => setOpen(true)}
+          data-slot="buy-balance"
+          aria-label={label ?? t("membership.credit.title")}
+          title={label ?? t("membership.credit.title")}
+        >
+          <Plus aria-hidden="true" />
+        </Button>
+      ) : (
+        <Button variant={variant} size={size} onClick={() => setOpen(true)} data-slot="buy-balance">
+          <Plus aria-hidden="true" />
+          {label ?? t("membership.credit.title")}
+        </Button>
+      )}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>

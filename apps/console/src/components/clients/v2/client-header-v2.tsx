@@ -84,23 +84,25 @@ export function ClientHeaderV2({
       </div>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <nav aria-label={t("clients.v2.tabs")} className="min-w-0">
-          <ul className={tabsListVariants({ floating: true })}>
-            {/* Spec 070: la lente viaja a la pestaña activa. */}
-            <li role="none" className="contents">
-              <SlidingLens selector='[aria-current="page"]' variant="tabs" />
-            </li>
-            {tabs.map((tab) => (
-              <li key={tab} className="shrink-0">
-                <Link
-                  href={clientHref(ref, tab)}
-                  aria-current={current === tab ? "page" : undefined}
-                  className="inline-flex h-8 items-center gap-2 rounded-full px-3 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-(--tab-on) aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
-                >
-                  {t(`clients.v2.tab.${tab}` as MessageKey)}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className={tabsListVariants({ floating: true })} data-slot="client-tabs">
+            {/* Spec 070: la lente viaja a la pestaña activa. Va hermana de la lista, como en la
+                barra inferior: dentro de un `ul` solo van `li` (axe «list»), y un `li` con
+                `role="none"` no lo es. */}
+            <SlidingLens selector='[aria-current="page"]' variant="tabs" />
+            <ul className="flex w-max items-center gap-1">
+              {tabs.map((tab) => (
+                <li key={tab} className="shrink-0">
+                  <Link
+                    href={clientHref(ref, tab)}
+                    aria-current={current === tab ? "page" : undefined}
+                    className="inline-flex h-8 items-center gap-2 rounded-full px-3 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-(--tab-on) aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
+                  >
+                    {t(`clients.v2.tab.${tab}` as MessageKey)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </nav>
         {client.allowed.includes("new_agent") ? (
           <Link href={`${clientHref(ref, "agents")}/new`} className={buttonVariants()}>

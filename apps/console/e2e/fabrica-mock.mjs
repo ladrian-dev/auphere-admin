@@ -5,10 +5,12 @@
  * Contesta a las dos clases de persona según la cookie de sesión que manda la
  * consola a `POST /console/auth/session`:
  * - `e2e-lite`: Marta, persona del cliente «Barbería Cultor», con Panel,
- *   Bandeja, Agentes, Negocio y Consumo (`contracts/lite-app-api.md`): sus
- *   agentes con pausar y reanudar, su ficha con `If-Match`, historial y
- *   deshacer, y «Corregir esta respuesta» con la paráfrasis y los datos
- *   personales que bloquean el envío;
+ *   Bandeja y Consumo (`contracts/lite-app-api.md`) y «Corregir esta
+ *   respuesta» con la paráfrasis y los datos personales que bloquean el envío.
+ *   Sus `modules` traen aún `agents` y `business`, como un acceso que los tenía
+ *   guardados antes de la spec 056: la consola no los pinta ni los abre. Las
+ *   rutas de agentes y ficha de `/console/lite/` siguen aquí, pero la consola
+ *   ya no las llama;
  * - cualquier otra: Luis, owner del partner con la consola nueva
  *   (`contracts/console-api.md` §4): la pantalla del agente con Recepción,
  *   Rendimiento (solo metadatos) y Mejoras, y Equipo.

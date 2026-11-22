@@ -7,7 +7,9 @@
  * sesión, `GET /console/me` con `console_version: "v2"`, la campana, la lista,
  * la detección de enlaces, las sugerencias de nicho y el alta. La detección es
  * una copia mínima de la regla de la API (`services/business/links.py`): web,
- * `@usuario` suelto y el correo que no es una web. Todo lo demás es un 404.
+ * `@usuario` suelto y el correo que no es una web. Tras el alta, la ficha y el
+ * Panel del cliente recién creado, lo justo para que el Panel se pinte (la
+ * consola lleva ahí con el aviso «{nombre} creado.»). Todo lo demás es un 404.
  *
  * No verifica tokens: no es la puerta, es el otro lado del cable.
  */
@@ -102,6 +104,67 @@ const slug = (name) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "") || "cliente";
 
+const USD0 = { amount_micros: 0, currency: "USD" };
+const newBag = { state: "empty", balance: USD0, assigned: USD0, spent: USD0, pct_spent: 0, pct_left: 0, days_left: null, days_estimable: false, alerts: [] };
+
+/** El cliente recién creado, por su referencia; `null` si no se ha dado de alta. */
+function createdClient(ref) {
+  const hit = created.findLast((c) => slug(String(c.body.name ?? "")) === ref);
+  return hit ? hit.body : null;
+}
+
+function clientDetail(ref, body) {
+  return {
+    external_client_ref: ref,
+    name: body.name,
+    niche: body.niche,
+    status: "active",
+    lifecycle: "active",
+    timezone: body.timezone,
+    created_at: "2026-11-22T10:00:00Z",
+    updated_at: "2026-11-22T10:00:00Z",
+    out_of_quota: false,
+    unlimited_consumption: false,
+    setup: null,
+    quota: null,
+    conversations_7d: 0,
+    audience: null,
+    attention: { needs: false, reasons: [] },
+    agents: [],
+    agents_summary: { total: 0, serving: 0, testing: 0, ready_no_channel: 0, draft: 0, paused: 0 },
+    bag: newBag,
+    health: { whatsapp_connected: false, display_phone_number: null, agent_configured: false, agent_version: null },
+    sector: null,
+    serving_since: null,
+    info: body.info ?? null,
+    website: null,
+    country: body.country,
+    price_currency: body.price_currency,
+    wallet_currency: body.wallet_currency,
+    eu_only: body.eu_only,
+    revision: 1,
+    allowed: ["edit", "assign_balance", "new_agent", "archive", "delete"],
+  };
+}
+
+function clientPanel(ref, body) {
+  return {
+    ref,
+    name: body.name,
+    niche: body.niche,
+    lifecycle: "active",
+    bag: newBag,
+    attention: { needs: false, reasons: [] },
+    spend_by_agent: [],
+    month: { period_start: "2026-11-01", period_end: "2026-11-30", conversations: 0, handed_to_person: 0, resolved_without_person: 0, resolved_pct: null, spent: USD0 },
+    top_agents: [],
+    agents_total: 0,
+    missing: null,
+    read: { job: null, website: null, networks: [] },
+    allowed: ["edit", "assign_balance", "new_agent", "archive", "delete"],
+  };
+}
+
 function send(res, status, body) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(body === undefined ? "" : JSON.stringify(body));
@@ -162,8 +225,17 @@ const server = createServer(async (req, res) => {
         read_job_id: hasLinks ? "33333333-3333-4333-8333-333333333333" : null,
       });
     }
-    default:
+    default: {
+      const m = req.method === "GET" ? url.pathname.match(/^\/console\/clients\/([^/]+)(\/panel|\/business\/read)?$/) : null;
+      const body = m ? createdClient(decodeURIComponent(m[1])) : null;
+      if (m && body) {
+        const ref = decodeURIComponent(m[1]);
+        if (!m[2]) return send(res, 200, clientDetail(ref, body));
+        if (m[2] === "/panel") return send(res, 200, clientPanel(ref, body));
+        return send(res, 200, { job: null, website: null, networks: [] });
+      }
       return send(res, 404, { detail: "Not Found" });
+    }
   }
 });
 

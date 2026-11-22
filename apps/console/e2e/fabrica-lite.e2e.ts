@@ -11,6 +11,13 @@ import { expectLongGermanFits, expectNoOverflow, expectNoSeriousAxe, expectReach
  * bloquean, deshacer un dato). Cada pantalla: axe, 390 px, 200 %, teclado,
  * «Reducir transparencia/movimiento», sus estados y textos largos en alemán.
  *
+ * Spec 056 (requisito 2, decisión D2 del owner) sacó Agentes y Negocio de la
+ * consola del cliente: pausar agentes y números y editar la ficha pasaron a ser
+ * del partner (lo cubren `agent-life.e2e.ts` y las suites de la ficha). Desde la
+ * spec 074 (4.1) esta suite comprueba lo nuevo: la barra no los trae aunque la
+ * API los mande, y `/agentes` o `/negocio` dan la 404 dentro de su consola, que
+ * lleva a su primer módulo (2.1, 2.4 y 14).
+ *
  *   pnpm exec playwright test -c e2e/fabrica.config.ts --project=lite
  *
  * Contra `fabrica-mock.mjs`.
@@ -39,141 +46,57 @@ async function open(page: Page, path: string, heading: string | RegExp) {
   await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
 }
 
-test.describe("Spec 047 — la consola lite: Agentes, Negocio y corregir respuestas", () => {
+test.describe("Spec 047 — la consola lite: su barra, sin Agentes ni Negocio (056), y corregir respuestas", () => {
   test.beforeEach(async ({ page }) => {
     await page.request.post(`${API}/__test/reset`);
     await page.setViewportSize({ width: 1280, height: 900 });
   });
 
-  test("la barra lateral trae Agentes y Negocio, en el orden de la API", async ({ page }) => {
-    await open(page, "/agentes", "Agentes");
+  // Spec 056 (requisito 2): Agentes y Negocio salen de la consola del cliente.
+  // La simulada sigue mandando `agents` y `business` en `modules`, como un
+  // acceso que los tenía guardados: la consola no los pinta ni los abre (2.1).
+  test("la barra lateral trae los módulos del cliente en el orden de la API, sin Agentes ni Negocio", async ({ page }) => {
+    await open(page, "/inbox", /Bandeja/);
     const links = page.getByRole("link", { name: /^(Panel|Bandeja de entrada|Agentes|Negocio|Consumo)$/ });
     await expect(links.first()).toBeVisible();
     const names = (await links.allTextContents()).map((s) => s.trim()).filter(Boolean);
-    expect(names.indexOf("Agentes")).toBeGreaterThan(names.indexOf("Bandeja de entrada"));
-    expect(names.indexOf("Negocio")).toBe(names.indexOf("Agentes") + 1);
+    expect(names).toEqual(["Panel", "Bandeja de entrada", "Consumo"]);
   });
 
-  test("Agentes: el estado de cada uno, pausar con confirmación y la cifra, reanudar, y la pausa del sistema explicada", async ({ page }) => {
-    await open(page, "/agentes", "Agentes");
-    const recepcion = page.getByRole("region", { name: "Recepción" });
-    await expect(recepcion.getByText("Atendiendo")).toBeVisible();
-    await expect(recepcion.getByText("2 conversaciones en curso")).toBeVisible();
-    await expect(recepcion.getByRole("list", { name: "Números de Recepción" }).getByText("A todos")).toBeVisible();
-    const ventas = page.getByRole("region", { name: "Ventas mayoristas" });
-    await expect(ventas.getByText("Pausado · sin saldo")).toBeVisible();
-    await expect(ventas.getByText(/Vuelve a atender solo en cuanto haya saldo/)).toBeVisible();
-    await expect(ventas.getByRole("button", { name: "Reanudar" })).toHaveCount(0);
-    // Nada de lo que es del partner (50.3).
-    await expect(page.getByRole("button", { name: /Archivar|Publicar|Nuevo agente|Pedir saldo/ })).toHaveCount(0);
-    await expectNoSeriousAxe(page, "/agentes");
+  for (const [what, paths] of [
+    ["Agentes", ["/agentes", `/agentes/${RECEPCION}`]],
+    ["Negocio", ["/negocio"]],
+  ] as const) {
+    test(`${what} ya no es del cliente: su dirección da la 404 dentro de su consola y lleva a su primer módulo`, async ({ page }) => {
+      for (const path of paths) {
+        const res = await page.goto(path);
+        expect(res?.status(), `${path} respondió ${res?.status()}`).toBe(404);
+        await expect(page.getByRole("heading", { level: 1, name: "Esta página no está" })).toBeVisible();
+        // No dice si lo pedido existe, y sale con su menú (el marco del cliente).
+        await expect(page.getByText("No existe o no es tuya.")).toBeVisible();
+        await expect(page.getByRole("link", { name: "Bandeja de entrada", exact: true })).toBeVisible();
+        await expect(page.getByRole("link", { name: what, exact: true })).toHaveCount(0);
+        // Nada de lo que era de Agentes o Negocio, ni de lo que es del partner (50.3).
+        await expect(page.getByRole("button", { name: /Pausar|Reanudar|Archivar|Publicar|Nuevo agente|Pedir saldo|Guardar horario|Deshacer/ })).toHaveCount(0);
+        await expect(page.getByRole("link", { name: "Ir al inicio" })).toHaveAttribute("href", "/");
+      }
+      await expectNoSeriousAxe(page, `${what} · 404`);
+      await expectNoOverflow(page, `${what} · 404`);
 
-    // Con el teclado: «Pausar» se alcanza, el modal retiene el foco y Escape lo cierra devolviéndolo.
-    const pause = recepcion.getByRole("button", { name: "Pausar", exact: true });
-    await expectReachableByTab(page, pause);
-    await page.keyboard.press("Enter");
-    const dialog = page.getByRole("dialog", { name: "¿Pausar Recepción?" });
-    await expect(dialog.getByText(/Tiene 2 conversaciones en curso, que pasarán a la Bandeja/)).toBeVisible();
-    // El foco no puede quedarse fuera (Base UI lo devuelve con centinelas: se mide dónde reposa).
-    for (let i = 0; i < 6; i++) {
-      await page.keyboard.press("Tab");
-      await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest("[role=dialog]")), { timeout: 2_000 }).toBe(true);
-    }
-    await expectNoSeriousAxe(page, "/agentes · pausar");
-    await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
-    await expect(pause).toBeFocused();
+      // Con el teclado, «Ir al inicio» lleva a su primer módulo.
+      await expectReachableByTab(page, page.getByRole("link", { name: "Ir al inicio" }));
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(/\/$/);
+      await expect(page.getByRole("link", { name: "Panel", exact: true })).toHaveAttribute("aria-current", "page");
+      // La consola del cliente no pidió nada de Agentes ni Negocio, ni pausó nada.
+      expect((await state(page)).pauses).toEqual([]);
+      expect((await state(page)).keys).toEqual([]);
 
-    await pause.click();
-    await page.getByRole("dialog").getByRole("button", { name: "Pausar el agente" }).click();
-    await expect(recepcion.getByText("Pausado · a mano")).toBeVisible();
-    await expect(recepcion.getByText("Lo pausó alguien de tu equipo desde la web.")).toBeVisible();
-    expect((await state(page)).pauses).toEqual([{ agent: RECEPCION, confirm: true }]);
-
-    await recepcion.getByRole("button", { name: "Reanudar", exact: true }).click();
-    await expect(recepcion.getByText("Atendiendo")).toBeVisible();
-
-    // Un número solo, con su propia confirmación.
-    await recepcion.getByRole("button", { name: "Pausar el número" }).click();
-    await page.getByRole("dialog", { name: "¿Pausar el número +34 611 20 48 93?" }).getByRole("button", { name: "Pausar el número" }).click();
-    await expect(recepcion.getByRole("list", { name: "Números de Recepción" }).getByText("En pausa")).toBeVisible();
-
-    await expectNoOverflow(page, "/agentes");
-    await expectLongGermanFits(page, "/agentes");
-  });
-
-  test("Agentes: cargando, vacío y error con reintento", async ({ page }) => {
-    await mode(page, { agents: "slow" });
-    await page.goto("/agentes", { waitUntil: "commit" });
-    await expect(page.getByRole("status", { name: "Cargando tus agentes" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Recepción" })).toBeVisible();
-
-    await mode(page, { agents: "empty" });
-    await open(page, "/agentes", "Agentes");
-    await expect(page.getByText("Aún no tienes agentes")).toBeVisible();
-    await expectNoSeriousAxe(page, "/agentes vacío");
-
-    await mode(page, { agents: "fail" });
-    await open(page, "/agentes", "Agentes");
-    await expect(page.getByText("No pudimos leer tus agentes")).toBeVisible();
-    await expectNoSeriousAxe(page, "/agentes con error");
-    await mode(page, { agents: "ok" });
-    await page.getByRole("button", { name: "Reintentar" }).click();
-    await expect(page.getByRole("region", { name: "Recepción" })).toBeVisible();
-  });
-
-  test("Negocio: el precio sin el nombre, el horario con su revisión, «Deshacer» y las claves de idempotencia", async ({ page }) => {
-    await open(page, "/negocio", "Negocio");
-    for (const name of ["Horario", "Fechas especiales", "Servicios", "Sedes", "Últimos cambios"]) {
-      await expect(page.getByRole("region", { name })).toBeVisible();
-    }
-    await expect(page.getByText("Lunes y martes de 10:00 a 20:00 · sábado de 10:00 a 14:00")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Duplicar/ })).toHaveCount(0);
-    await expectNoSeriousAxe(page, "/negocio");
-
-    const services = page.getByRole("region", { name: "Servicios" });
-    await services.getByRole("button", { name: "Editar Corte clásico" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("textbox", { name: /Nombre/ })).toHaveAttribute("readonly", "");
-    await expectNoSeriousAxe(page, "/negocio · servicio");
-    const amount = dialog.getByRole("textbox", { name: /Importe/ });
-    await amount.fill("18");
-    await dialog.getByRole("button", { name: "Guardar servicio" }).click();
-    await expect(services.getByText(/18,00/)).toBeVisible();
-    const history = page.getByRole("region", { name: "Últimos cambios" });
-    await expect(history.getByText(/Marta · desde la web/)).toBeVisible();
-
-    await page.getByRole("region", { name: "Horario" }).getByRole("button", { name: "Guardar horario" }).click();
-    await expect.poll(async () => (await state(page)).keys.map((k) => k.section)).toEqual(["services", "hours"]);
-    for (const k of (await state(page)).keys) expect(k.key, `${k.section} sin Idempotency-Key`).toMatch(/.{8,}/);
-
-    await history.getByRole("button", { name: "Deshacer el cambio de Servicios" }).click();
-    await expect(services.getByText(/15,00/)).toBeVisible();
-    await expect(history.getByText(/deshecho/)).toBeVisible();
-
-    await expectNoOverflow(page, "/negocio");
-    await expectLongGermanFits(page, "/negocio");
-  });
-
-  test("Negocio: cargando, vacío y error con reintento", async ({ page }) => {
-    await mode(page, { business: "slow" });
-    await page.goto("/negocio", { waitUntil: "commit" });
-    await expect(page.getByRole("status", { name: "Cargando tu negocio" })).toBeVisible();
-    await expect(page.getByRole("region", { name: "Horario" })).toBeVisible();
-
-    await mode(page, { business: "empty" });
-    await open(page, "/negocio", "Negocio");
-    await expect(page.getByRole("region", { name: "Servicios" }).getByText(/Todavía no hay servicios/)).toBeVisible();
-    await expect(page.getByRole("region", { name: "Últimos cambios" }).getByText("Aún no hay cambios.")).toBeVisible();
-    await expectNoSeriousAxe(page, "/negocio vacío");
-
-    await mode(page, { business: "fail" });
-    await open(page, "/negocio", "Negocio");
-    await expect(page.getByText("No pudimos leer tu negocio")).toBeVisible();
-    await mode(page, { business: "ok" });
-    await page.getByRole("button", { name: "Reintentar" }).click();
-    await expect(page.getByRole("region", { name: "Horario" })).toBeVisible();
-  });
+      await page.goto(paths[0]);
+      await expect(page.getByRole("heading", { level: 1, name: "Esta página no está" })).toBeVisible();
+      await expectLongGermanFits(page, `${what} · 404`);
+    });
+  }
 
   test("Bandeja: «Corregir esta respuesta» — comportamiento con datos personales que bloquean, y un dato que se deshace", async ({ page }) => {
     await page.goto(`/inbox?c=${CONV}`);
@@ -230,8 +153,8 @@ test.describe("Spec 047 — la consola lite: Agentes, Negocio y corregir respues
 
   test("«Reducir transparencia» y «Reducir movimiento»: el menú flotante pasa a sólido y sin animación", async ({ page }) => {
     await preferLessGlassAndMotion(page);
-    await open(page, "/agentes", "Agentes");
+    await open(page, "/inbox", /Bandeja/);
     await expectSolidFloatingLayer(page, () => page.getByRole("button", { name: "marta@cultor.example" }).click());
-    await expectNoSeriousAxe(page, "/agentes sin vidrio");
+    await expectNoSeriousAxe(page, "/inbox sin vidrio");
   });
 });

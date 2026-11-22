@@ -56,7 +56,7 @@ function Shell({ collapsed = false, children }: { collapsed?: boolean; children?
 }
 
 const sidebar = () => document.querySelector<HTMLElement>("[data-slot=shell-sidebar]")!;
-const mobileNav = () => document.querySelector<HTMLElement>("[data-slot=shell-mobile-nav]")!;
+const mobileNav = () => document.querySelector<HTMLElement>("[data-slot=shell-tabbar]")!;
 const linksIn = (el: HTMLElement) => within(el).getAllByRole("link").map((a) => a.textContent?.trim());
 
 describe("ConsoleShellV2 — el marco", () => {
@@ -202,23 +202,33 @@ describe("ConsoleShellV2 — el marco", () => {
     expect(within(menu).getByRole("menuitem", { name: "Cerrar sesión" })).toBeInTheDocument();
   });
 
-  it("hasta 900 px: la barra superior conserva el menú, el perfil con la cuenta y el tema", async () => {
+  it("hasta 900 px (spec 074): una sola navegación, la barra inferior; el tema va en el menú del perfil", async () => {
     const user = userEvent.setup();
     render(<Shell />);
-    // El lateral se oculta por CSS a ese ancho y aparece la barra (las clases
-    // las decide el punto de ruptura `shell`).
+    // El lateral se oculta por CSS a ese ancho y aparece la barra inferior (las
+    // clases las decide el punto de ruptura `shell`).
     expect(sidebar().className).toMatch(/max-shell:hidden/);
     const bar = mobileNav();
     expect(bar.className).toMatch(/shell:hidden/);
-    expect(linksIn(bar)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría", "Guía del partner", "Teammate"]);
-    // La fila de entradas se desplaza de lado dentro de su caja, sin desbordar la página.
-    expect(bar.querySelector("[data-scroll-x]")).not.toBeNull();
+    // D1: las cuatro secciones de cada día; el resto de «Operar», en el menú del perfil.
+    expect(linksIn(bar)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría"]);
+    // D1: ni la fila de arriba ni el botón ☰.
+    expect(document.querySelector("[data-slot=shell-mobile-nav]")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Mostrar el menú|Ocultar el menú/ })).toBeNull();
+    // La lente de vidrio bajo la sección activa.
+    expect(bar.querySelector("[data-slot=lens][data-variant=tabs]")).not.toBeNull();
+    // Cada sección es un objetivo táctil de 48 px.
+    for (const link of within(bar).getAllByRole("link")) expect(link.className).toMatch(/\bh-12\b/);
+    // D2: el interruptor del tema se esconde en el teléfono y vive en el menú del perfil.
+    expect(screen.getByRole("switch", { name: "Modo oscuro" }).className).toMatch(/max-shell:hidden/);
     const profile = document.querySelector<HTMLElement>("[data-slot=shell-mobile-profile]")!;
     expect(profile.className).toMatch(/shell:hidden/);
     await user.click(within(profile).getByRole("button"));
     const menu = await screen.findByRole("menu");
     expect(within(menu).getByRole("menuitem", { name: "Facturación" })).toBeInTheDocument();
-    expect(screen.getByRole("switch", { name: "Modo oscuro" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: /Pasar a modo (oscuro|claro)/ })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Guía del partner" })).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Teammate" })).toBeInTheDocument();
   });
 
   it("salta al contenido y el contenido es el `main`", () => {

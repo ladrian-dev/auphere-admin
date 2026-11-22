@@ -16,7 +16,7 @@ import type { HomePanel, PanelAttention } from "@/lib/backend/home-usage";
 import type { BuildBudget } from "@/lib/backend/money-types";
 
 import { trendDelta } from "./home-model";
-import { conversationColumns, conversationTotal, failed, monthPeriod, shareLabel } from "./panel-model";
+import { conversationColumns, conversationTotal, daysPeriod, failed, monthPeriod, shareLabel } from "./panel-model";
 
 /** Los colores de las partes del gasto: las series de las gráficas y, después, tonos del mismo sistema. */
 const SERIES = ["bg-series-1", "bg-series-2", "bg-accent-mid", "bg-muted-foreground/50", "bg-muted-foreground/25"];
@@ -121,7 +121,11 @@ export function PartnerPanel({
                   <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{n(conversationTotal(daily))}</p>
                   <Sparkline values={daily.resolved_without_person.map((v, i) => v + (daily.handed_to_person[i] ?? 0))} />
                 </div>
-                <TrendLine trend={trend} />
+                <TrendLine
+                  trend={daily.previous_total !== undefined ? { current: conversationTotal(daily), previous: daily.previous_total } : trend}
+                  period={daily.period === "month" ? daysPeriod(t, daily.days) : t("panel.v2.period.7d")}
+                  month={daily.period === "month"}
+                />
               </CardContent>
             </Card>
           ) : null}
@@ -141,11 +145,12 @@ export function PartnerPanel({
           {balance ? (
             <Card>
               <CardContent className="grid min-w-0 content-start gap-2" data-slot="panel-balance">
-                <h2 className="text-xs text-muted-foreground">{t("money.figure.available")}</h2>
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
-                  <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{moneyText(balance.available, "down")}</p>
-                  {canBuy ? <BuyDialog accountCurrency={balance.available.currency} variant="outline" size="sm" label={t("panel.v2.balance.topUp")} /> : null}
+                {/* El «+» de recargar, arriba a la derecha (owner, 2026-11-22): la cifra se queda sola. */}
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <h2 className="text-xs text-muted-foreground">{t("money.figure.available")}</h2>
+                  {canBuy ? <BuyDialog accountCurrency={balance.available.currency} variant="outline" iconOnly label={t("panel.v2.balance.topUp")} /> : null}
                 </div>
+                <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{moneyText(balance.available, "down")}</p>
                 {/* Spec 072 (2.5): la barra es lo disponible, como dice la cifra de encima. */}
                 <div
                   className="h-2 w-full overflow-hidden rounded-full bg-muted"
@@ -181,7 +186,7 @@ export function PartnerPanel({
         {daily ? (
           <Card>
             <CardContent className="relative grid min-w-0 gap-3 overflow-x-clip" data-slot="panel-conversations">
-              <BlockTitle title={t("panel.v2.conversations.title")} period={t("panel.v2.period.7d")} />
+              <BlockTitle title={t("panel.v2.conversations.title")} period={daily.period === "month" ? daysPeriod(t, daily.days) : t("panel.v2.period.7d")} />
               <BlockChart
                 title={t("panel.v2.conversations.title")}
                 series={[
@@ -298,15 +303,18 @@ function Attention({
 
 const SHOWN = 4;
 
-/** «↑ 28 % más que los 7 días anteriores» en verde, o «↓ … menos …» en ámbar (prototipo). */
-function TrendLine({ trend }: { trend: { current: number; previous: number | null } | null }) {
+/**
+ * «↑ 28 % más que los mismos días del mes pasado» en verde, o «↓ … menos …» en
+ * ámbar (prototipo). Owner, 2026-11-22: el mes; sin con qué comparar, el periodo.
+ */
+function TrendLine({ trend, period, month }: { trend: { current: number; previous: number | null } | null; period: string; month: boolean }) {
   const t = useT();
   const locale = useLocale();
   const delta = trend ? trendDelta(trend.current, trend.previous) : null;
   if (!delta || delta.kind === "none") {
     return (
       <p className="text-xs text-muted-foreground" data-slot="panel-period">
-        {t("panel.v2.period.7d")}
+        {period}
       </p>
     );
   }
@@ -317,7 +325,7 @@ function TrendLine({ trend }: { trend: { current: number; previous: number | nul
       data-slot="panel-period"
     >
       {delta.kind === "up" ? <ArrowUp aria-hidden="true" className="size-3 shrink-0" /> : delta.kind === "down" ? <ArrowDown aria-hidden="true" className="size-3 shrink-0" /> : null}
-      {t(`hu.home.kpi.delta.${delta.kind}`, { pct })}
+      {t(month ? `panel.v2.delta.${delta.kind}` : `hu.home.kpi.delta.${delta.kind}`, { pct })}
     </p>
   );
 }

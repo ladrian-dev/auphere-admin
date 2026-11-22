@@ -5,13 +5,13 @@ Cinco bloques, cada uno con su periodo (48.3), y «Necesita tu atención»:
 - **Gasto del mes**: los 3 clientes que más gastan, el resto y las demás partidas,
   de ``wallet.usage_lines.spend`` — la misma función que Consumo, así que para el
   mismo periodo las cifras coinciden.
-- **Conversaciones** de los últimos 7 días contra los 7 anteriores: el bloque de
-  tendencia de hoy (``conversations_trend``), que el Panel cita con su periodo.
+- **Conversaciones** del mes, del día 1 a hoy, contra los mismos días del mes
+  pasado (``previous_total``; owner, 2026-11-22: las métricas son del mes).
 - **Clientes atendiendo**: los que tienen algún agente «Atendiendo», sobre los no
   archivados, y cuántos siguen en alta.
 - **Saldo disponible** y lo que hay en las bolsas (``usage_lines.balances``).
-- **Conversaciones por día** (7 días): «Resueltas sin persona» y «Pasadas a una
-  persona», contadas por el estado de cada conversación, nunca por su texto (48.4).
+- **Conversaciones por día** (el mes, del día 1 a hoy): «Resueltas sin persona» y
+  «Pasadas a una persona», contadas por el estado de cada conversación, nunca por su texto (48.4).
 
 «Necesita tu atención» es la regla única (``attention.py``) de cada cliente, de más
 a menos grave, cada fila con su arreglo (48.2). Sin nada que arreglar,
@@ -48,7 +48,6 @@ from nexus_api.services.wallet.usage_lines import Balances, balances, spend
 log = structlog.get_logger(__name__)
 
 TOP_CLIENTS: Final = 3
-DAYS: Final = 7
 
 
 @dataclass(frozen=True)
@@ -75,6 +74,8 @@ class Panel:
     days: list[date] = field(default_factory=list)
     resolved: list[int] = field(default_factory=list)
     handed: list[int] = field(default_factory=list)
+    #: Owner, 2026-11-22: los mismos días del mes pasado (del 1 al mismo día), para la tendencia.
+    previous_total: int | None = None
     attention: list[AttentionItem] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -183,11 +184,17 @@ async def build_panel(
         panel.onboarding = panel.not_archived - panel.serving
         panel.errors += [f"attention.{part}" for part in listed.errors]
 
+    # Owner, 2026-11-22: las métricas del Panel son del mes, del día 1 a hoy, como el
+    # gasto. La tendencia compara con los mismos días del mes pasado.
     today = now.date()
-    panel.days = [today - timedelta(days=DAYS - 1 - i) for i in range(DAYS)]
-    start = datetime.combine(panel.days[0], datetime.min.time(), UTC)
-    totals = [0] * DAYS
-    handed = [0] * DAYS
+    first = today.replace(day=1)
+    panel.days = [first + timedelta(days=i) for i in range(today.day)]
+    prev_first = (first - timedelta(days=1)).replace(day=1)
+    prev_last = min(prev_first + timedelta(days=today.day - 1), first - timedelta(days=1))
+    start = datetime.combine(prev_first, datetime.min.time(), UTC)
+    totals = [0] * len(panel.days)
+    handed = [0] * len(panel.days)
+    previous = 0
     index = {d: i for i, d in enumerate(panel.days)}
     try:
         sem = asyncio.Semaphore(client_overview.CONCURRENCY)
@@ -202,7 +209,10 @@ async def build_panel(
                 if d in index:
                     totals[index[d]] += total
                     handed[index[d]] += h
+                elif prev_first <= d <= prev_last:
+                    previous += total
         panel.handed = handed
+        panel.previous_total = previous
         panel.resolved = [t - h for t, h in zip(totals, handed, strict=True)]
     except Exception as exc:
         log.warning("partner_panel.daily_failed", error=type(exc).__name__)

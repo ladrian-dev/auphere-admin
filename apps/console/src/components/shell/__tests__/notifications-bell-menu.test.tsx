@@ -9,13 +9,16 @@ import type { Notification } from "@/lib/backend/onboarding";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 const actions = vi.hoisted(() => ({
-  unreadCountAction: vi.fn(),
   listNotificationsAction: vi.fn(),
   markAllNotificationsReadAction: vi.fn(),
   attentionAction: vi.fn(),
 }));
 vi.mock("@/app/(console)/notifications/actions", () => actions);
 vi.mock("@/app/(console)/usage/money-actions", () => ({ requestBuildExtensionAction: vi.fn() }));
+
+// The count is a background read (`GET /api/notifications/count`), not a server action (spec 074).
+const count = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
+vi.stubGlobal("fetch", count);
 
 const { NotificationsBellMenu } = await import("../notifications-bell");
 
@@ -62,7 +65,7 @@ async function openBell() {
 
 describe("NotificationsBellMenu", () => {
   beforeEach(() => {
-    actions.unreadCountAction.mockReset().mockResolvedValue(ok({ unread: 3 }));
+    count.mockReset().mockResolvedValue(new Response(JSON.stringify({ unread: 3 }), { status: 200 }));
     actions.listNotificationsAction.mockReset();
     actions.markAllNotificationsReadAction.mockReset();
     actions.attentionAction.mockReset().mockResolvedValue(ok({ items: [], errors: [] }));
@@ -72,6 +75,14 @@ describe("NotificationsBellMenu", () => {
     actions.listNotificationsAction.mockResolvedValue(ok({ items: [], next_cursor: null, unread: 0 }));
     render(<Bell />);
     expect(await screen.findByRole("button", { name: "Notificaciones — 3 sin leer" })).toBeInTheDocument();
+    expect(count).toHaveBeenCalledWith("/api/notifications/count", expect.objectContaining({ cache: "no-store" }));
+  });
+
+  it("si la cuenta falla, la campana se queda como estaba", async () => {
+    count.mockResolvedValue(new Response(JSON.stringify({ detail: "Count failed" }), { status: 502 }));
+    render(<Bell />);
+    await waitFor(() => expect(count).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Notificaciones" })).toBeInTheDocument();
   });
 
   it("ideal: los 5 últimos, «Marcar todo como leído» y «Ver todas»", async () => {
@@ -162,7 +173,8 @@ describe("NotificationsBellMenu", () => {
   });
 
   it("spec 071: «Ahora» con lo que te necesita, que suma al número, y «Anteriores» con lo resuelto", async () => {
-    actions.unreadCountAction.mockResolvedValue(ok({ unread: 1 }));
+    // 1 informativo sin leer + 1 cosa de «Ahora»: la ruta ya los suma (su propia prueba).
+    count.mockResolvedValue(new Response(JSON.stringify({ unread: 2 }), { status: 200 }));
     actions.attentionAction.mockResolvedValue(
       ok({
         items: [
