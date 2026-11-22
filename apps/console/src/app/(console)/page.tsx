@@ -101,7 +101,7 @@ async function PartnerHome({ principal }: { principal: PartnerPrincipal }) {
           // Sin botón: «Nuevo cliente» ya está en la cabecera (un primario por vista).
           <EmptyState title={t("clients.empty.title")} description={t("clients.empty.body")} readonly />
         ) : (
-          <PartnerPanel panel={home.panel} trend={trend ? { current: trend.current, previous: trend.previous } : null} buildBudget={buildBudget} />
+          <PartnerPanel panel={home.panel} trend={trend ? { current: trend.current, previous: trend.previous } : null} buildBudget={buildBudget} canBuy={can(principal.role, "billing:manage")} />
         )}
       </>
     );

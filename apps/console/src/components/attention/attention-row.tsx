@@ -18,8 +18,8 @@ import { attentionFix, attentionSeverity, attentionText, attentionTitle, isPartn
  * Una fila de «Lo que te necesita» (spec 071). La misma en el Panel, en «Ahora»
  * de la campana y en los avisos de Consumo.
  *
- * Sin botones sueltos (Andrés, 2026-10-28): el arreglo es la primera opción del
- * «⋯». El saldo se asigna o se pide, y la ampliación del tope se pide, aquí
+ * Sin botones sueltos (Andrés, 2026-10-28, y para todas las filas, también las
+ * de la cuenta, 2026-11-22): el arreglo es la primera opción del «⋯». El saldo se asigna o se pide, y la ampliación del tope se pide, aquí
  * mismo. Lo del partner no lleva a un cliente: su título dice qué parte de la
  * cuenta es.
  *
@@ -58,7 +58,7 @@ export function AttentionRow({ row, compact = false }: { row: PanelAttention; co
         )}
         <span className="text-sm text-pretty text-muted-foreground">{attentionText(t, row)}</span>
       </div>
-      <RowActions menu={!compact && open.length > 0} ariaLabel={t("panel.v2.attention.more", { name: title })} actions={[first, ...open]} />
+      <RowActions menu={!compact} ariaLabel={t("panel.v2.attention.more", { name: title })} actions={[first, ...open]} />
       {fix.kind === "assign" || fix.kind === "request" ? (
         row.external_client_ref ? <BalanceDialogs refId={row.external_client_ref} name={title} open={dialog} onClose={() => setDialog(null)} /> : null
       ) : null}

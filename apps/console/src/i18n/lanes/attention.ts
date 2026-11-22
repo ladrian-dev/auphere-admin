@@ -66,6 +66,8 @@ export const attentionMessages = {
   },
   // Spec 072 (2.5): la barra bajo «Saldo disponible».
   "panel.v2.balance.meter": { es: "Disponible: {amount}", en: "Available: {amount}" },
+  // Owner, 2026-11-22: recargar desde la tarjeta, sin ir a Facturación.
+  "panel.v2.balance.topUp": { es: "Recargar saldo", en: "Top up balance" },
   "att.panel.build": {
     es: "Construcción y pruebas: {spent} de {cap} ({pct} %)",
     en: "Building and testing: {spent} of {cap} ({pct} %)",

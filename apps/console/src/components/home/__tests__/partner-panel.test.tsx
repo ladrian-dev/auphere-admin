@@ -198,9 +198,11 @@ describe("PartnerPanel", () => {
     expect(row).toHaveAttribute("data-scope", "partner");
     expect(within(row).queryByRole("link")).toBeNull();
     expect(plain(row.textContent)).toContain("Construcción y pruebas");
-    expect(within(row).getByRole("button", { name: "Pedir ampliación" })).toBeInTheDocument();
+    // Todas las filas con «⋯», también las de la cuenta (owner, 2026-11-22): el arreglo es su primera opción.
+    expect(within(row).queryByRole("button", { name: "Pedir ampliación" })).toBeNull();
+    await userEvent.click(within(row).getByRole("button", { name: /Construcción y pruebas/ }));
     money.requestBuildExtensionAction.mockResolvedValue({ ok: true, data: { status: "requested" } });
-    await userEvent.click(within(row).getByRole("button", { name: "Pedir ampliación" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Pedir ampliación" }));
     expect(money.requestBuildExtensionAction).toHaveBeenCalledTimes(1);
     expect(plain(region.querySelector("[data-code=account_low]")!.textContent)).toContain("Te queda saldo para unos 5 días a este ritmo.");
     expect(await axeViolations(container)).toEqual([]);
@@ -260,6 +262,23 @@ describe("PartnerPanel", () => {
     await userEvent.click(within(hot).getByRole("button", { name: "Pedir ampliación" }));
     expect(money.requestBuildExtensionAction).toHaveBeenCalledTimes(1);
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("«Saldo disponible» lleva «Recargar saldo» para quien puede comprar (owner, 2026-11-22)", async () => {
+    const { container, rerender } = render(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={panel()} canBuy />
+      </LocaleProvider>,
+    );
+    const balance = container.querySelector("[data-slot=panel-balance]") as HTMLElement;
+    await userEvent.click(within(balance).getByRole("button", { name: "Recargar saldo" }));
+    expect(await screen.findByRole("dialog", { name: "Comprar saldo" })).toBeInTheDocument();
+    rerender(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={panel()} />
+      </LocaleProvider>,
+    );
+    expect(within(container.querySelector("[data-slot=panel-balance]") as HTMLElement).queryByRole("button", { name: "Recargar saldo" })).toBeNull();
   });
 
   it("si un bloque no se pudo leer, lo dice y no pinta ceros", () => {

@@ -43,7 +43,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final
 
 from nexus_api.services.agent_lifecycle import (
@@ -327,6 +327,20 @@ class AttentionItem:
     action: str
     href: str
     data: Mapping[str, Any] = field(default_factory=dict)
+
+
+def buy_first_when_empty(items: list[AttentionItem], *, can_buy: bool) -> list[AttentionItem]:
+    """Con la cuenta a 0 no hay saldo que asignar (owner, 2026-11-22): para quien
+    puede comprar, las filas de saldo de sus clientes que se arreglaban asignando
+    pasan a «Comprar saldo», a Facturación. Quien pide saldo lo sigue pidiendo."""
+    if not can_buy or not any(i.code == "account_empty" for i in items):
+        return items
+    return [
+        replace(i, action="buy_balance", href="/billing")
+        if i.scope == "client" and i.action == "assign_balance"
+        else i
+        for i in items
+    ]
 
 
 def money(amount: int, currency: str) -> dict[str, Any]:

@@ -25,6 +25,7 @@ from nexus_api.services.attention import (
     AttentionItem,
     BuildFacts,
     PartnerFacts,
+    buy_first_when_empty,
     order_items,
     partner_attention,
     partner_items,
@@ -263,3 +264,64 @@ def test_the_account_thresholds_are_the_notices() -> None:
     assert (attention.ACCOUNT_LOW_NOTICE_PCT, attention.ACCOUNT_EMPTY_NOTICE_PCT) == (
         wallet_alerts.THRESHOLDS
     )
+
+
+# ── la cuenta a 0: primero comprar (owner, 2026-11-22) ─────────────────────────
+
+
+def _client_row(code: str, action: str = "assign_balance") -> AttentionItem:
+    return AttentionItem(
+        scope="client",
+        severity=severity_of(code),
+        code=code,
+        ref="flor",
+        name="Flor",
+        count=1,
+        action=action,
+        href="/clients/flor?assign=1",
+    )
+
+
+def _account_row(code: str) -> AttentionItem:
+    return AttentionItem(
+        scope="partner",
+        severity=severity_of(code),
+        code=code,
+        ref=None,
+        name=None,
+        count=1,
+        action="buy_balance",
+        href="/billing",
+    )
+
+
+def test_with_the_account_empty_a_client_without_balance_is_fixed_by_buying_first() -> None:
+    """Con la cuenta a 0 no hay saldo que asignar: quien puede comprar ve «Comprar
+    saldo» en las filas de saldo de sus clientes, y lleva a Facturación."""
+    items = [
+        _account_row("account_empty"),
+        _client_row("no_balance"),
+        _client_row("low_balance"),
+        _client_row("channel_problem", "fix_channel"),
+    ]
+    out = buy_first_when_empty(items, can_buy=True)
+    assert [(i.code, i.action, i.href) for i in out] == [
+        ("account_empty", "buy_balance", "/billing"),
+        ("no_balance", "buy_balance", "/billing"),
+        ("low_balance", "buy_balance", "/billing"),
+        ("channel_problem", "fix_channel", "/clients/flor?assign=1"),
+    ]
+
+
+def test_buying_first_only_with_the_account_empty_and_for_who_can_buy() -> None:
+    low = [_account_row("account_low"), _client_row("no_balance")]
+    assert buy_first_when_empty(low, can_buy=True) == low, "con saldo bajo aún se puede asignar"
+    empty = [
+        _account_row("account_empty"),
+        _client_row("no_balance"),
+        _client_row("low_balance", "request_balance"),
+    ]
+    assert buy_first_when_empty(empty, can_buy=False) == empty, "quien no compra sigue con lo suyo"
+    # Quien pide saldo lo sigue pidiendo: no asigna, así que no le toca comprar.
+    asked = buy_first_when_empty(empty, can_buy=True)
+    assert asked[2].action == "request_balance"
