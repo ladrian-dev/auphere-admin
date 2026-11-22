@@ -38,15 +38,32 @@ async function expectNoSeriousAxe(page: Page) {
   expect(blocking.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
 }
 
-async function go(page: Page, path: string, heading: string | RegExp) {
+// El nombre del agente es el h1 de su pantalla (spec 047, prototipo aprobado); el número de un canal abierto, su h2.
+async function go(page: Page, path: string, heading: string | RegExp, level: 1 | 2 = 1) {
   const res = await page.goto(path);
   expect(res?.status(), `${path} respondió ${res?.status()}`).toBeLessThan(400);
   await page.waitForLoadState("networkidle").catch(() => undefined);
-  await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+  await expect(page.getByRole("heading", { level, name: heading })).toBeVisible();
 }
 
-const knowledge = (page: Page) => page.getByRole("region", { name: "Conocimiento" });
+// Como el prototipo aprobado (spec 047, «Consola de partners v2»), la pantalla del agente va
+// en pestañas: el conocimiento propio vive en la fila «Qué sabe» de «Configuración» y los
+// números, en la pestaña «Canales».
+const knowledge = (page: Page) => page.getByRole("region", { name: "Lo que solo sabe este agente" });
 const channels = (page: Page) => page.getByRole("region", { name: "Canales" });
+
+async function openTab(page: Page, name: string) {
+  const tab = page.getByRole("tab", { name });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+
+/** «Configuración» › «Qué sabe» › «Editar»: abre la fila con las fuentes del agente. */
+async function openKnowledge(page: Page) {
+  await openTab(page, "Configuración");
+  await page.getByRole("region", { name: "Qué sabe" }).getByRole("button", { name: "Editar «Qué sabe»" }).click();
+  await expect(knowledge(page)).toBeVisible();
+}
 
 test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
   test.beforeEach(async ({ request, page }) => {
@@ -55,11 +72,10 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
   });
 
   test("Conocimiento: sus fuentes, las del negocio, quitar con «Deshacer» y «Enseñar» con su alcance", async ({ page, request }) => {
-    await go(page, agentPage, "Recepción");
-    await expect(page.getByRole("navigation", { name: "Partes del agente" }).getByRole("link", { name: "Conocimiento" })).toHaveAttribute(
-      "href",
-      "#agente-conocimiento",
-    );
+    // El ancla de siempre (`#agente-conocimiento`) lleva a «Configuración» con «Qué sabe» abierta.
+    await go(page, `${agentPage}#agente-conocimiento`, "Recepción");
+    await expect(page.getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: "Cerrar «Qué sabe»" })).toHaveAttribute("aria-expanded", "true");
     const section = knowledge(page);
     await expect(section.getByRole("list", { name: "Fuentes de este agente" }).getByText("Tarifas mayoristas")).toBeVisible();
     await expect(section.getByText("Además sabe 2 fuentes del negocio, que ven todos sus agentes.")).toBeVisible();
@@ -80,7 +96,8 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     await expect(dialog.getByText("Elige quién debe saberlo.")).toBeVisible();
     await expectNoSeriousAxe(page);
     await dialog.getByRole("radio", { name: /Solo este agente/ }).check();
-    await expect(dialog.getByText("Después se vuelven a pasar las pruebas de este agente.")).toBeVisible();
+    // Desde la 4729e0e6 las pruebas no se vuelven a pasar solas: quedan desactualizadas.
+    await expect(dialog.getByText("Después, las pruebas de este agente quedan desactualizadas.")).toBeVisible();
     await dialog.getByRole("button", { name: "Enseñar" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(section.getByRole("list", { name: "Fuentes de este agente" }).getByText("En agosto cerramos dos semanas")).toBeVisible();
@@ -97,6 +114,7 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
 
   test("Canales: el estado de cada número, su ⋯, pausar, pasar a otro agente y desconectar con «Reintentar»", async ({ page, request }) => {
     await go(page, agentPage, "Recepción");
+    await openTab(page, "Canales");
     const section = channels(page);
     const list = section.getByRole("list", { name: "Canales de este agente" });
     await expect(list.getByRole("listitem").filter({ hasText: "+34 611 20 48 93" }).getByText("Solo mi equipo")).toBeVisible();
@@ -114,9 +132,11 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     await page.getByRole("menu").getByRole("menuitem", { name: "Desconectar" }).click();
     const confirm = page.getByRole("dialog", { name: "¿Desconectar +34 611 20 48 94?" });
     await confirm.getByRole("button", { name: "Desconectar" }).click();
-    await expect(section.getByText("Falta terminar en Meta")).toBeVisible();
-    await section.getByRole("button", { name: "Reintentar" }).click();
-    await expect(section.getByText("Falta terminar en Meta")).toHaveCount(0);
+    // «Falta terminar en Meta» va debajo de la lista, en la misma pestaña.
+    const tab = page.getByRole("tabpanel", { name: "Canales" });
+    await expect(tab.getByText("Falta terminar en Meta")).toBeVisible();
+    await tab.getByRole("button", { name: "Reintentar" }).click();
+    await expect(tab.getByText("Falta terminar en Meta")).toHaveCount(0);
 
     await section.getByRole("button", { name: "Más acciones de +34 611 20 48 93" }).click();
     await page.getByRole("menu").getByRole("menuitem", { name: "Pasar a otro agente" }).click();
@@ -124,7 +144,9 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     await expect(move.getByRole("radio", { name: "Ventas" })).toBeChecked();
     await expectNoSeriousAxe(page);
     await move.getByRole("button", { name: "Pasar el número" }).click();
-    await expect(section.getByText("Este agente aún no tiene ningún canal.")).toBeVisible();
+    // Sin números, quien puede escribir ve el asistente para conectar el primero (prototipo, `agente.md` §7).
+    await expect(tab.getByRole("list", { name: "Canales de este agente" })).toHaveCount(0);
+    await expect(tab.getByRole("region", { name: "Elige un canal" })).toBeVisible();
     const sent = await (await request.get(`${API}/__test/state`)).json();
     expect(sent.moves).toEqual([{ channel: CH1, to: VENTAS }]);
     expect(sent.disconnects).toEqual(["00000000-0000-4000-8000-0000000000c2", "00000000-0000-4000-8000-0000000000c2"]);
@@ -133,40 +155,48 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
   test("el enlace del dueño: se copia mientras se ve, «Revocar y crear» y «WhatsApp login» fuera de la beta", async ({ page, request, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await go(page, agentPage, "Recepción");
-    const panel = channels(page).locator("[data-slot=owner-link]");
-    await expect(panel.getByText(/abre el enlace en su navegador/)).toBeVisible();
-    await expect(panel.getByText(/desde su teléfono/)).toHaveCount(0);
+    // El enlace se crea desde «Añadir otro canal» › WhatsApp › «Compartir un enlace» (prototipo, `agente.md` §7.1).
+    await openTab(page, "Canales");
+    await page.getByRole("button", { name: "Añadir otro canal" }).click();
+    await page.getByRole("region", { name: "Elige un canal" }).getByRole("button", { name: "Conectar WhatsApp" }).click();
+    await page.getByRole("dialog", { name: "Conectar WhatsApp" }).getByRole("button", { name: "Compartir un enlace" }).click();
+    const dialog = page.getByRole("dialog", { name: "Enlace para el cliente" });
+    await expect(dialog.getByText(/abre el enlace en su navegador/)).toBeVisible();
+    await expect(dialog.getByText(/desde su teléfono/)).toHaveCount(0);
+    const form = dialog.locator("[data-slot=owner-link]");
 
-    await panel.getByRole("radio", { name: /WhatsApp login \(beta\)/ }).check();
-    await panel.getByRole("button", { name: "Crear enlace" }).click();
-    await expect(panel.getByText(/WhatsApp login no está disponible para el país de este negocio/)).toBeVisible();
-    await expect(panel.getByRole("radio", { name: /WhatsApp login/ })).toHaveCount(0);
+    await form.getByRole("radio", { name: /WhatsApp login \(beta\)/ }).check();
+    await form.getByRole("button", { name: "Crear enlace" }).click();
+    await expect(form.getByText(/WhatsApp login no está disponible para el país de este negocio/)).toBeVisible();
+    await expect(form.getByRole("radio", { name: /WhatsApp login/ })).toHaveCount(0);
     await expect(page.getByText(/sin Facebook/i)).toHaveCount(0);
 
-    await panel.getByRole("button", { name: "Crear enlace" }).click();
-    const url = panel.getByRole("textbox", { name: "Enlace para el dueño" });
-    await expect(url).toHaveValue(/\/connect\/whatsapp\/tok_/);
-    await expect(panel.getByText(/Cópialo ahora: por seguridad no se vuelve a enseñar/)).toBeVisible();
-    await panel.getByRole("button", { name: "Copiar enlace" }).click();
+    await form.getByRole("button", { name: "Crear enlace" }).click();
+    const created = form.getByRole("textbox", { name: "Enlace para el dueño" });
+    await expect(created).toHaveValue(/\/connect\/whatsapp\/tok_/);
+    await expect(form.getByText(/Cópialo ahora: por seguridad no se vuelve a enseñar/)).toBeVisible();
+    await form.getByRole("button", { name: "Copiar enlace" }).click();
     // El aviso llega tras escribir en el portapapeles: se espera a que salga (y se vaya) antes de pasar axe.
     await expect(page.getByText("Enlace copiado.")).toBeVisible();
     await expectNoSeriousAxe(page);
 
-    // Al volver, el enlace ya no se puede ver: solo que está pendiente.
+    // Al volver, el enlace ya no se puede ver: solo que está pendiente, encima de los números.
     await page.reload();
     await page.waitForLoadState("networkidle").catch(() => undefined);
+    await openTab(page, "Canales");
+    const panel = page.locator("[data-slot=agent-channels] > [data-slot=owner-link]");
     await expect(panel.getByText("Enlace pendiente · app WhatsApp Business")).toBeVisible();
     await expect(panel.getByRole("textbox", { name: "Enlace para el dueño" })).toHaveCount(0);
     await panel.getByRole("button", { name: "Crear otro enlace" }).click();
     await expect(panel.getByText(/el anterior deja de funcionar/)).toBeVisible();
     await panel.getByRole("button", { name: "Revocar y crear" }).click();
-    await expect(url).toHaveValue(/\/connect\/whatsapp\/tok_/);
+    await expect(panel.getByRole("textbox", { name: "Enlace para el dueño" })).toHaveValue(/\/connect\/whatsapp\/tok_/);
     const sent = await (await request.get(`${API}/__test/state`)).json();
     expect(sent.links).toEqual([{ mode: "coexistence" }, { mode: "coexistence", replace: true }]);
   });
 
   test("la página del canal: guardar con su revisión, el conflicto, «A todos» sin saldo, deshacer e historial", async ({ page, request }) => {
-    await go(page, `/clients/${REF}/channels/${CH1}`, "+34 611 20 48 93");
+    await go(page, `/clients/${REF}/channels/${CH1}`, "+34 611 20 48 93", 2);
     await expect(page).toHaveURL(new RegExp(`${channelPage.replace("?", "\\?")}$`));
     await expect(page.getByRole("tab", { name: "Canales" })).toHaveAttribute("aria-selected", "true");
     for (const name of ["A quién responde", "Escalado a personas", "Comprobaciones"]) {
@@ -185,7 +215,12 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     await page.getByRole("button", { name: "Guardar" }).click();
     const audience = page.getByRole("region", { name: "A quién responde" });
     await expect(audience.getByText(/«A todos» necesita saldo en la bolsa del cliente/)).toBeVisible();
-    await expect(audience.getByRole("link", { name: "Asignar saldo" })).toHaveAttribute("href", `/usage?client=${REF}&assign=1`);
+    // Spec 047 (45.1): el arreglo abre «Asignar saldo» aquí mismo, sin salir de la página del canal.
+    await audience.getByRole("button", { name: "Asignar saldo" }).click();
+    const assign = page.getByRole("dialog", { name: "Asignar saldo a Barbería Cultor" });
+    await expect(assign).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(assign).toHaveCount(0);
     // Una excepción (solo se ve con «A todos») y el mensaje de espera; otra persona guarda antes.
     const exceptions = page.getByRole("region", { name: "Excepciones" });
     await exceptions.getByRole("textbox", { name: /Número nuevo/ }).fill("+56 9 1234 5678");
@@ -221,14 +256,19 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
   test("a 390 px nada se desborda: la pantalla del agente, el modal de pasar y la página del canal", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await go(page, agentPage, "Recepción");
+    await openTab(page, "Canales");
     await expect(channels(page).getByRole("list", { name: "Canales de este agente" })).toBeVisible();
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px la pantalla del agente se desborda").toEqual([]);
+    await openKnowledge(page);
+    await page.waitForTimeout(300);
+    expect(await overflowOffenders(page), "@390px «Qué sabe» se desborda").toEqual([]);
     await knowledge(page).getByRole("button", { name: "Enseñar" }).click();
     await expect(page.getByRole("dialog", { name: "Enseñar algo a Recepción" })).toBeVisible();
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px «Enseñar» se desborda").toEqual([]);
     await page.keyboard.press("Escape");
+    await openTab(page, "Canales");
     await channels(page).getByRole("button", { name: "Más acciones de +34 611 20 48 93" }).click();
     await page.getByRole("menu").getByRole("menuitem", { name: "Pasar a otro agente" }).click();
     await expect(page.getByRole("dialog", { name: "Pasar +34 611 20 48 93 a otro agente" })).toBeVisible();
@@ -236,7 +276,7 @@ test.describe("Spec 047 — el conocimiento y los canales de un agente", () => {
     expect(await overflowOffenders(page), "@390px el modal se desborda").toEqual([]);
     await expectNoSeriousAxe(page);
 
-    await go(page, channelPage, "+34 611 20 48 93");
+    await go(page, channelPage, "+34 611 20 48 93", 2);
     await page.getByRole("region", { name: "Escalado a personas" }).getByRole("button", { name: "Añadir persona" }).click();
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px la página del canal se desborda").toEqual([]);
