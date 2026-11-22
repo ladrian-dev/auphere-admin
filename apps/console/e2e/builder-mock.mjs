@@ -8,7 +8,8 @@
  * opciones de «Nuevo agente», el trabajo `agent_draft` (que suelta los bloques
  * de tres en tres, una consulta tras otra, y termina con dos preguntas), las
  * respuestas, el borrador con su AgentSpec (`ETag`, `If-Match` y las pruebas que
- * quedan sin ejecutar al editar) y las propuestas. Guarda el estado en memoria.
+ * quedan sin ejecutar al editar), sus pruebas, lo que diría «Guardar» y las
+ * propuestas. Guarda el estado en memoria.
  *
  * `POST /__test/reset` vuelve al principio; `GET /__test/state` enseña lo que
  * llegó (las respuestas con su `scope`). No verifica tokens: no es la puerta,
@@ -190,6 +191,35 @@ function draftView() {
   };
 }
 
+/** Las 8 pruebas del caso que escribió el borrador, sin ejecutar; editar o responder las deja pendientes. */
+function suiteView() {
+  const tests = Array.from({ length: 8 }, (_, i) => ({
+    id: `00000000-0000-4000-8000-0000000000f${i}`,
+    kind: "case",
+    name: `Prueba del caso ${i + 1}`,
+    persona: "",
+    first_message: "Quiero una cita para mañana",
+    plan: "",
+    expected_state: {},
+    criteria: [],
+    critical: false,
+    not_applicable_reason: null,
+    sector_test_ref: null,
+    stale: i < state.stale,
+    status: "not_run",
+    passes: 0,
+    decided: 0,
+    why_failed: null,
+  }));
+  return {
+    summary: { passed: 0, flaky: 0, failed: 0, unknown: 0, model_failed: 0, not_run: 8, not_applicable: 0, total: 8, stale: state.stale, critical_failed: [], rate: null },
+    tests,
+    judge_calibrated: false,
+    allowed: ["add", "edit", "run"],
+    next_full_pass: "auphere",
+  };
+}
+
 const client = () => ({
   external_client_ref: REF,
   name: "Barbería Cultor",
@@ -324,6 +354,12 @@ const server = createServer(async (req, res) => {
     }
     case `GET ${agentBase}/proposals`:
       return send(res, 200, []);
+    case `GET ${agentBase}/tests`:
+      if (!state.agent) return send(res, 404, { detail: "Unknown agent" });
+      return send(res, 200, suiteView());
+    case `GET ${agentBase}/publish-preview`:
+      if (!state.agent) return send(res, 404, { detail: "Unknown agent" });
+      return send(res, 200, { action: "save", has_draft: true, has_channels: false, diff: [], gate: null, can_override: false, tests_on_save: true, next_full_pass: "auphere" });
     default:
       return send(res, 404, { detail: "Not Found" });
   }
