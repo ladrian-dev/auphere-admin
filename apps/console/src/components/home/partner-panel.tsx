@@ -8,6 +8,7 @@ import { BlockChart, Button, Card, CardContent, cn, formatNumber } from "@nexus/
 
 import { attentionKey, isPartnerRow } from "@/components/attention/attention-model";
 import { AttentionRow } from "@/components/attention/attention-row";
+import { BuyDialog } from "@/app/(console)/usage/buy-dialog";
 import { BuildExtensionButton } from "@/components/attention/build-extension-button";
 import { moneyText } from "@/components/money/money-model";
 import { useLocale, useT } from "@/i18n/client";
@@ -33,11 +34,14 @@ export function PartnerPanel({
   panel,
   trend = null,
   buildBudget = null,
+  canBuy = false,
 }: {
   panel: HomePanel;
   trend?: { current: number; previous: number | null } | null;
   /** Spec 072 (3.4): el tope de construcción, para su línea aunque vaya por debajo del 80 %. */
   buildBudget?: BuildBudget | null;
+  /** Quien puede comprar saldo (`billing:manage`) lo recarga desde «Saldo disponible» (owner, 2026-11-22). */
+  canBuy?: boolean;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -138,7 +142,10 @@ export function PartnerPanel({
             <Card>
               <CardContent className="grid min-w-0 content-start gap-2" data-slot="panel-balance">
                 <h2 className="text-xs text-muted-foreground">{t("money.figure.available")}</h2>
-                <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{moneyText(balance.available, "down")}</p>
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{moneyText(balance.available, "down")}</p>
+                  {canBuy ? <BuyDialog accountCurrency={balance.available.currency} variant="outline" size="sm" label={t("panel.v2.balance.topUp")} /> : null}
+                </div>
                 {/* Spec 072 (2.5): la barra es lo disponible, como dice la cifra de encima. */}
                 <div
                   className="h-2 w-full overflow-hidden rounded-full bg-muted"

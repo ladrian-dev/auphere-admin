@@ -65,6 +65,7 @@ from nexus_api.services.attention import (
     BagFigures,
     BuildFacts,
     PartnerFacts,
+    buy_first_when_empty,
     client_items,
     order_items,
     partner_items,
@@ -136,6 +137,11 @@ class Gate:
     @property
     def can_assign(self) -> bool:
         return "usage:write" in self.permissions
+
+    @property
+    def can_buy(self) -> bool:
+        """Comprar saldo (Facturación): owner y billing."""
+        return "billing:manage" in self.permissions
 
 
 @dataclass
@@ -405,6 +411,8 @@ async def live_attention(
     if gate is None or gate.clients:
         await _clients_part(partner_id, gate, out, clients=clients, refs=refs, now=now)
     out.items = order_items([*items, *out.items])
+    if gate is not None:
+        out.items = buy_first_when_empty(out.items, can_buy=gate.can_buy)
     return out
 
 
