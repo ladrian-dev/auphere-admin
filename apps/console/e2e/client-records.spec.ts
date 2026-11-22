@@ -87,9 +87,26 @@ test.describe("Spec 047 — el Panel del cliente", () => {
       await expect(page.locator("[data-slot=client-panel]")).toBeVisible();
       const tabs = page.getByRole("navigation", { name: "Secciones del cliente" });
       await expect(tabs.getByRole("link", { name: "Panel" })).toHaveAttribute("aria-current", "page");
-      await expect(page.getByText("Unos 4 días al ritmo de los últimos 7 días.")).toBeVisible();
-      await expect(page.getByText(/Queda menos del 20 % del saldo/)).toBeVisible();
-      await expect(page.getByText("Horarios: falta. Sin horario, los agentes no saben cuándo abrís.")).toBeVisible();
+      // Spec 070: la lente de vidrio se coloca bajo la pestaña activa.
+      await expect(tabs.locator("[data-slot=client-tabs]")).toHaveAttribute("data-lens-ready", "");
+      const lens = await tabs.locator("[data-slot=lens]").boundingBox();
+      const active = await tabs.getByRole("link", { name: "Panel" }).boundingBox();
+      expect(lens && active && Math.abs(lens.x - active.x) < 2 && Math.abs(lens.width - active.width) < 2, "la lente no está bajo «Panel»").toBe(true);
+      // Spec 072 (2.1–2.3): la barra se llena con lo que queda y dice cuánto dura.
+      const balance = page.locator("[data-slot=panel-balance]");
+      const meter = balance.getByRole("meter");
+      await expect(meter).toHaveAccessibleName("6,00 USD · quedan de 16,00 USD. Unos 4 días a este ritmo");
+      await expect(meter).toHaveAttribute("aria-valuenow", "15");
+      await expect(meter).toHaveAttribute("data-tone", "warn");
+      await expect(balance.locator("[data-slot=bag-pace]")).toHaveText("Unos 4 días a este ritmo");
+      await expect(balance.getByRole("alert")).toContainText("Queda menos del 20 % del saldo.");
+      // «Este mes», con las tres cifras del Panel.
+      const month = page.locator("[data-slot=panel-month]");
+      await expect(month.getByRole("definition")).toHaveText(["128", "84 %", "21"]);
+      // Lo que falta en la ficha ya no se anuncia en el Panel (prototipo de la
+      // spec 047, Andrés, 2026-10-28): lo marca Negocio, a una pestaña.
+      await expect(page.getByText(/Horarios: falta/)).toHaveCount(0);
+      await expect(tabs.getByRole("link", { name: "Negocio" })).toHaveAttribute("href", "/clients/friseursalon/business");
       expect(await overflowOffenders(page)).toEqual([]);
       await expectNoSeriousAxe(page);
     });
