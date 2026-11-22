@@ -67,7 +67,8 @@ test.describe("Sin modelo", () => {
     await request.post(`${API}/__test/model`, { data: { mode: "down" } });
     await open(page);
     const box = page.locator("[data-slot=tests-box]");
-    await box.getByRole("button", { name: "Ejecutar todas" }).click();
+    // Spec 073 (3b.3): sin pasada aún, el botón dice cuántas corre.
+    await box.getByRole("button", { name: "Ejecutar las 5 pruebas" }).click();
     await expect(box.getByRole("alert").first()).toContainText("No se pudo probar: ningún modelo respondió", { timeout: 30_000 });
 
     await page.reload();
@@ -75,6 +76,8 @@ test.describe("Sin modelo", () => {
     await page.getByRole("tab", { name: "Configuración" }).click();
     await expect(box.getByRole("alert").first()).toContainText("Sin probar porque el modelo no respondió: 5");
     await page.getByRole("button", { name: /Más ajustes/ }).first().click();
+    // Cada sección de «Más ajustes» va plegada (66.6).
+    await page.getByRole("region", { name: "Pruebas", exact: true }).locator("summary").click();
     const row = page.locator("[data-slot=test-row][data-status=model_failed]").first();
     await expect(row.getByText("No se pudo probar", { exact: true })).toBeVisible();
     await expect(row.getByText("Por qué falló")).toHaveCount(0);
@@ -89,7 +92,7 @@ test.describe("Sin modelo", () => {
     test(`«Guardar» desde la hoja del diff: el aviso no se queda debajo de ella (${mode})`, async ({ page, request }) => {
       await open(page);
       const box = page.locator("[data-slot=tests-box]");
-      await box.getByRole("button", { name: "Ejecutar todas" }).click();
+      await box.getByRole("button", { name: "Ejecutar las 5 pruebas" }).click();
       await expect(box.getByRole("heading", { level: 2 })).toContainText("pasan", { timeout: 30_000 });
       await request.post(`${API}/__test/model`, { data: { mode } });
 
