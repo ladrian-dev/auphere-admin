@@ -259,7 +259,7 @@ export const businessMessages = {
   "clients.v2.bag.left": { es: "{left} · quedan de {assigned}", en: "{left} · left of {assigned}" },
   "clients.v2.bag.pace": { es: "Unos {days} días a este ritmo", en: "About {days} days at this pace" },
   "clients.v2.bag.paceLess": { es: "Menos de un día a este ritmo", en: "Less than a day at this pace" },
-  "clients.v2.bag.noPace": { es: "Aún no hay gasto para calcular cuánto dura", en: "No spend yet to work out how long it lasts" },
+  "clients.v2.bag.noPace": { es: "Aún no hay gasto suficiente para calcular cuánto dura", en: "Not enough spend yet to work out how long it lasts" },
   "clients.v2.bag.unassigned": { es: "Sin saldo asignado", en: "No balance assigned" },
   "clients.v2.bag.unlimited": { es: "Sin límite (lo cubre Auphere)", en: "Unlimited (covered by Auphere)" },
   "clients.v2.menu": { es: "Acciones de {name}", en: "Actions for {name}" },

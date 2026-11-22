@@ -438,7 +438,7 @@ describe("el modelo de la lista", () => {
   it("cuánto dura, en una línea que dice qué falta si no se puede estimar (spec 072, 2.2)", () => {
     expect(bagPace(es, bag({ days_left: 78.6, days_estimable: true }))).toBe("Unos 79 días a este ritmo");
     expect(bagPace(es, bag({ days_left: 0.4, days_estimable: true }))).toBe("Menos de un día a este ritmo");
-    expect(bagPace(es, bag({ days_left: null, days_estimable: false }))).toBe("Aún no hay gasto para calcular cuánto dura");
+    expect(bagPace(es, bag({ days_left: null, days_estimable: false }))).toBe("Aún no hay gasto suficiente para calcular cuánto dura");
     expect(bagPace(es, bag({ state: "empty" }))).toBeNull();
     expect(bagPace(es, { ...bag(), state: "unassigned" })).toBeNull();
     expect(bagPace(es, null)).toBeNull();

@@ -230,7 +230,7 @@ describe("ClientPanelView", () => {
 
   it("con menos de 3 días de consumo dice qué falta para estimarlo (spec 072, 2.2)", () => {
     show(panel({ bag: bag({ days_left: null, days_estimable: false }) }));
-    expect(screen.getByText("Aún no hay gasto para calcular cuánto dura")).toBeTruthy();
+    expect(screen.getByText("Aún no hay gasto suficiente para calcular cuánto dura")).toBeTruthy();
   });
 
   it("sin saldo asignado pinta el bloque igual, con la pista vacía y el aviso rojo", async () => {
