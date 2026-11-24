@@ -1,6 +1,6 @@
 # Especificación: Conversiones de anuncios de WhatsApp
 
-**Rama**: `076-conversiones-whatsapp` · **Creada**: 2026-11-24 · **Estado**: Implementada el 2026-11-24, sin fusionar (rama `076-conversiones-whatsapp`). Faltan las tareas de Luis en Meta y en staging (T025, T026, T044–T046). Quedan decisiones por revisar (ver Clarifications)
+**Rama**: `076-conversiones-whatsapp` · **Creada**: 2026-11-24 · **Estado**: En `develop` y en staging desde el 2026-11-24 (PR 56), nada en `main`. En staging solo la ofrece «Meta Review Demo». Faltan las tareas de Luis en Meta y en staging (T026 a medias, T044–T046). Quedan decisiones por revisar (ver Clarifications)
 
 **Entrada**: descripción del usuario: «076 — Medir conversiones de anuncios de WhatsApp (ver propuesta https://claude.ai/artifact/483WL7vTJyKGzgj3jTsDBQ)». Antes, al decidir pedir el permiso a Meta: «si vamos a solicitar el permiso la idea es que lo usemos correctamente».
 

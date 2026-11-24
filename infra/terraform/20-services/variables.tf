@@ -222,3 +222,17 @@ variable "adot_image" {
   type        = string
   default     = "public.ecr.aws/aws-observability/aws-otel-collector:v0.43.3"
 }
+
+variable "ad_measurement_tenants" {
+  description = <<-EOT
+    Spec 076: UUID de los tenants, separados por comas, que pueden activar los
+    resultados en anuncios de Meta en sus números. Mientras Meta no conceda el
+    acceso avanzado a ``whatsapp_business_manage_events``, solo los clientes de
+    prueba de Auphere (staging). Vacío: no se ofrece a nadie y la taskdef de la
+    API queda como estaba. La disponibilidad general es
+    ``NEXUS_AD_MEASUREMENT_GENERAL_AVAILABILITY`` (T046), aparte.
+  EOT
+  type        = string
+  default     = ""
+}
+
