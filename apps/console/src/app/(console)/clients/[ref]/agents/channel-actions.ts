@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
-import type { AgentChannels, ChannelChange, ChannelPage, OwnerLink } from "@/lib/backend/channel-config-types";
+import type { AdMeasurement, AgentChannels, ChannelChange, ChannelPage, OwnerLink } from "@/lib/backend/channel-config-types";
 import { can, requirePrincipal } from "@/lib/principal";
 
 /**
@@ -116,6 +116,20 @@ const commentsSchema = channelSchema.extend({
   enabled: z.boolean(),
   public_reply: z.string().trim().max(300).nullable(),
 });
+
+const adMeasurementSchema = channelSchema.extend({ enabled: z.boolean(), confirm_data_sharing: z.boolean() });
+
+/**
+ * Spec 076 (requisito 4): encender o apagar que el número envíe a Meta los
+ * resultados del agente. La API exige la confirmación al encender
+ * (`confirm_required`) y responde `reauthorize` si el token no tiene el permiso.
+ */
+export async function adMeasurementAction(raw: unknown): Promise<ActionResult<AdMeasurement>> {
+  const body = adMeasurementSchema.parse(raw);
+  return write(body.ref, (api) =>
+    api.setAdMeasurement(body.ref, body.channel, { enabled: body.enabled, confirm_data_sharing: body.confirm_data_sharing }),
+  );
+}
 
 /** Spec 049 (historia 3): los comentarios de Instagram. Guarda al pulsar, como el catálogo. */
 export async function instagramCommentsAction(raw: unknown): Promise<ActionResult<ChannelPage>> {

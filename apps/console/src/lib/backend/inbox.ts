@@ -74,7 +74,11 @@ export type InboxDetail = {
   tags: string[];
   note: { body: string; updated_at: string | null };
   activity: InboxActivity[];
+  /** Spec 076 (2.1): the ad or post the contact came from — their last click on this number. */
+  ad_origin?: InboxAdOrigin | null;
 };
+
+export type InboxAdOrigin = { kind: "ad" | "post"; headline: string | null; url: string | null };
 
 export type InboxMedia = { kind: string | null; filename: string | null; transcript: string | null };
 

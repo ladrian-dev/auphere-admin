@@ -416,6 +416,23 @@ con la forma de verdad también en `find_slots` y `join_waitlist`; como no tiene
 equipo ni los servicios del hermano, no comprueba la persona y un servicio del hermano
 es `unknown_service`. Sin servicio, la simulación sigue dando su cita genérica.
 
+## Lo que se le dice a Meta (spec 076)
+
+Si el número de la conversación tiene encendidos los resultados en anuncios
+(`docs/canales.md` §7), `services/reservations/core.py` encola un evento para
+Meta en un savepoint, así que un fallo al medir nunca deshace la reserva:
+
+- **Crear** (`create_booking`, solo `origin = 'agent'`): con precio,
+  `Purchase` con su importe y moneda; sin precio, `LeadSubmitted` sin importe.
+- **Cancelar** (`cancel_booking`, la cancele quien la cancele): si el evento de
+  la reserva salió o está en cola, un `OrderCanceled` con el mismo importe.
+- **No se envía** lo creado en la consola, la app o la llegada sin reserva, la
+  asistencia ni la ausencia, ni nada de un contacto con baja en ese número.
+
+El contacto y la conversación salen de la reserva y del turno, nunca de un
+argumento del modelo (`reservas.*` lee la conversación del contexto). Pruebas:
+`tests/integration/test_076_enqueue.py`.
+
 ## Lo automático (worker)
 
 Contrato: [`worker-y-avisos.md`](../specs/043-reservas/contracts/worker-y-avisos.md).

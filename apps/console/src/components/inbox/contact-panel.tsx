@@ -6,6 +6,7 @@ import { Button, Textarea, cn } from "@nexus/ui";
 import { useLocale, useT } from "@/i18n/client";
 import type { InboxActivity, InboxDetail } from "@/lib/backend/inbox";
 
+import { adOriginText } from "./ad-origin";
 import { ContactAvatar } from "./contact-avatar";
 import { eventText } from "./event-text";
 import { clock, dayLabel } from "./inbox-model";
@@ -95,6 +96,12 @@ export function ContactPanel({
           <dd>{firstText}</dd>
           <dt className="text-muted-foreground">{t("inbox.panel.conversations")}</dt>
           <dd className="tabular-nums">{detail.contact.conversations}</dd>
+          {detail.ad_origin ? (
+            <>
+              <dt className="text-muted-foreground">{t("inbox.panel.came_from")}</dt>
+              <dd className="min-w-0 [overflow-wrap:anywhere]">{adOriginText(t, detail.ad_origin, "panel")}</dd>
+            </>
+          ) : null}
         </dl>
       </Block>
 

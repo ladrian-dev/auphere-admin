@@ -33,6 +33,9 @@ ALL_EXPECTED = {
     # Spec 031: los avisos al teléfono. En los tres sitios: ``_spawn``,
     # ``EGRESS_TASK_NAMES`` y aquí.
     "push-dispatcher",
+    # Spec 076: los eventos de conversión a Meta. En ``_spawn``,
+    # ``EGRESS_TASK_NAMES`` y aquí.
+    "conversion-events-dispatcher",
     "operator-alerter",
     "grade-consumer",
     "platform-watcher",
@@ -93,6 +96,9 @@ ALL_EXPECTED = {
     # se piden solas a Meta cada 15 min. En ``SCHEDULER_TASK_NAMES``, ``_spawn``
     # y aquí.
     "reservation-templates-cron",
+    # Spec 076 (requisito 1.7): el clic del anuncio pierde su identificador a los
+    # 90 días. En ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
+    "ad-referral-retention-cron",
     # Spec 064 (requisito 5): el cierre por inactividad de la Bandeja, cada 5 min.
     # En ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
     "inbox-autoclose-cron",

@@ -34,7 +34,11 @@ from datetime import UTC, datetime, time, timedelta
 from typing import Any
 
 import sqlalchemy as sa
-from nexus_api.core.tenant_context import get_current_customer, require_current_tenant
+from nexus_api.core.tenant_context import (
+    get_current_conversation,
+    get_current_customer,
+    require_current_tenant,
+)
 from nexus_api.db.models import (
     Agent,
     ClientAccess,
@@ -185,10 +189,17 @@ async def _turn(
     """La conversación del turno (la que nombra el runtime, o la última de esta
     persona) y el agente que contesta en ella."""
     conv: Conversation | None = None
-    if conversation_id is not None:
-        conv = await session.get(Conversation, conversation_id)
-        if conv is not None and conv.customer_id != customer_id:
-            conv = None
+    # Spec 076 (research D7): the turn's own conversation first. Without it, a
+    # model that does not send ``conversation_id`` would fall back to the
+    # person's latest conversation, which can be on another number of the same
+    # business — and the booking would be measured for the wrong WhatsApp account.
+    for candidate in (get_current_conversation(), conversation_id):
+        if candidate is None:
+            continue
+        conv = await session.get(Conversation, candidate)
+        if conv is not None and conv.customer_id == customer_id:
+            break
+        conv = None
     if conv is None:
         conv = await session.scalar(
             sa.select(Conversation)

@@ -16,7 +16,7 @@ import type { ClientDetailV2 } from "@/lib/backend/client-records";
 
 import { ClientMenu } from "./client-menu";
 
-const TABS: readonly ClientTab[] = ["panel", "business", "agents"];
+const TABS: readonly ClientTab[] = ["panel", "business", "agents", "ads"];
 
 /** La pestaña de una ruta: `/clients/x` es el Panel; `/clients/x/business/…`, Negocio. */
 export function activeTab(pathname: string, ref: string): ClientTab | null {
@@ -24,6 +24,7 @@ export function activeTab(pathname: string, ref: string): ClientTab | null {
   if (pathname === base) return "panel";
   if (pathname.startsWith(`${base}/business`)) return "business";
   if (pathname.startsWith(`${base}/agents`)) return "agents";
+  if (pathname === `${base}/ads` || pathname.startsWith(`${base}/ads/`)) return "ads";
   if (pathname === `${base}/access` || pathname.startsWith(`${base}/access/`)) return "access";
   return null;
 }

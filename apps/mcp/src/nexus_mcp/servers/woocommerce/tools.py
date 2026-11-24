@@ -898,7 +898,9 @@ class CreateOrder(_WooTool):
             status=data.get("status"),
             line_items=len(line_items_payload),
         )
-        return CreateOrderOutput(order=_order_detail(data))
+        order = _order_detail(data)
+        await _measure_order(order)
+        return CreateOrderOutput(order=order)
 
 
 class BuildCheckoutLink(_WooTool):
@@ -953,9 +955,28 @@ class BuildCheckoutLink(_WooTool):
             line_items=len(line_items),
             has_payment_url=bool(order.payment_url),
         )
+        await _measure_order(order)
         return BuildCheckoutLinkOutput(
             url=url, order_id=order.id, order_number=order.number, total=order.total
         )
+
+
+async def _measure_order(order: OrderDetail) -> None:
+    """Spec 076 (requisito 5.4): a pedido the agent created in the chat goes to
+    the client's Meta ads when its number measures them. The conversation and
+    the person are the turn's (``conversation_context``), never an argument.
+    Best effort: measuring never costs the customer their order."""
+    from nexus_api.services.ad_conversions import enqueue_for_order
+
+    from nexus_mcp._db import tool_session
+
+    try:
+        async with tool_session() as session:
+            await enqueue_for_order(
+                session, order_id=str(order.id), total=order.total, currency=order.currency
+            )
+    except Exception as exc:
+        log.warning("woocommerce.order_measure_failed", error=type(exc).__name__)
 
 
 def _pay_for_order_url(store_url: str, order: dict[str, Any]) -> str:

@@ -252,6 +252,9 @@ class InboundEvent:
     # Spec 050 (D6): the message is a stop word. It is kept and reaches the
     # Inbox, marked, but no turn answers it.
     opted_out: bool = False
+    # Spec 076 (requisito 1.1): the ad or post this person came from, already
+    # filtered to the whitelist (``nexus_api.services.ad_referrals``).
+    referral: dict[str, str] | None = None
 
 
 # ── 1. Guardar ────────────────────────────────────────────────────────────────
@@ -381,6 +384,21 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
             context_message_id=event.context_message_id,
         )
         inbound_msg.origin = "customer"
+        if event.referral and event.provider_message_id:
+            # Spec 076 (requisito 1.1): the click, with the contact the server
+            # resolved for this message (garantía 8) and the message's time.
+            from nexus_worker.persistence.ad_referrals import store_referral
+
+            await store_referral(
+                session,
+                tenant_id=event.tenant_id,
+                channel_id=event.channel_id,
+                customer_id=customer.id,
+                conversation_id=conversation.id,
+                provider_message_id=event.provider_message_id,
+                referral=event.referral,
+                clicked_at=inbound_msg.created_at or datetime.now(UTC),
+            )
         if event.opted_out:
             # Spec 050 (D6): the webhook recorded the opt-out by phone; here
             # the person is known, so it is theirs (and a BSUID-only person,

@@ -1,5 +1,10 @@
 """Aggregate import for ORM models. Alembic autogenerate reads metadata from here."""
 
+from nexus_api.db.models.ad_conversion import (
+    AdConversionEvent,
+    ChannelAdMeasurement,
+    CustomerAdReferral,
+)
 from nexus_api.db.models.admin_impersonation import (
     REASON_MIN_LEN,
     TTL_DEFAULT_SECONDS,
@@ -373,6 +378,7 @@ __all__ = [
     "TTL_MAX_SECONDS",
     "TTL_MIN_SECONDS",
     "USAGE_METERS",
+    "AdConversionEvent",
     "AdminImpersonationSession",
     "Agent",
     "AgentConfig",
@@ -419,6 +425,7 @@ __all__ = [
     "BusinessSpecialShift",
     "BusinessSuggestion",
     "Channel",
+    "ChannelAdMeasurement",
     "ChannelAudienceNumber",
     "ChannelConfigChange",
     "ChannelEscalationRecipient",
@@ -457,6 +464,7 @@ __all__ = [
     "ConversationStatus",
     "ConversationTag",
     "Customer",
+    "CustomerAdReferral",
     "CustomerConnectorAccount",
     "DailyCostSnapshot",
     "DeviceClientLink",

@@ -30,6 +30,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import SignupIngressPayload
 from pydantic import BaseModel, ConfigDict
@@ -37,7 +38,7 @@ from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 
 from nexus_api.api.deps import get_redis
-from nexus_api.db.models import ChannelSignupLink
+from nexus_api.db.models import Channel, ChannelSignupLink, ChannelStatus, ChannelType
 from nexus_api.services.channel_signup_links import (
     link_state,
     mint_link,
@@ -82,7 +83,9 @@ async def whatsapp_signup(
 ) -> WhatsAppSignupOut:
     limit = scope.principal.partner.max_channels_per_client
     used = await count_connected_channels(scope.session)
-    if used >= limit:
+    # Spec 076 (4.3): authorising again a number this client already has (to
+    # grant the events permission) is not connecting another one.
+    if used >= limit and not await _is_reconnect(scope, body.phone_number_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -223,3 +226,20 @@ async def revoke_whatsapp_signup_link(
     if link is None or link.tenant_id != scope.tenant.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_link")
     await revoke_link(scope.session, link, actor=scope.principal.actor)
+
+
+async def _is_reconnect(scope: ClientScope, phone_number_id: str | None) -> bool:
+    """Whether ``phone_number_id`` is already a connected WhatsApp number of
+    this client (RLS: only its channels are visible)."""
+    if not phone_number_id:
+        return False
+    found = await scope.session.scalar(
+        sa.select(Channel.id)
+        .where(
+            Channel.type == ChannelType.WHATSAPP,
+            Channel.status != ChannelStatus.DISCONNECTED,
+            Channel.config["phone_number_id"].astext == phone_number_id,
+        )
+        .limit(1)
+    )
+    return found is not None

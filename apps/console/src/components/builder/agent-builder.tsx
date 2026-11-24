@@ -1050,6 +1050,7 @@ export function AgentBuilder({
                   }}
                   onChanged={setChannelUpdate}
                   actions={qualityActions.channelPage}
+                  meta={channels?.meta ?? null}
                 />
               ) : null}
               <div hidden={Boolean(showingChannel)} className="min-w-0">

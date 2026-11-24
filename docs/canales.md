@@ -172,7 +172,95 @@ Spec 049. Meta aprobó los permisos el 2026-11-19 (solicitud del 2026-11-03).
   `messaging_handover`, `messaging_postbacks`, `messaging_referral`,
   `messaging_seen`).
 
-## 6. Dónde mirar si algo falla
+## 6. De qué anuncio viene cada persona (spec 076)
+
+Cuando alguien escribe desde un anuncio de clic a WhatsApp, o desde una
+publicación, Meta manda en ese primer mensaje un objeto `referral`.
+
+- **El webhook lo filtra** antes de que salga del proceso
+  (`services/ad_referrals.clean_referral`):
+  - solo pasan `source_type` (`ad` o `post`), `source_id`, `source_url`,
+    `headline`, `body`, `media_type`, `ctwa_clid` y `ref`, cada una con su tope;
+  - viaja en la clave `referral_json` del stream;
+  - el worker lo vuelve a filtrar al leerlo, y un JSON roto deja
+    `inbound.referral_unreadable` y el mensaje sigue.
+- **El worker guarda una fila por clic** en `customer_ad_referrals`
+  (`persistence/ad_referrals.store_referral`), en la transacción del mensaje:
+  - el contacto y el número los fija el servidor;
+  - `UNIQUE (tenant_id, provider_message_id)`, así que un reintento del
+    webhook no duplica.
+- **Qué lo usa:**
+  - *La Bandeja lite*: enseña el último clic del contacto en ese número
+    (`ad_origin`, ver `docs/consola-lite.md`).
+  - *El agente*: recibe el titular y el texto del anuncio como dato, cercados
+    con `<ad_referral>` (`pipeline._ad_note`). Solo si el clic es del ciclo
+    actual de la conversación, después de `coalesce(context_from, created_at)`.
+    Nunca recibe el `ctwa_clid` ni la URL.
+- **El `ctwa_clid` es un identificador personal:**
+  - nunca va a un log ni a una respuesta de la API;
+  - el cron `ad-referral-retention-cron` (planificador, una vez al día y por
+    tenant) lo pone a NULL a los `retention_ad_click_days` (90);
+  - el resto del origen se queda.
+- **Garantía 8:** el clic de un contacto no aparece nunca en la conversación ni
+  en el turno de otro, ni en otro número del mismo negocio
+  (`tests/isolation/test_076_ad_click_customer_axis.py`).
+
+## 7. Enviar los resultados a Meta (spec 076)
+
+Cada reserva o pedido que el agente consigue en un número se le puede decir a
+Meta por la API de conversiones de mensajería, para que los anuncios del
+cliente aprendan. Está apagado en todos los números hasta que un partner lo
+enciende.
+
+- **Dónde se ofrece** (`services/ad_measurement.available`): números de
+  WhatsApp de Meta conectados por Cloud API, no desconectados, de un tenant de
+  la lista `NEXUS_AD_MEASUREMENT_TENANTS` o con
+  `NEXUS_AD_MEASUREMENT_GENERAL_AVAILABILITY`. La coexistencia no: Meta no lo
+  admite. Donde no se ofrece, la página del número no tiene la sección ni la
+  explica.
+- **Encenderlo** (`PUT /console/clients/{ref}/channels/{id}/ad-measurement`):
+  - pide `confirm_data_sharing: true` (`422 confirm_required` sin ella);
+  - comprueba con `debug_token` que el token del número tiene
+    `whatsapp_business_manage_events`. Si no, `409 reauthorize`, la marca queda
+    en `channel_ad_measurement` y la consola pide «Volver a conectar»;
+  - crea u obtiene el conjunto de datos de la cuenta (`POST /{waba_id}/dataset`)
+    y lo guarda. Si Meta falla, `502 meta_unavailable` y no se enciende nada;
+  - queda en la auditoría (`console.channel.ad_measurement`) con quién y la
+    confirmación.
+- **Volver a conectar** (no con el número en pausa: el alta lo reanudaría) es
+  el mismo alta de Meta que conectar el número, con la
+  configuración que dice `reconnect_config_id` (la de pruebas del modo si
+  `NEXUS_META_CONFIG_ID_WA_EVENTS_TEST_*` está puesta, si no la normal). No
+  gasta cuota de canales: `api/console/whatsapp.py` no cuenta el
+  `phone_number_id` que el cliente ya tiene.
+- **Qué se encola** (`services/ad_conversions.py`, en un savepoint, así que
+  medir nunca rompe una reserva):
+  - reserva del agente con precio → `Purchase`, sin precio → `LeadSubmitted`;
+  - su cancelación, la haga quien la haga, si el original salió o está en cola
+    → `OrderCanceled`;
+  - pedido o enlace de pago del agente (WooCommerce) → `OrderCreated`;
+  - nada de lo creado fuera del chat, nada de quien tiene una baja en ese
+    número, y nada si no hay clic ni teléfono.
+- **El despachador** (`conversion-events-dispatcher`, en `egress`, cada
+  `conversion_dispatch_tick_seconds`): reserva por tenant con plazo y
+  `SKIP LOCKED`, envía **un evento por petición** fuera de la transacción y
+  anota el resultado.
+  - El cuerpo lleva el clic (`ctwa_clid`) si sigue guardado; si no, el teléfono
+    normalizado y cifrado con SHA-256 y el número. `partner_agent: auphere`.
+  - Un pasajero se reintenta con espera (hasta 6 intentos). Un token o permiso
+    retirado deja `reauthorize` en el número. Sin clic ni teléfono,
+    `no_identity`. Otro error deja `meta_<código>`. `page_required` aún no lo
+    produce nada: falta saber qué código de Graph lo dice (T026).
+  - Un evento de más de 6 d 23 h no sale (`too_old`): Meta rechazaría el lote.
+  - Apagar descarta lo pendiente. Una cancelación espera a que su original sea
+    final.
+- **Garantías:** cada evento sale con el conjunto de datos y el token de su
+  tenant (`tests/isolation/test_076_conversion_events_tenant.py`), los logs
+  llevan el tenant y nunca el clic, el teléfono ni su hash
+  (`test_076_logs_carry_no_click.py`), y el evento de un contacto nunca lleva el
+  clic de otro (`test_076_ad_click_customer_axis.py`).
+
+## 8. Dónde mirar si algo falla
 
 - El estado visible del canal sale de `services/agent_lifecycle.channel_visible_state`
   (`pending_link`, `disconnected`, `problem`, `paused`, `unconfigured`,

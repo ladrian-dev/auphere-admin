@@ -712,6 +712,64 @@ que la pestaña Acceso del panel de Auphere** y con sus mismas reglas
   de aislamiento de arriba, `clients/[ref]/access/__tests__/{actions,page}.test.ts(x)`,
   `components/clients/access/__tests__/*` y `client-header-v2.test.tsx`.
 
+## Anuncios del cliente
+
+Spec [076](../specs/076-conversiones-whatsapp/spec.md), requisito 3. La ficha de un
+cliente con la consola nueva tiene la pestaña **Anuncios** (`/clients/{ref}/ads`),
+detrás de Agentes y antes de Acceso. Dice qué anuncios de clic a WhatsApp traen
+conversaciones y reservas del agente.
+
+**Quién la ve:** quien tiene `conversations:read`, que son los mismos roles que
+`clients:read`. Con la consola de hoy no existe.
+
+**El informe** (`GET /console/clients/{ref}/ads/report?days=7|30|90`,
+`api/console/ads.py` y `services/ad_report.py`) tiene una fila por anuncio:
+- **Conversaciones**: las distintas con un clic del anuncio en el periodo.
+- **Reservas**: las del agente (`origin = 'agent'`), no canceladas, creadas en
+  el periodo. Cada una cuenta para el último clic de su contacto en el número de
+  su conversación anterior a la reserva, aunque el clic sea de antes. Es la
+  misma regla que al enviar a Meta.
+- **Importe**: por moneda. Sin precio, la reserva cuenta y no suma.
+
+La pantalla dice qué mide cada columna, porque no miden lo mismo.
+
+**Lo que no lleva:** nombres, teléfonos ni campos de cuerpo. El titular es texto
+del anunciante. Lo comprueba `test_console_scope.py`, como cualquier ruta
+`/console/*`.
+
+**Estados:**
+- Carga con la forma de la tabla.
+- Si falla, lo dice y deja reintentar.
+- Sin datos, explica que el informe se llena solo cuando alguien escribe desde
+  un anuncio.
+
+**Pruebas:** `tests/integration/test_076_ads_report.py`,
+`components/ads/__tests__/ads-report.test.tsx` y `client-header-v2.test.tsx`.
+
+### Resultados en anuncios, en la página del número
+
+Spec 076, requisito 4. La página de un número de WhatsApp tiene la sección
+**Resultados en anuncios** (`components/builder/ad-measurement-section.tsx`)
+solo si la API manda el bloque `ad_measurement` (Cloud API, tenant habilitado).
+Sin bloque no hay sección ni entrada en el índice.
+
+- **Activar** abre una confirmación que dice qué recibe Meta (el tipo de
+  resultado, el importe y la moneda, y el clic del anuncio o el teléfono
+  cifrado) y qué no. Sin marcar que el negocio puede compartirlo, no se activa.
+- **Falta el permiso** (`state: reauthorize`): la sección pide «Volver a
+  conectar», que abre el alta de Meta con `reconnect_config_id`. Al terminar
+  vuelve a pedir la confirmación, porque es activar lo que comprueba el permiso.
+  Sin las claves de Meta en la consola, solo dice quién tiene que hacerlo. Con el
+  número en pausa no lo ofrece, porque el alta lo reanudaría: pide reanudarlo antes.
+- **Encendida**: el conjunto de datos, lo enviado en 7 días y el último error
+  con qué hacer (`adErrorKey`: `page_required`, `too_old`, `no_identity`,
+  `meta_unavailable` y uno general). «Desactivar» se ofrece si `enabled` es
+  verdadero, también con `reauthorize`, y avisa de que lo pendiente no sale.
+- Quien solo lee ve el estado sin botones.
+
+**Pruebas:** `tests/integration/test_076_ad_measurement_endpoint.py` y
+`components/builder/__tests__/ad-measurement-section.test.tsx`.
+
 ## Reglas que no se negocian
 
 - **Ningún cuerpo lleva `partner_id` ni `tenant_id`**: salen del principal y del

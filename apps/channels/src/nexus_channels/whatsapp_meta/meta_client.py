@@ -696,6 +696,48 @@ class MetaClient:
             params={"input_token": input_token},
         )
 
+    # ── Conversions API for business messaging (spec 076) ──────────────────
+
+    async def token_scopes(self, *, input_token: str, app_id: str) -> set[str]:
+        """The permissions a number's token carries, read with the app token
+        (``{app_id}|{app_secret}``): ``data.scopes`` and every
+        ``data.granular_scopes[].scope``."""
+        data = await self.debug_token(
+            input_token=input_token, admin_access_token=f"{app_id}|{self._app_secret}"
+        )
+        info = data.get("data") or {}
+        scopes = {str(s) for s in info.get("scopes") or [] if s}
+        for g in info.get("granular_scopes") or []:
+            if isinstance(g, dict) and g.get("scope"):
+                scopes.add(str(g["scope"]))
+        return scopes
+
+    async def ensure_dataset(self, *, waba_id: str, access_token: str) -> str:
+        """``POST /{waba_id}/dataset``: creates the WhatsApp account's dataset, or
+        returns the one it already has. Needs ``whatsapp_business_manage_events``."""
+        data = await self._post(f"/{waba_id}/dataset", access_token=access_token)
+        dataset_id = data.get("id")
+        if not dataset_id:
+            raise MetaAPIError("dataset response without id", status_code=200, body=str(data)[:500])
+        return str(dataset_id)
+
+    async def send_conversion_event(
+        self,
+        *,
+        dataset_id: str,
+        access_token: str,
+        event: dict[str, Any],
+        partner_agent: str,
+        test_event_code: str | None = None,
+    ) -> dict[str, Any]:
+        """``POST /{dataset_id}/events`` with **one** event: Meta rejects the
+        whole batch for one bad or late event, so one per call keeps an error to
+        its own event (research D8)."""
+        body: dict[str, Any] = {"data": [event], "partner_agent": partner_agent}
+        if test_event_code:
+            body["test_event_code"] = test_event_code
+        return await self._post(f"/{dataset_id}/events", access_token=access_token, json_body=body)
+
     # ── HTTP primitives ────────────────────────────────────────────────────
 
     async def _get(

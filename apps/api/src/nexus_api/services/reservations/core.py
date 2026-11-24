@@ -36,7 +36,7 @@ from nexus_api.db.models import (
     Tenant,
 )
 from nexus_api.db.models.reservation import LIVE_STATUSES
-from nexus_api.services import push_events
+from nexus_api.services import ad_conversions, push_events
 from nexus_api.services.business import hours as business_hours
 from nexus_api.services.business import services_catalog
 from nexus_api.services.business_hours import WEEKDAYS, parse_business_hours
@@ -650,6 +650,10 @@ async def create_booking(
         await notify_business(
             session, res, "reservas.agent_change", f"reservas.agent_change:{res.id}:1"
         )
+        # Spec 076 (requisito 5.1): the result goes to the client's Meta ads if
+        # the number measures them. Inside a savepoint: it never costs a booking.
+        await session.flush()
+        await ad_conversions.measure(session, "created", res)
     await session.flush()
     return res, False
 
@@ -843,6 +847,10 @@ async def cancel_booking(
         await notify_business(
             session, res, "reservas.cancelled_today", f"reservas.cancelled_today:{res.id}"
         )
+    # Spec 076 (requisito 5.3): if Meta counted this booking, it hears it was
+    # cancelled — whoever cancelled it. Inside a savepoint, like the creation.
+    await session.flush()
+    await ad_conversions.measure(session, "cancelled", res)
     await session.flush()
     return res
 

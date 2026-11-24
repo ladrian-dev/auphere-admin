@@ -6,6 +6,7 @@ import { RowActions } from "@/components/row-actions";
 import { useT } from "@/i18n/client";
 import type { InboxDetail } from "@/lib/backend/inbox";
 
+import { AdOriginLine } from "./ad-origin";
 import { ChannelBadge } from "./channel-badge";
 import { ContactAvatar } from "./contact-avatar";
 
@@ -75,6 +76,7 @@ export function ThreadHeader({
         <span className="truncate text-xs font-medium text-muted-foreground" title={attends}>
           {attends}
         </span>
+        {detail.ad_origin ? <AdOriginLine origin={detail.ad_origin} /> : null}
       </div>
       <div className="flex shrink-0 gap-2">
         <IconAction label={t("inbox.action.unread")} disabled={busy} onClick={onUnread}>
