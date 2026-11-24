@@ -236,6 +236,8 @@ description: "Tareas de la spec 076 — conversiones de anuncios de WhatsApp"
   - coexistencia;
   - y los códigos de error reales de Meta.
 
+  **Primer resultado (2026-11-24, staging):** `NEXUS_AD_MEASUREMENT_TENANTS` puesto para «Meta Review Demo» (Terraform, workspace `staging`). En su número …1693 (Cloud API, agente Ava), «Activar» respondió **200**: el token del número **ya trae** `whatsapp_business_manage_events`, y el conjunto de datos se creó o se obtuvo y quedó vinculado con el **acceso estándar**. Así que para este número no hizo falta T025 ni volver a conectar. La auditoría lo registró y después se desactivó (el conjunto de datos sigue vinculado). Sigue sin probar: un evento enviado de verdad (hace falta una reserva de Ava en el chat), el evento sin clic, la coexistencia y los códigos de error.
+
   _Requisitos: 4.2, 4.3, 5.7, 7.1_
 
 ### Tests for User Story 3 ⚠️

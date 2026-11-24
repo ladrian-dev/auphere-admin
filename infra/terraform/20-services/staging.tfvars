@@ -45,6 +45,11 @@ litellm_enabled = true
 # pasarlas por él es poner esto a ``true`` y aplicar.
 llm_via_proxy = false
 
+# Spec 076 (T026): los resultados en anuncios de Meta, solo para «Meta Review
+# Demo» (partner Auphere AIaaS), el cliente de prueba con el único número de
+# WhatsApp por Cloud API de staging. Lo lee solo la API.
+ad_measurement_tenants = "116ca2a6-145b-4fae-9513-79e31130f2bc"
+
 # Spec 031: los avisos de la app (APNs y FCM). Se encienden **después** de
 # crear las cinco claves en el secreto de este entorno:
 #
