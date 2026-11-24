@@ -103,7 +103,33 @@ export type ChannelPage = {
   catalog?: Catalog | null;
   catalog_state?: CatalogState | null;
   catalog_error?: CatalogError | null;
+  /**
+   * Spec 076 (4.6): enviar a Meta los resultados que consigue el agente. Solo
+   * llega en un número de WhatsApp por Cloud API donde se ofrece; ausente, no
+   * hay sección.
+   */
+  ad_measurement?: AdMeasurement | null;
 };
+
+/** Spec 076: `on`, `off` o `reauthorize` (el token del número no tiene el permiso de eventos). */
+export type AdMeasurementState = "on" | "off" | "reauthorize";
+
+/** Spec 076, `contracts/api-y-eventos.md` §2.1: la medición de resultados de anuncios de un número. */
+export type AdMeasurement = {
+  state: AdMeasurementState | string;
+  /** Encendida o no, también con `reauthorize`: decide si se ofrece «Apagar». */
+  enabled: boolean;
+  dataset_linked: boolean;
+  /** Resultados enviados a Meta en los últimos 7 días. */
+  sent_7d: number;
+  /** El último error; `hint` es el código que la consola convierte en qué hacer. */
+  last_error: { code: string; at: string | null; hint: string } | null;
+  /** La configuración del alta de Meta para «Volver a conectar»; vacía si no hay ninguna. */
+  reconnect_config_id: string;
+};
+
+/** Activar pide `confirm_data_sharing: true` (4.8); apagar, no. */
+export type AdMeasurementIn = { enabled: boolean; confirm_data_sharing: boolean };
 
 /**
  * Spec 049 (historia 3): si el agente atiende los comentarios y la línea que

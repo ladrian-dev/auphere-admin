@@ -184,6 +184,12 @@ class ActivityOut(BaseModel):
     detail: str | None
 
 
+class AdOriginOut(BaseModel):
+    kind: Literal["ad", "post"]
+    headline: str | None
+    url: str | None
+
+
 class ConversationDetailOut(BaseModel):
     id: uuid.UUID
     state: Literal["agent", "waiting", "person", "resolved"]
@@ -206,6 +212,9 @@ class ConversationDetailOut(BaseModel):
     tags: list[str]
     note: NoteOut
     activity: list[ActivityOut]
+    #: Spec 076 (2.1): el anuncio o la publicación del que vino el contacto, su
+    #: último clic en este número. Nunca el identificador del clic.
+    ad_origin: AdOriginOut | None = None
 
 
 class ThreadItemOut(BaseModel):
@@ -391,6 +400,23 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
             )
             for a in d.activity
         ],
+        ad_origin=await _ad_origin(scope, conv),
+    )
+
+
+async def _ad_origin(scope: LiteScope, conv: Conversation) -> AdOriginOut | None:
+    """Spec 076 (2.1): el contacto y el número son los de la conversación."""
+    from nexus_api.services.ad_referrals import last_click
+
+    click = await last_click(
+        scope.session, customer_id=conv.customer_id, channel_id=conv.channel_id
+    )
+    if click is None:
+        return None
+    return AdOriginOut(
+        kind=click.source_type,  # type: ignore[arg-type]
+        headline=click.headline,
+        url=click.source_url,
     )
 
 

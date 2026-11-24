@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button, Callout, Field, Input, Label, NativeSelect, StatusBadge, Textarea, formatDateTime } from "@nexus/ui";
 
 import {
+  adMeasurementAction,
   channelHistoryAction,
   channelPageAction,
   instagramCommentsAction,
@@ -17,14 +18,25 @@ import {
 } from "@/app/(console)/clients/[ref]/agents/channel-actions";
 import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
 import { ATTENTION } from "@/components/channels/meta-social-card";
+import { runWhatsAppSignup, type MetaSignupConfig } from "@/components/channels/whatsapp-connect";
 import { BalanceButton, type BalanceMode } from "@/components/money/balance-button";
 import { CrumbName, openChannelCrumb } from "@/components/shell/crumb-names";
 import { agentHref } from "@/components/shell/routes-v2";
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { EscalationTrigger } from "@/lib/backend/builder-types";
-import type { AudienceMode, ChannelChange, ChannelConfigIn, ChannelPage, InstagramComments, Recipient } from "@/lib/backend/channel-config-types";
+import type {
+  AdMeasurement,
+  AdMeasurementIn,
+  AudienceMode,
+  ChannelChange,
+  ChannelConfigIn,
+  ChannelPage,
+  InstagramComments,
+  Recipient,
+} from "@/lib/backend/channel-config-types";
 
+import { AdMeasurementSection, type ReconnectOutcome } from "./ad-measurement-section";
 import { triggerText } from "./block-view";
 import type { Result } from "./builder-model";
 import { ChannelAccount, hasAccountFacts } from "./channel-account";
@@ -64,6 +76,10 @@ export type ChannelPageActions = {
   history: (body: Ids) => Promise<Result<ChannelChange[]>>;
   /** Spec 049: los comentarios de una cuenta de Instagram (guarda al pulsar). */
   comments?: (body: Ids & InstagramComments) => Promise<Result<ChannelPage>>;
+  /** Spec 076: encender o apagar los resultados en anuncios del número. */
+  adMeasurement?: (body: Ids & AdMeasurementIn) => Promise<Result<AdMeasurement>>;
+  /** Spec 076 (4.3): «Volver a conectar», el mismo alta de Meta que conectar un número. */
+  reconnect?: typeof runWhatsAppSignup;
   menu?: ChannelMenuActions;
 };
 
@@ -73,6 +89,8 @@ export const CHANNEL_PAGE_ACTIONS: ChannelPageActions = {
   reload: (body) => channelPageAction(body),
   history: (body) => channelHistoryAction(body),
   comments: (body) => instagramCommentsAction(body),
+  adMeasurement: (body) => adMeasurementAction(body),
+  reconnect: (body) => runWhatsAppSignup(body),
 };
 
 /** El nombre de cada canal en la cabecera («Instagram · canal de Ava»). */
@@ -130,6 +148,7 @@ export function ChannelConfigPage({
   onClose,
   onChanged,
   actions = CHANNEL_PAGE_ACTIONS,
+  meta = null,
 }: {
   refId: string;
   /** El agente de la URL; si el canal tiene otro, manda el del canal. */
@@ -146,6 +165,8 @@ export function ChannelConfigPage({
   /** El canal cambió (guardado, deshecho, en pausa): la lista del agente lo refleja. */
   onChanged?: (page: ChannelPage) => void;
   actions?: ChannelPageActions;
+  /** Las claves del alta de Meta (spec 076: «Volver a conectar» con `reconnect_config_id`); sin ellas no se ofrece. */
+  meta?: MetaSignupConfig | null;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -268,6 +289,23 @@ export function ChannelConfigPage({
   const fix = error ? fixLink(error.fix, targets) : null;
   const disconnected = page.status === "disconnected";
   const account = hasAccountFacts(t, locale, page.whatsapp) ? page.whatsapp : null;
+  // Spec 076 (4.3): volver a autorizar el número con la configuración que elige
+  // la API. La medición solo se ofrece por Cloud API, así que es ese modo. En
+  // pausa no: el alta deja el número activo, y lo reanudaría sin decirlo.
+  const reconnectConfig = page.ad_measurement?.reconnect_config_id || null;
+  const paused = page.status === "paused";
+  const reconnect =
+    !paused && meta?.appId && reconnectConfig && actions.reconnect
+      ? async (): Promise<ReconnectOutcome> => {
+          const res = await actions.reconnect!({
+            refId,
+            meta: { ...meta, configIdCloudApi: reconnectConfig, configIdCoexistence: null },
+            mode: "cloud_api",
+            t,
+          });
+          return res.ok ? { ok: true } : { ok: false, text: res.text };
+        }
+      : undefined;
   const method = page.method === "coexistence" || page.method === "cloud_api" ? t(`channels.proto.connect.${page.method}` as MessageKey) : null;
   const headLine = [
     page.type in CHANNEL_NAMES ? t(CHANNEL_NAMES[page.type]!) : page.type,
@@ -289,6 +327,7 @@ export function ChannelConfigPage({
               ...NAV.filter((s) => s.id !== "canal-escalado" && (s.id !== "canal-excepciones" || (everyone && phones))),
               ...(page.instagram_comments ? [{ id: "canal-comentarios", label: "builder.channel.comments.title" as MessageKey }] : []),
               ...(page.catalog_state ? [{ id: "canal-catalogo", label: "ch.catalog" as MessageKey }] : []),
+              ...(page.ad_measurement ? [{ id: "canal-anuncios", label: "builder.channel.ads.title" as MessageKey }] : []),
               ...(page.type === "whatsapp" && !disconnected ? [{ id: "canal-plantillas", label: "tpl.title" as MessageKey }] : []),
               { id: "canal-escalado", label: "builder.channel.escalation.title" as MessageKey },
               // Spec 050 (4.1): la cuenta en Meta, cuando Meta dice algo de ella.
@@ -446,6 +485,18 @@ export function ChannelConfigPage({
                       if (res.ok) setPage(res.data);
                     })
                   }
+                />
+              </PageSection>
+            ) : null}
+
+            {page.ad_measurement ? (
+              <PageSection id="canal-anuncios" title={t("builder.channel.ads.title")} intro={t("builder.channel.ads.intro")}>
+                <AdMeasurementSection
+                  measurement={page.ad_measurement}
+                  canWrite={canWrite && !disconnected && Boolean(actions.adMeasurement)}
+                  onSave={(body) => actions.adMeasurement!({ ...ids, ...body })}
+                  onReconnect={reconnect}
+                  paused={paused}
                 />
               </PageSection>
             ) : null}

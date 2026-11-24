@@ -138,7 +138,7 @@ describe("ClientHeaderV2", () => {
       );
       const tabs = screen.getByRole("navigation", { name: "Secciones del cliente" });
       const links = Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent);
-      expect(links).toEqual(["Panel", "Negocio", "Agentes", "Acceso"]);
+      expect(links).toEqual(["Panel", "Negocio", "Agentes", "Anuncios", "Acceso"]);
       const access = screen.getByRole("link", { name: "Acceso" });
       expect(access).toHaveAttribute("href", "/clients/barberia-cultor/access");
       expect(access).toHaveAttribute("aria-current", "page");

@@ -1,3 +1,4 @@
+import uuid
 from datetime import date
 from functools import lru_cache
 from typing import Literal
@@ -210,6 +211,22 @@ class Settings(BaseSettings):
     # Messenger up to 7 days after the last message. Until then, 24 hours:
     # Meta refuses every message with the tag (INC-59).
     meta_human_agent_approved: bool = False
+
+    # Spec 076 — medir conversiones de anuncios (research D10). Quién la ve:
+    # los tenants de esta lista (uuids separados por comas; en staging, el de
+    # Auphere) o todos cuando la apertura general está puesta, que espera al
+    # acceso avanzado de ``whatsapp_business_manage_events`` y al nivel completo
+    # de la API de marketing.
+    ad_measurement_tenants: str = ""
+    ad_measurement_general_availability: bool = False
+    # Solo staging: el código de «Eventos de prueba» de Events Manager. Con él,
+    # Meta enseña los eventos ahí y no los usa para anuncios.
+    meta_capi_test_event_code: str | None = None
+    # Solo staging, hasta el acceso avanzado (research D6): configuraciones de
+    # registro insertado de pruebas, copia de las normales con el permiso de
+    # eventos. «Volver a conectar» de la medición usa la del modo del número.
+    meta_config_id_wa_events_test_cloud_api: str | None = None
+    meta_config_id_wa_events_test_coexistence: str | None = None
 
     # TikTok Business Messaging API — single Auphere developer app, same
     # Tech-Provider shape as Meta: every tenant authorises *this* app over
@@ -709,6 +726,23 @@ class Settings(BaseSettings):
     @property
     def auphere_partner_slug_set(self) -> frozenset[str]:
         return frozenset(s.strip() for s in self.auphere_partner_slugs.split(",") if s.strip())
+
+    @field_validator("ad_measurement_tenants", mode="after")
+    @classmethod
+    def _ad_measurement_tenants_are_uuids(cls, v: str) -> str:
+        # Una errata aquí no puede abrir la medición a quien no toca ni
+        # cerrarla en silencio: se rechaza al arrancar.
+        for token in (t.strip() for t in v.split(",")):
+            if token:
+                uuid.UUID(token)
+        return v
+
+    @property
+    def ad_measurement_tenant_ids(self) -> frozenset[uuid.UUID]:
+        """Spec 076: los tenants que ven la medición antes de la apertura general."""
+        return frozenset(
+            uuid.UUID(t.strip()) for t in self.ad_measurement_tenants.split(",") if t.strip()
+        )
 
     @property
     def is_prod(self) -> bool:

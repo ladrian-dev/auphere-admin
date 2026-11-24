@@ -65,6 +65,28 @@ def customer_context(customer_id: uuid.UUID | None) -> Iterator[uuid.UUID | None
         _current_customer.reset(token)
 
 
+# Spec 076 (research D7): the conversation of the turn, next to its customer.
+# A tool that records a result (a booking, an order) learns which WhatsApp
+# number it came from here, never from an argument the model sends — and
+# without the API importing the worker's ``current_turn()``.
+_current_conversation: ContextVar[uuid.UUID | None] = ContextVar(
+    "current_conversation", default=None
+)
+
+
+def get_current_conversation() -> uuid.UUID | None:
+    return _current_conversation.get()
+
+
+@contextmanager
+def conversation_context(conversation_id: uuid.UUID | None) -> Iterator[uuid.UUID | None]:
+    token = _current_conversation.set(conversation_id)
+    try:
+        yield conversation_id
+    finally:
+        _current_conversation.reset(token)
+
+
 async def apply_tenant_to_session(session: AsyncSession, tenant_id: uuid.UUID) -> None:
     """Scope this transaction to `tenant_id` AND switch to the `nexus_app` role.
 

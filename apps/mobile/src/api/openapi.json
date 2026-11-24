@@ -36,6 +36,47 @@
         "title": "ActivityOut",
         "type": "object"
       },
+      "AdOriginOut": {
+        "properties": {
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "kind": {
+            "enum": [
+              "ad",
+              "post"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "kind",
+          "headline",
+          "url"
+        ],
+        "title": "AdOriginOut",
+        "type": "object"
+      },
       "AgentOption": {
         "additionalProperties": false,
         "properties": {
@@ -1745,6 +1786,16 @@
             },
             "title": "Activity",
             "type": "array"
+          },
+          "ad_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdOriginOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "agent": {
             "anyOf": [

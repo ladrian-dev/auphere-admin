@@ -76,6 +76,8 @@ from nexus_api.repositories.auphere_channels import (
     resolve_channel_for_inbound_cached as resolve_owner_channel_for_inbound,
 )
 from nexus_api.services import whatsapp_account_events, whatsapp_opt_outs
+from nexus_api.services.ad_referrals import STREAM_FIELD as REFERRAL_STREAM_FIELD
+from nexus_api.services.ad_referrals import referral_stream_field
 from nexus_api.services.channel_routing import config_agent_enabled
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.meta_reconciliation import record_delivered
@@ -618,6 +620,11 @@ async def _handle_inbound(
             fields["location_name"] = inbound.location.name
         if inbound.location.address:
             fields["location_address"] = inbound.location.address
+    # Spec 076 (requisito 1.1): the ad or post this person came from, filtered
+    # to the whitelist and capped before it leaves this process.
+    referral_json = referral_stream_field(inbound.referral)
+    if referral_json is not None:
+        fields[REFERRAL_STREAM_FIELD] = referral_json
     if opted_out:
         fields["opted_out"] = "true"
 

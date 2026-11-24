@@ -316,6 +316,8 @@ export const businessMessages = {
   "clients.v2.tab.panel": { es: "Panel", en: "Dashboard" },
   "clients.v2.tab.business": { es: "Negocio", en: "Business" },
   "clients.v2.tab.agents": { es: "Agentes", en: "Agents" },
+  // Spec 076 (requisito 3): el informe de anuncios del cliente.
+  "clients.v2.tab.ads": { es: "Anuncios", en: "Ads" },
   // Spec 056 (requisito 3.1): la pestaña del acceso del cliente a su consola.
   "clients.v2.tab.access": { es: "Acceso", en: "Access" },
 

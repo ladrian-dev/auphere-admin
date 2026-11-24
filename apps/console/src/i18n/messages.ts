@@ -30,6 +30,7 @@ import { businessProtoMessages } from "./lanes/business-proto";
 import { capabilitiesMessages } from "./lanes/capabilities";
 import { channelsMessages } from "./lanes/channels";
 import { channelsProtoMessages } from "./lanes/channels-proto";
+import { adsMessages } from "./lanes/ads";
 import { clientAccessMessages } from "./lanes/client-access";
 import { clientsProtoMessages } from "./lanes/clients-proto";
 import { companionMessages } from "./lanes/companion";
@@ -611,6 +612,7 @@ const messages = {
   ...inboxCorrectMessages,
   // Spec 056 (requisito 3): la pestaña «Acceso» de un cliente.
   ...clientAccessMessages,
+  ...adsMessages,
   ...agentImproveMessages,
   ...builderConnectorsMessages,
   ...connectorToolsMessages,

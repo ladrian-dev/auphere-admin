@@ -35,6 +35,8 @@ from typing import Any, cast
 import structlog
 from nexus_api.core.otel_metrics import record_turn, record_turn_error
 from nexus_api.core.streams import INBOUND_DLQ_STREAM, xadd_capped
+from nexus_api.services.ad_referrals import STREAM_FIELD as REFERRAL_STREAM_FIELD
+from nexus_api.services.ad_referrals import parse_referral_field
 from opentelemetry import trace as otel_trace
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
@@ -127,7 +129,20 @@ def _to_event(fields: dict[str, str]) -> InboundEvent:
         # línea de coexistencia, o una entrada anterior a este cambio).
         mark_read=fields.get("mark_read") == "1",
         opted_out=fields.get("opted_out") == "true",
+        referral=_referral(fields),
     )
+
+
+def _referral(fields: dict[str, str]) -> dict[str, str] | None:
+    """Spec 076: the ad this person came from, filtered again on this side. A
+    broken value is logged and dropped; the message goes on."""
+    raw = fields.get(REFERRAL_STREAM_FIELD)
+    if raw is None:
+        return None
+    parsed: dict[str, str] | None = parse_referral_field(raw)
+    if parsed is None:
+        log.warning("inbound.referral_unreadable", tenant_id=fields.get("tenant_id"))
+    return parsed
 
 
 # WP-09: read batch size. Bigger batches amortise the XREADGROUP round-trip
