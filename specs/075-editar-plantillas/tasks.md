@@ -413,6 +413,10 @@ No hay dependencias nuevas ni estructura que crear. La rama `075-editar-plantill
   - _vitest: 332 en `@nexus/ui`, 2581 en la consola y 794 en el panel (sobre `56837b98`, con `server-actions-require-operator` de la 078 en verde)._
   - _`tsc` y eslint en verde en los tres; para el panel, antes se compilaron `apps/admin/packages/ucm-*`._
   - _`next build` de la consola y del panel compilan._
+  - _El CI del PR 63 encontró tres guardas que las pasadas locales no corrían, las tres de la 075:_
+    - _`test_52_partner_never_sees_bodies`: `TemplateButtonOut.phone_number` entra en el inventario de excepciones. Es el número de un botón «Llamar» del propio negocio._
+    - _`test_console_audit_words` y `test_every_console_action_written_has_vocabulary`: la migración `0243_template_edit_vocabulary` añade las frases de `console.template.edit` y `admin.template.edit`._
+    - _La auditoría de editar guarda también `name` y `language` en `after` (8.4), para que la frase nombre la plantilla; hay prueba, vista en rojo._
 
 ---
 

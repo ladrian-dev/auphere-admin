@@ -521,7 +521,10 @@ async def edit_template(
         action=audit_action,
         target=f"template:{name}:{language}",
         before={"category": tpl.category, "components": tpl.components},
+        # 8.4: the template and its language with the row, so its sentence names it.
         after={
+            "name": name,
+            "language": language,
             "category": now_tpl.category,
             "components": now_tpl.components,
             "meta_status": now_tpl.status,

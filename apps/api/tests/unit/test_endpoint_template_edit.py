@@ -264,6 +264,25 @@ async def test_edit_rejected_reaches_meta_updates_mirror_and_audits(
     assert audit.before_json["components"] == before["components"]
     assert audit.after_json["components"] == after["components"]
     assert audit.after_json["meta_status"] == "PENDING"
+    # 8.4: the template and its language travel with the row, so the console's
+    # audit sentence names the template (``{template}``), not «unknown».
+    assert (audit.after_json["name"], audit.after_json["language"]) == ("cita_recordatorio", "es")
+    from nexus_api.api.console import audit as audit_module
+
+    row_copy = AuditLog(
+        actor=audit.actor,
+        action=audit.action,
+        target=audit.target,
+        before_json=dict(audit.before_json),
+        after_json=dict(audit.after_json),
+    )
+    await db_session.rollback()  # the vocabulary is read in a transaction of its own
+    audit_module.reset_vocabulary_cache_for_tests()
+    vocab = await audit_module.load_vocabulary(db_session, force=True)
+    sentence = audit_module.summarise(
+        row_copy, "Demo", vocab, "es", names_by_ref={}, connector_names={}, partner_name="Demo"
+    )
+    assert "editó la plantilla cita_recordatorio" in sentence, sentence
 
 
 async def test_a_newer_webhook_verdict_is_not_overwritten(client, world, db_session) -> None:
