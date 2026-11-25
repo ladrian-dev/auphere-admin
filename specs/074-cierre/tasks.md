@@ -8,7 +8,7 @@
 - [x] T006 e2e del marco (`shell.spec.ts`) a 390 px con la barra inferior (4.2); e2e de Clientes a 375, 390 y 640 px.
 - [x] T007 Todas las suites e2e de `e2e/*.config.ts` en verde. Se dice cuál estaba atrasada y por qué (4.1).
 - [x] T008 axe sin «serious» ni «critical» en las pantallas del partner, en claro y en oscuro, a 1280 y a 390 px (3.1, 3.2): las suites lo miden en cada pantalla. Salió un fallo «serious» («list»), que estaba en las pestañas del cliente. La lente se puso al lado de la lista.
-- [ ] T009 Comprobar en staging a 375 px.
+- [ ] T009 Comprobar en staging a 375 px. Primera pasada, 2026-11-25 (e7e6a71d): sin desbordes en Panel, Clientes, Consumo, Auditoría, Facturación ni la ficha de un cliente; pero a 375 y 390 px el botón del Companion tapaba la última pestaña de la barra («Auditoría»). Arreglado en esta rama (el botón sube por encima de la barra bajo el corte `shell`, con el área segura); repetir la pasada cuando esté en staging.
 
 ## Notas
 

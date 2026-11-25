@@ -46,7 +46,7 @@ export async function ConsoleFrame({ principal, children }: { principal: Princip
         partnerName={principal.partnerName}
         defaultCollapsed={collapsed}
         // Spec 032: the Companion is a module Auphere switches on per partner.
-        companion={principal.modules.includes("companion") ? <CompanionLauncher role={principal.role} userId={principal.userId} /> : null}
+        companion={principal.modules.includes("companion") ? <CompanionLauncher role={principal.role} userId={principal.userId} aboveTabbar /> : null}
       >
         {/* Spec 056 (10.1): the new frame is a partner's. */}
         <ViewerKindProvider kind="partner">{children}</ViewerKindProvider>
