@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import * as React from "react";
 
 import { CompanionLocaleProvider, type RenderLink, pendingAction, useCompanion } from "@nexus/companion-ui";
-import { Button } from "@nexus/ui";
+import { Button, cn } from "@nexus/ui";
 
 import { useLocale, useT } from "@/i18n/client";
 import { type Role, can } from "@/lib/permissions";
@@ -79,7 +79,17 @@ function getUrlThreadServer(): string | null {
  * And a failed lookup stays closed: if we cannot show the partner has the
  * feature, we do not advertise it.
  */
-export function CompanionLauncher({ role, userId }: { role: Role; userId: string | null }) {
+export function CompanionLauncher({
+  role,
+  userId,
+  aboveTabbar = false,
+}: {
+  role: Role;
+  userId: string | null;
+  /** Spec 074 (T009): the new frame's phone tab bar sits at the bottom, so the
+   *  bubble rises above it below the shell breakpoint, safe area included. */
+  aboveTabbar?: boolean;
+}) {
   const t = useT();
   const locale = useLocale();
   const pathname = usePathname();
@@ -203,7 +213,12 @@ export function CompanionLauncher({ role, userId }: { role: Role; userId: string
 
   return (
     <>
-      <div className="fixed right-4 bottom-4 z-40 flex flex-col items-end gap-2 print:hidden">
+      <div
+        className={cn(
+          "fixed right-4 bottom-4 z-40 flex flex-col items-end gap-2 print:hidden",
+          aboveTabbar && "max-shell:bottom-[calc(5rem+env(safe-area-inset-bottom))]",
+        )}
+      >
         {/* Reduced motion: the ring carries the "working" message, so it is
             replaced by words rather than simply stopped. */}
         {busy ? (
