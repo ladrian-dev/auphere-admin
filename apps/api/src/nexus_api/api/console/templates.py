@@ -25,6 +25,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.db.models.conversation import WhatsAppTemplateStatus
 from nexus_api.repositories.audit import AuditRepository
+from nexus_api.schemas.whatsapp_templates import TemplateContentIn
+from nexus_api.services.whatsapp_template_edit import edit_template, row_extras
 from nexus_api.services.whatsapp_templates import (
     TemplateOut,
     build_meta_client,
@@ -32,6 +34,7 @@ from nexus_api.services.whatsapp_templates import (
     invalidate_template_cache,
     meta_error_to_http,
     require_meta_credentials,
+    submit_template,
 )
 
 from .deps import ClientScope, client_scope
@@ -40,6 +43,8 @@ from .schemas_channels import (
     TemplateCreateIn,
     TemplateCreateOut,
     TemplateDeleteOut,
+    TemplateEditIn,
+    TemplateEditOut,
     TemplateListOut,
     TemplateRowOut,
 )
@@ -47,6 +52,7 @@ from .schemas_channels import (
 router = APIRouter(prefix="/clients/{ref}/channels/whatsapp/templates")
 
 _TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
+_LANGUAGE_RE = re.compile(r"^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$")
 
 #: Verdicts that carry a reason worth showing (Meta's + the mirror's
 #: lowercase vocabulary, compared upper-cased).
@@ -116,6 +122,7 @@ def merge_rows(
                 rejection_reason=rejection or None,
                 suggested_action=suggested_action_for(st, rejection),
                 last_event_at=v.last_event_at if v is not None else None,
+                **row_extras(tpl),
             )
         )
     return rows
@@ -158,25 +165,7 @@ async def create_template(
     body: TemplateCreateIn,
     scope: ClientScope = Depends(client_scope("channels:write")),
 ) -> TemplateCreateOut:
-    creds = await require_meta_credentials(scope.session)
-    components = body.to_components()
-    client = build_meta_client()
-    try:
-        try:
-            result = await client.create_template(
-                waba_id=creds.waba_id,
-                access_token=creds.bisuat,
-                name=body.name,
-                language=body.language,
-                category=body.category,
-                components=components,
-                parameter_format=body.parameter_format(),
-            )
-        except MetaAPIError as exc:
-            raise meta_error_to_http(exc, context="la creación de la plantilla") from exc
-    finally:
-        await client.close()
-    invalidate_template_cache(creds.waba_id)
+    result = await submit_template(scope.session, body)
     await AuditRepository(scope.session).record(
         actor=scope.principal.actor,
         action="console.template.create",
@@ -225,6 +214,48 @@ async def delete_template(
         after={"deleted": deleted},
     )
     return TemplateDeleteOut(name=name, deleted=deleted)
+
+
+@router.put(
+    "/{name}/{language}",
+    response_model=TemplateEditOut,
+    responses={
+        404: {"description": "No such name and language in this client's WhatsApp account."},
+        409: {"description": "template_changed | not_editable | confirmation_required."},
+        422: {
+            "description": "category_locked | system_variables | missing_examples | meta_rejected."
+        },
+    },
+)
+async def edit_template_route(
+    name: str,
+    language: str,
+    body: TemplateEditIn,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+) -> TemplateEditOut:
+    """Spec 075: edit a template in place, keeping its name. Everything —
+    what can be edited, what is sent, the mirror and the audit — lives in
+    ``services/whatsapp_template_edit.edit_template``, shared with the panel."""
+    if not _TEMPLATE_NAME_RE.match(name) or not _LANGUAGE_RE.match(language):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid template name")
+    content = TemplateContentIn(**body.model_dump(exclude={"version", "confirm"}))
+    result = await edit_template(
+        scope.session,
+        name=name,
+        language=language,
+        body=content,
+        version=body.version,
+        confirm=body.confirm,
+        actor=scope.principal.actor,
+        audit_action="console.template.edit",
+    )
+    return TemplateEditOut(
+        name=result.name,
+        language=result.language,
+        changed=result.changed,
+        status=result.status,
+        category=result.category,
+    )
 
 
 __all__ = ["merge_rows", "router", "suggested_action_for"]
