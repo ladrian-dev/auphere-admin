@@ -18,13 +18,12 @@
 import { NextRequest } from "next/server";
 
 import { QAForbidden, requireQAOperator } from "@/lib/qa-access";
+import { adminToken } from "@/lib/admin-token";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const BACKEND_URL = process.env.NEXUS_BACKEND_URL ?? "http://localhost:8000";
-const ADMIN_TOKEN =
-  process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -61,7 +60,7 @@ export async function GET(
   try {
     upstream = await fetch(target.toString(), {
       headers: {
-        Authorization: `Bearer ${ADMIN_TOKEN}`,
+        Authorization: `Bearer ${adminToken()}`,
         "X-Operator-Id": access.operatorId,
         Accept: "text/event-stream",
       },

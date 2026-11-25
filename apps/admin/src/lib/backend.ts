@@ -24,9 +24,9 @@
 import "server-only";
 
 import type { ChannelRole } from "@/lib/channels";
+import { adminToken } from "@/lib/admin-token";
 
 const BACKEND_URL = process.env.NEXUS_BACKEND_URL ?? "http://localhost:8000";
-const ADMIN_TOKEN = process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me";
 const CONSOLE_URL = (process.env.NEXUS_CONSOLE_URL ?? "http://localhost:3110").replace(
   /\/$/,
   "",
@@ -159,7 +159,7 @@ export async function call<T>(path: string, opts: FetchOpts = {}): Promise<T | n
   const init: RequestInit = {
     method: opts.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      Authorization: `Bearer ${adminToken()}`,
       Accept: "application/json",
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(opts.headers ?? {}),

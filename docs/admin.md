@@ -30,6 +30,11 @@ pide cada cosa: quien decide si se obedece es el panel, con `requireOperator()`
   `requireOperator()` la lleva a `/sin-acceso`, que solo deja cerrar sesión. Las rutas
   de `app/api` le contestan 403.
 - El middleware solo mira que exista la cookie: no protege nada por sí mismo.
+- **Después del login** solo se vuelve a una ruta del panel (`lib/safe-redirect.ts`): un
+  `?from=//otro-sitio` acaba en `/tenants`.
+- **El token de servicio** sale solo de `lib/admin-token.ts`. En producción, sin
+  `NEXUS_ADMIN_TOKEN` o con un valor `change-me`, el panel falla al llamar a la API con
+  un mensaje que nombra la variable.
 
 ## Sistema de diseño
 

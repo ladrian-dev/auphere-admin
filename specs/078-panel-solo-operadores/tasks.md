@@ -14,4 +14,8 @@ Hotfix P0. Es el único plan de ejecución.
 - [X] T011 La prueba exige la guarda como **primera** sentencia (no en un `try`, ni después de leer o escribir, ni en un `Promise.all` de una acción), y lee también `.js`, `.jsx` y `.mjs`. Verla en rojo: 2 acciones de membresía, 8 guardas dentro de un `try` en `partners/actions.ts` y 5 páginas. _Requisitos: 1.1, 1.3_
 - [X] T012 Sacar del `try` las 8 guardas de `partners/actions.ts` y poner la guarda antes de validar en `putMembershipAction`. _Requisitos: 1.1_
 - [X] T013 La guarda en las 57 páginas y layouts de servidor de `app/(dashboard)` que no la tenían, y en los `generateMetadata` que leen la API. La prueba estructural lo exige; las 8 pruebas que pintan páginas simulan la sesión. _Requisitos: 3.1, 3.2, 3.3_
+- [X] T014 Prueba de `safeRedirect`: deja pasar rutas del panel y devuelve `/tenants` con `//otro-sitio`, `/\otro-sitio`, una URL absoluta, un esquema o una ruta relativa. Verla en rojo. _Requisitos: 4.1_
+- [X] T015 `lib/safe-redirect.ts` y el login lo usa. _Requisitos: 4.1_
+- [X] T016 Prueba de `adminToken()`: en producción falla sin token y con el de desarrollo; en desarrollo usa el de siempre; ningún otro archivo lee `NEXUS_ADMIN_TOKEN`. Verla en rojo. _Requisitos: 5.1, 5.2_
+- [X] T017 `lib/admin-token.ts`, y las seis copias (`backend`, `operator-auth`, `qa-api` y las tres rutas de streaming) llaman a `adminToken()` al hacer la llamada. _Requisitos: 5.1, 5.2_
 - [ ] T010 En staging: una acción del panel con sesión sigue funcionando, una página del panel se pinta, y una cuenta deshabilitada acaba en `/sin-acceso`. _Requisitos: 1.1, 2.1, 2.2, 3.1_
