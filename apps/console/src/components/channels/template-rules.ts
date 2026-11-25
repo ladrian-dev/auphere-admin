@@ -124,7 +124,30 @@ export function buttonIssue(button: ButtonDraft): ButtonIssue | null {
   return null;
 }
 
-export type MissingPiece = "name" | "body" | "examples" | "buttons" | "body_rules";
+export type MissingPiece = "name" | "body" | "examples" | "buttons" | "body_rules" | "otp_button" | "otp_minutes";
+
+/** Spec 077 (3.1): what an authentication template lets us choose; Meta fixes the rest. */
+export type OtpDraft = { buttonText: string; minutes: string; security: boolean };
+export const OTP_LIMITS = { button: 25, minMinutes: 1, maxMinutes: 90 } as const;
+
+/** Empty: no expiry. A whole number 1–90: the minutes. Anything else: invalid. */
+export function otpMinutes(text: string): number | null | "invalid" {
+  const t = text.trim();
+  if (!t) return null;
+  if (!/^\d+$/.test(t)) return "invalid";
+  const n = Number(t);
+  return n >= OTP_LIMITS.minMinutes && n <= OTP_LIMITS.maxMinutes ? n : "invalid";
+}
+
+/** Pure: what still stops an authentication template from being sent. */
+export function missingOtpPieces(input: { name: string; otp: OtpDraft }): MissingPiece[] {
+  const out: MissingPiece[] = [];
+  if (!finalTemplateName(input.name)) out.push("name");
+  const button = input.otp.buttonText.trim();
+  if (!button || button.length > OTP_LIMITS.button) out.push("otp_button");
+  if (otpMinutes(input.otp.minutes) === "invalid") out.push("otp_minutes");
+  return out;
+}
 
 /** Pure: what still stops the template from being sent, to say it next to the button. */
 export function missingPieces(input: {
@@ -157,7 +180,9 @@ export const SUGGESTED_VARIABLES = ["nombre", "pedido", "fecha", "total"] as con
 export type TemplateDraft = {
   name: string;
   language: string;
-  category: "UTILITY" | "MARKETING";
+  category: "UTILITY" | "MARKETING" | "AUTHENTICATION";
+  /** Spec 077: only with AUTHENTICATION. */
+  otp?: OtpDraft;
   header: string;
   body: string;
   footer: string;
@@ -182,7 +207,8 @@ export function draftFromComponents(row: {
   const draft: TemplateDraft = {
     name: `${row.name}_v2`.slice(0, LIMITS.name),
     language: row.language,
-    category: row.category === "MARKETING" ? "MARKETING" : "UTILITY",
+    category:
+      row.category === "MARKETING" ? "MARKETING" : row.category === "AUTHENTICATION" ? "AUTHENTICATION" : "UTILITY",
     header: "",
     body: "",
     footer: "",
@@ -218,7 +244,34 @@ export function draftFromComponents(row: {
       }
     }
   }
+  if (draft.category === "AUTHENTICATION") return authenticationDraft(draft, row.components ?? []);
   return draft;
+}
+
+/**
+ * Spec 077: a rejected authentication template comes back as what can be
+ * chosen (button, expiry, security notice) — its body is Meta's, never ours.
+ */
+function authenticationDraft(draft: TemplateDraft, components: Array<Record<string, unknown>>): TemplateDraft {
+  const otp: OtpDraft = { buttonText: "", minutes: "", security: false };
+  for (const c of components) {
+    const type = text(c.type).toUpperCase();
+    if (type === "BODY") otp.security = c.add_security_recommendation === true || /no lo compartas|do not share/i.test(text(c.text));
+    if (type === "FOOTER" && typeof c.code_expiration_minutes === "number") otp.minutes = String(c.code_expiration_minutes);
+    if (type === "BUTTONS" && Array.isArray(c.buttons)) {
+      const button = (c.buttons as Array<Record<string, unknown>>).find((b) => ["OTP", "URL"].includes(text(b.type).toUpperCase()));
+      if (button) otp.buttonText = text(button.text);
+    }
+  }
+  return { ...draft, header: "", body: "", footer: "", buttons: [], examples: {}, otp };
+}
+
+/**
+ * Pure: whether the composer can preview Meta's fixed text of an
+ * authentication template — its sample is Spanish, so only for `es`, `es_CL`…
+ */
+export function isSpanishTemplate(language: string): boolean {
+  return language.trim().toLowerCase().startsWith("es");
 }
 
 /** Pure: a language code as people read it (`es_CL` → «Español de Chile»). */

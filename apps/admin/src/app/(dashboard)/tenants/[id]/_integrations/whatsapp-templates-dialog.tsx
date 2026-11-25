@@ -32,6 +32,14 @@ import {
 import type { WhatsAppTemplate } from "@/lib/backend";
 
 import {
+  isSpanishTemplate,
+  OTP_BUTTON_MAX,
+  OTP_DEFAULT_BUTTON,
+  otpIssues,
+  otpPayload,
+  otpPreview,
+} from "./otp-template";
+import {
   createWhatsAppTemplateAction,
   deleteWhatsAppTemplateAction,
   listWhatsAppTemplatesAction,
@@ -79,6 +87,14 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
   const [language, setLanguage] = useState("es");
   const [category, setCategory] = useState("UTILITY");
   const [bodyText, setBodyText] = useState("");
+  // Spec 077 (3.1): an authentication template is Meta's fixed text; only these are chosen.
+  const [otpButton, setOtpButton] = useState(OTP_DEFAULT_BUTTON);
+  const [otpMinutes, setOtpMinutes] = useState("10");
+  const [otpSecurity, setOtpSecurity] = useState(true);
+  const isAuth = category === "AUTHENTICATION";
+  const otpDraft = { buttonText: otpButton, minutes: otpMinutes, security: otpSecurity };
+  const otpProblems = otpIssues(otpDraft);
+  const preview = otpPreview(otpDraft);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -102,17 +118,29 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
       });
       return;
     }
-    if (!bodyText.trim()) {
+    if (isAuth) {
+      const problem = otpProblems.button ?? otpProblems.minutes;
+      if (problem) {
+        toast.error("Revisa la plantilla de código", { description: problem });
+        return;
+      }
+    } else if (!bodyText.trim()) {
       toast.error("Falta el texto del mensaje");
       return;
     }
     setCreating(true);
-    const res = await createWhatsAppTemplateAction(tenantId, {
-      name: cleanName,
-      language,
-      category,
-      components: [{ type: "BODY", text: bodyText.trim() }],
-    });
+    // Spec 077: AUTHENTICATION goes as `otp`, never as free text (Meta refuses it).
+    const res = await createWhatsAppTemplateAction(
+      tenantId,
+      isAuth
+        ? { name: cleanName, language, category: "AUTHENTICATION", otp: otpPayload(otpDraft) }
+        : {
+            name: cleanName,
+            language,
+            category,
+            components: [{ type: "BODY", text: bodyText.trim() }],
+          },
+    );
     setCreating(false);
     if (!res.ok) {
       toast.error("Meta no aceptó la plantilla", { description: res.error });
@@ -228,6 +256,91 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                 </select>
               </div>
             </div>
+            {isAuth ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                <fieldset className="grid content-start gap-3">
+                  <legend className="mb-1 text-xs text-muted-foreground">
+                    Autenticación: Meta fija el texto. Solo se eligen estos campos.
+                  </legend>
+                  <div className="grid gap-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="tpl-otp-button">Texto del botón</Label>
+                      <Input
+                        id="tpl-otp-button"
+                        value={otpButton}
+                        maxLength={OTP_BUTTON_MAX}
+                        onChange={(e) => setOtpButton(e.target.value)}
+                        aria-invalid={otpProblems.button ? true : undefined}
+                        aria-describedby="tpl-otp-button-help"
+                      />
+                      <p
+                        id="tpl-otp-button-help"
+                        className={otpProblems.button ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+                      >
+                        {otpProblems.button ?? `Hasta ${OTP_BUTTON_MAX} caracteres.`}
+                      </p>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="tpl-otp-minutes">Caduca en (min)</Label>
+                      <Input
+                        id="tpl-otp-minutes"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={90}
+                        step={1}
+                        value={otpMinutes}
+                        onChange={(e) => setOtpMinutes(e.target.value)}
+                        aria-invalid={otpProblems.minutes ? true : undefined}
+                        aria-describedby="tpl-otp-minutes-help"
+                        className="tabular-nums"
+                      />
+                      <p
+                        id="tpl-otp-minutes-help"
+                        className={otpProblems.minutes ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+                      >
+                        {otpProblems.minutes ?? "De 1 a 90. Vacío: no dice cuándo caduca."}
+                      </p>
+                    </div>
+                  </div>
+                  <label htmlFor="tpl-otp-security" className="flex min-h-6 items-center gap-2 text-sm">
+                    <input
+                      id="tpl-otp-security"
+                      type="checkbox"
+                      checked={otpSecurity}
+                      onChange={(e) => setOtpSecurity(e.target.checked)}
+                      className="size-4 shrink-0 accent-primary"
+                    />
+                    Aviso de seguridad
+                  </label>
+                </fieldset>
+                {isSpanishTemplate(language) ? (
+                  <figure className="grid min-w-0 content-start gap-2">
+                    <figcaption className="text-xs text-muted-foreground">Vista previa en español</figcaption>
+                    <div lang="es" className="flex flex-col gap-1 rounded-md bg-muted p-3" data-slot="otp-preview">
+                      <div className="rounded-md bg-background px-3 py-2 text-sm shadow-sm ring-1 ring-foreground/5">
+                        <p className="text-pretty break-words">
+                          <strong>{preview.body.split(" ")[0]}</strong>
+                          {preview.body.slice(preview.body.indexOf(" "))}
+                        </p>
+                        {preview.footer ? (
+                          <p className="mt-1 text-xs text-muted-foreground">{preview.footer}</p>
+                        ) : null}
+                      </div>
+                      <div className="rounded-md bg-background px-3 py-2 text-center text-sm font-medium text-primary-deep shadow-sm ring-1 ring-foreground/5">
+                        {preview.button}
+                      </div>
+                    </div>
+                  </figure>
+                ) : (
+                  <p className="text-xs text-pretty text-muted-foreground" data-slot="otp-preview-other">
+                    Meta pone el texto fijo en el idioma de la plantilla
+                    {language.trim() ? <> (<code className="font-mono">{language.trim()}</code>)</> : null}; aquí
+                    solo se previsualiza en español.
+                  </p>
+                )}
+              </div>
+            ) : (
             <div className="grid gap-2">
               <Label htmlFor="tpl-body">Texto del mensaje</Label>
               <Textarea
@@ -240,6 +353,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                 }
               />
             </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button
                 type="button"

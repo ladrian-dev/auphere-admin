@@ -28,7 +28,10 @@ place to accumulate a customer phone list in clear text.
 
 from __future__ import annotations
 
+import re
 import uuid
+from datetime import UTC, datetime
+from typing import Any
 
 import sqlalchemy as sa
 import structlog
@@ -52,8 +55,36 @@ from nexus_api.services.broadcasts import (
     active_whatsapp_channel,
     resolve_template,
 )
+from nexus_api.services.membership_gate import require_active_membership
 
 log = structlog.get_logger(__name__)
+
+#: Spec 077 (R4.4): Meta's limit for an authentication code is 15 characters
+#: and it forbids links. Printable ASCII with no spaces.
+_CODE_RE = re.compile(r"[\x21-\x7e]{1,15}")
+_LINKISH_RE = re.compile(r"(://|^www\.|^http)", re.IGNORECASE)
+
+#: What a code becomes in the stored message once the send ends (R4.6).
+REDACTED_CODE = "•"
+
+
+def _otp_payload(*, name: str, language: str, code: str, with_button: bool) -> dict[str, Any]:
+    """The ``template_payload`` of a code: positional body and, when the
+    template has the copy-code button, the same code as the button's
+    parameter — Meta requires it twice. The adapter already builds both."""
+    params: dict[str, Any] = {"body": [code]}
+    if with_button:
+        params["buttons"] = [{"sub_type": "url", "parameters": [{"type": "text", "text": code}]}]
+    return {
+        "name": name,
+        "language": language,
+        "category": "AUTHENTICATION",
+        "otp": True,
+        # When the code was handed to us: the dispatcher never sends a code
+        # older than ``OTP_MAX_AGE`` (a stale code after an outage is useless).
+        "queued_at": datetime.now(UTC).isoformat(),
+        "params": params,
+    }
 
 
 def mask_phone(raw: str | None) -> str:
@@ -106,7 +137,14 @@ def _log_key_collision(
     template_differs = prior_template != payload.template_name or (
         prior_language is not None and prior_language != payload.language
     )
-    vars_differ = dict(prior_vars) != dict(payload.variables)
+    # Spec 077: a code is compared by template only. The stored code is wiped
+    # once the send ends, so there is nothing left to compare it with.
+    is_code = payload.code is not None or bool((replay.template_payload or {}).get("otp"))
+    vars_differ = (
+        False
+        if is_code
+        else (not isinstance(prior_vars, dict) or dict(prior_vars) != dict(payload.variables))
+    )
     if not (template_differs or vars_differ):
         return False
     log.warning(
@@ -154,7 +192,31 @@ async def send_template_message(
         variables=sorted(payload.variables),
         idempotency_key=payload.idempotency_key,
         has_idempotency_key=payload.idempotency_key is not None,
+        # Spec 077: that a code came, never the code (guarantee 6).
+        has_code=payload.code is not None,
     )
+
+    # Spec 077 (R9.1): a client whose membership is not active sends nothing,
+    # not even the replay of an earlier key.
+    await require_active_membership(session)
+
+    if payload.code is not None and (
+        not _CODE_RE.fullmatch(payload.code) or _LINKISH_RE.search(payload.code)
+    ):
+        log.warning(
+            "direct_message.rejected",
+            tenant_id=str(tenant_id),
+            reason="invalid_code",
+            code_length=len(payload.code or ""),
+            idempotency_key=payload.idempotency_key,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "invalid_code: the code must be 1-15 characters with no spaces "
+                "or links (Meta's limit for authentication templates)"
+            ),
+        )
 
     revive: Message | None = None
     if payload.idempotency_key:
@@ -234,7 +296,10 @@ async def send_template_message(
         channel_status=channel.status.value,
     )
     resolved = await resolve_template(
-        session, name=payload.template_name, language=payload.language
+        session,
+        name=payload.template_name,
+        language=payload.language,
+        allow_authentication=True,
     )
     log.info(
         "direct_message.template_resolved",
@@ -244,7 +309,37 @@ async def send_template_message(
         template_status=resolved.template.status,
         category=resolved.template.category,
         body_vars=sorted(resolved.body_vars),
+        is_authentication=resolved.is_authentication,
     )
+
+    # Spec 077 (R4.2, R4.3): a code goes with an authentication template and
+    # with nothing else; an authentication template takes the code and nothing
+    # else.
+    if resolved.is_authentication:
+        if payload.variables:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"variables_not_allowed: {payload.template_name!r} is an "
+                    "authentication template; send the code in `code`"
+                ),
+            )
+        if payload.code is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"code_required: {payload.template_name!r} is an authentication "
+                    "template and needs `code`"
+                ),
+            )
+    elif payload.code is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"code_not_allowed: {payload.template_name!r} is not an authentication "
+                "template; `code` only goes with one"
+            ),
+        )
 
     missing = resolved.body_vars - set(payload.variables)
     if missing:
@@ -315,13 +410,23 @@ async def send_template_message(
     conversation = await upsert_conversation_for_customer(
         session, channel_id=channel.id, customer_id=customer.id
     )
-    template_payload = {
-        "name": payload.template_name,
-        "language": payload.language,
-        "params": {"body": dict(payload.variables)},
-        # Spec 050: the dispatcher's opt-out check needs it.
-        "category": category,
-    }
+    template_payload: dict[str, Any]
+    if resolved.is_authentication and payload.code is not None:
+        # Spec 077: the code, in the body and in the copy-code button.
+        template_payload = _otp_payload(
+            name=payload.template_name,
+            language=payload.language,
+            code=payload.code,
+            with_button=resolved.has_code_button,
+        )
+    else:
+        template_payload = {
+            "name": payload.template_name,
+            "language": payload.language,
+            "params": {"body": dict(payload.variables)},
+            # Spec 050: the dispatcher's opt-out check needs it.
+            "category": category,
+        }
 
     if revive is not None:
         # Same row, reset to pending. ``attempts`` goes back to zero so the

@@ -34,3 +34,27 @@ export function toFailure(err: unknown, words: Record<string, string> = {}): Fai
   }
   return { ok: false, error: err instanceof Error ? err.message : String(err) };
 }
+
+/**
+ * Spec 077: the same, for endpoints whose `detail` is the bare code
+ * (`{"detail": "key_not_found"}`) as well as `{"detail": {"code": …}}`. The
+ * screen words the code; an unknown one is never shown as if it were a sentence.
+ */
+export function toCodedFailure(err: unknown, words: Record<string, string> = {}): Failure {
+  if (err instanceof BackendError) {
+    const detail =
+      typeof err.body === "object" && err.body !== null && "detail" in err.body
+        ? (err.body as { detail: unknown }).detail
+        : null;
+    const code =
+      typeof detail === "string"
+        ? detail
+        : detail && typeof detail === "object" && "code" in detail
+          ? String((detail as { code: unknown }).code)
+          : null;
+    if (code && words[code]) return { ok: false, error: words[code], code };
+    if (err.status === 422) return { ok: false, error: "Revisa los campos: la API no los acepta.", ...(code ? { code } : {}) };
+    return { ok: false, error: `La API respondió ${err.status}${code ? ` (${code})` : ""}.`, ...(code ? { code } : {}) };
+  }
+  return { ok: false, error: err instanceof Error ? err.message : String(err) };
+}

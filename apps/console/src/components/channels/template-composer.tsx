@@ -23,7 +23,7 @@ import {
 
 import { createTemplateAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
-import type { MessageKey } from "@/i18n/messages";
+import { t as translate, type MessageKey } from "@/i18n/messages";
 
 import {
   LANGUAGES,
@@ -33,19 +33,26 @@ import {
   buttonIssue,
   finalTemplateName,
   insertVariable,
+  isSpanishTemplate,
+  languageLabel,
+  missingOtpPieces,
   missingPieces,
+  OTP_LIMITS,
+  otpMinutes,
   previewParts,
   templateVariables,
   toTemplateName,
   type BodyIssue,
   type ButtonDraft,
+  type OtpDraft,
   type TemplateDraft,
 } from "./template-rules";
 
-type Category = "UTILITY" | "MARKETING";
-// Authentication is not offered: Meta only takes it with its fixed one-time
-// code format, so free text and buttons are always rejected (QA 2026-10-30).
-const CATEGORIES: Category[] = ["UTILITY", "MARKETING"];
+type Category = "UTILITY" | "MARKETING" | "AUTHENTICATION";
+// Spec 077 (3.4): Authentication is offered again, now in Meta's fixed
+// one-time code format — free text and buttons were always rejected
+// (QA 2026-10-30), so it asks for the button, the expiry and the notice only.
+const CATEGORIES: Category[] = ["UTILITY", "MARKETING", "AUTHENTICATION"];
 
 function issueText(t: ReturnType<typeof useT>, issue: BodyIssue): string {
   switch (issue.code) {
@@ -107,6 +114,11 @@ export function TemplateComposer({
   const [buttons, setButtons] = React.useState<ButtonDraft[]>(initial?.buttons ?? []);
   const [examples, setExamples] = React.useState<Record<string, string>>(initial?.examples ?? {});
   const [customVar, setCustomVar] = React.useState("");
+  const defaultOtp = (): OtpDraft => ({ buttonText: t("tpl.otp.button.default"), minutes: "10", security: true });
+  const [otp, setOtp] = React.useState<OtpDraft>(() =>
+    initial?.otp ? { ...initial.otp, buttonText: initial.otp.buttonText || t("tpl.otp.button.default") } : defaultOtp(),
+  );
+  const isAuth = category === "AUTHENTICATION";
   const [serverError, setServerError] = React.useState<string | null>(null);
   const [touched, setTouched] = React.useState(false);
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
@@ -114,7 +126,7 @@ export function TemplateComposer({
 
   const variables = templateVariables(body);
   const issues = bodyIssues(body);
-  const missing = missingPieces({ name, body, examples, buttons });
+  const missing = isAuth ? missingOtpPieces({ name, otp }) : missingPieces({ name, body, examples, buttons });
   const ready = missing.length === 0;
 
   function reset() {
@@ -127,6 +139,7 @@ export function TemplateComposer({
     setButtons([]);
     setExamples({});
     setCustomVar("");
+    setOtp(defaultOtp());
     setServerError(null);
     setTouched(false);
   }
@@ -160,7 +173,19 @@ export function TemplateComposer({
     }
     setServerError(null);
     startTransition(async () => {
-      const res = await createTemplateAction({
+      const minutes = otpMinutes(otp.minutes);
+      const res = await createTemplateAction(
+        isAuth
+          ? {
+              ref: refId,
+              name: finalTemplateName(name),
+              language,
+              category,
+              otp_button_text: otp.buttonText.trim(),
+              ...(typeof minutes === "number" ? { otp_expiration_minutes: minutes } : {}),
+              otp_security_recommendation: otp.security,
+            }
+          : {
         ref: refId,
         name: finalTemplateName(name),
         language,
@@ -175,7 +200,8 @@ export function TemplateComposer({
           phone_number: b.type === "PHONE_NUMBER" ? b.phone_number?.replace(/[\s-]/g, "") : undefined,
         })),
         examples: Object.fromEntries(variables.map((v) => [v, (examples[v] ?? "").trim()])),
-      });
+            },
+      );
       if (!res.ok) return void setServerError(res.message);
       toast.success(t("tpl.created"));
       reset();
@@ -211,7 +237,7 @@ export function TemplateComposer({
                 {CATEGORIES.map((c) => (
                   <label
                     key={c}
-                    className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-input p-3 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring motion-reduce:transition-none"
+                    className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-input p-3 text-sm transition-colors last:odd:sm:col-span-2 has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring motion-reduce:transition-none"
                   >
                     <input
                       type="radio"
@@ -258,7 +284,10 @@ export function TemplateComposer({
               </div>
             </div>
 
+            {isAuth ? <OtpFields otp={otp} onChange={setOtp} touched={touched} /> : null}
+
             {/* 3 · The message */}
+            {isAuth ? null : (
             <fieldset className="flex flex-col gap-3">
               <legend className="mb-1 text-sm font-medium">{t("tpl.compose.message")}</legend>
               <div className="flex flex-col gap-1">
@@ -358,8 +387,10 @@ export function TemplateComposer({
                 <Input id="tpl-footer" value={footer} maxLength={LIMITS.footer} onChange={(e) => setFooter(e.target.value)} />
               </div>
             </fieldset>
+            )}
 
             {/* 4 · Buttons */}
+            {isAuth ? null : (
             <fieldset className="flex flex-col gap-2">
               <legend className="mb-1 text-sm font-medium">{t("tpl.compose.buttons")}</legend>
               <p className="text-xs text-muted-foreground">{t("tpl.compose.buttons.help")}</p>
@@ -435,12 +466,17 @@ export function TemplateComposer({
                 </Button>
               ) : null}
             </fieldset>
+            )}
           </div>
 
           {/* Preview */}
           <aside className="flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:self-start" aria-label={t("tpl.compose.preview")}>
             <p className="text-sm font-medium">{t("tpl.compose.preview")}</p>
-            <TemplatePreview header={header} body={body} footer={footer} buttons={buttons} examples={examples} />
+            {isAuth ? (
+              <OtpPreview otp={otp} language={language} />
+            ) : (
+              <TemplatePreview header={header} body={body} footer={footer} buttons={buttons} examples={examples} />
+            )}
           </aside>
 
           <div className="flex flex-col gap-3 lg:col-span-2">
@@ -521,6 +557,113 @@ export function TemplatePreview({
             ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Spec 077 (3.1): the three things an authentication template lets us choose,
+ * instead of the message and its buttons (Meta writes those).
+ */
+function OtpFields({ otp, onChange, touched }: { otp: OtpDraft; onChange: (o: OtpDraft) => void; touched: boolean }) {
+  const t = useT();
+  const button = otp.buttonText.trim();
+  const buttonBad = (touched || otp.buttonText !== "") && (!button || button.length > OTP_LIMITS.button);
+  const minutesBad = otpMinutes(otp.minutes) === "invalid";
+  return (
+    <fieldset className="flex flex-col gap-3" data-slot="template-otp">
+      <legend className="mb-1 text-sm font-medium">{t("tpl.otp.legend")}</legend>
+      <p className="text-xs text-pretty text-muted-foreground">{t("tpl.otp.intro")}</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="tpl-otp-button">{t("tpl.otp.button")}</Label>
+            <Counter value={otp.buttonText} max={OTP_LIMITS.button} />
+          </div>
+          <Input
+            id="tpl-otp-button"
+            value={otp.buttonText}
+            maxLength={OTP_LIMITS.button}
+            onChange={(e) => onChange({ ...otp, buttonText: e.target.value })}
+            aria-invalid={buttonBad ? true : undefined}
+            aria-describedby="tpl-otp-button-help"
+          />
+          <p id="tpl-otp-button-help" className="text-xs text-muted-foreground">
+            {t("tpl.otp.button.help")}
+          </p>
+        </div>
+        <div className="flex flex-col gap-1">
+          <Label htmlFor="tpl-otp-minutes">{t("tpl.otp.minutes")}</Label>
+          <Input
+            id="tpl-otp-minutes"
+            type="number"
+            inputMode="numeric"
+            min={OTP_LIMITS.minMinutes}
+            max={OTP_LIMITS.maxMinutes}
+            step={1}
+            value={otp.minutes}
+            onChange={(e) => onChange({ ...otp, minutes: e.target.value })}
+            aria-invalid={minutesBad ? true : undefined}
+            aria-describedby="tpl-otp-minutes-help"
+            className="tabular-nums"
+          />
+          <p id="tpl-otp-minutes-help" className={cn("text-xs", minutesBad ? "text-destructive" : "text-muted-foreground")}>
+            {t("tpl.otp.minutes.help")}
+          </p>
+        </div>
+      </div>
+      <label htmlFor="tpl-otp-security" className="flex min-h-6 cursor-pointer items-start gap-2 text-sm">
+        <input
+          id="tpl-otp-security"
+          type="checkbox"
+          checked={otp.security}
+          onChange={(e) => onChange({ ...otp, security: e.target.checked })}
+          className="mt-1 size-4 shrink-0 accent-primary"
+        />
+        <span className="grid gap-1">
+          <span>{t("tpl.otp.security")}</span>
+          <span className="text-xs text-muted-foreground">{t("tpl.otp.security.help")}</span>
+        </span>
+      </label>
+    </fieldset>
+  );
+}
+
+/**
+ * Meta's fixed text of an authentication template, following the fields.
+ * Meta writes it in the template's language, not the console's: the sample
+ * is Spanish, so it is shown only for a Spanish template (in Spanish even
+ * with the console in English); for any other language, one line says so.
+ */
+export function OtpPreview({ otp, language }: { otp: OtpDraft; language: string }) {
+  const t = useT();
+  const minutes = otpMinutes(otp.minutes);
+  if (!isSpanishTemplate(language)) {
+    return (
+      <p className="rounded-md bg-muted p-3 text-xs text-pretty text-muted-foreground" data-slot="template-preview">
+        {t("tpl.otp.preview.other", { lang: languageLabel(language) })}
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1 rounded-md bg-muted p-3" data-slot="template-preview">
+      <p className="text-xs text-muted-foreground">{t("tpl.otp.preview.es")}</p>
+      <div lang="es" className="max-w-full rounded-md bg-background px-3 py-2 text-sm shadow-sm ring-1 ring-foreground/5">
+        <p className="text-pretty break-words">
+          {translate("es", "tpl.otp.preview.body", { code: "123456" })}
+          {otp.security ? ` ${translate("es", "tpl.otp.preview.security")}` : ""}
+        </p>
+        {typeof minutes === "number" ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {minutes === 1
+              ? translate("es", "tpl.otp.preview.expiry.one")
+              : translate("es", "tpl.otp.preview.expiry", { n: minutes })}
+          </p>
+        ) : null}
+      </div>
+      <div className="rounded-md bg-background px-3 py-2 text-center text-sm font-medium text-primary shadow-sm ring-1 ring-foreground/5">
+        {otp.buttonText.trim() || t("tpl.otp.button.default")}
+      </div>
     </div>
   );
 }

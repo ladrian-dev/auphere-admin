@@ -51,6 +51,11 @@ KIND_ABSORBED = "absorbed"
 #: Spec 047 (0195): dinero que sale de la cuenta a una bolsa y que vuelve.
 KIND_BAG_ASSIGN = "bag_assign"
 KIND_BAG_RETURN = "bag_return"
+#: Spec 077 (0242): un cargo fijo mensual al saldo comprado del partner (la
+#: membresía de un cliente es el primero). No es ``debit``: no cuenta como
+#: consumo de conversaciones ni como gasto de un agente, y la conciliación lo
+#: resta aparte.
+KIND_FIXED_FEE = "fixed_fee"
 LEDGER_KINDS: tuple[str, ...] = (
     KIND_DEBIT,
     KIND_CREDIT_ADMIN,
@@ -64,6 +69,7 @@ LEDGER_KINDS: tuple[str, ...] = (
     KIND_ABSORBED,
     KIND_BAG_ASSIGN,
     KIND_BAG_RETURN,
+    KIND_FIXED_FEE,
 )
 #: Kinds that add to the purchased balance.
 CREDIT_KINDS: tuple[str, ...] = (KIND_CREDIT_ADMIN, KIND_CREDIT_STRIPE, KIND_CREDIT_MANUAL)

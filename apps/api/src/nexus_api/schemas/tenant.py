@@ -71,6 +71,8 @@ class TenantOut(BaseModel):
     billing_effective_from: date | None = None
     # Migration 0164: Auphere covers this client's consumption (Admin only).
     unlimited_consumption: bool = False
+    # Spec 077 (migration 0242): no agent, sends only through the API.
+    send_only: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -89,6 +91,8 @@ class TenantCreateIn(BaseModel):
     owner_phone: str | None = Field(default=None, max_length=32)
     business_hours: dict[str, Any] | None = Field(default=None)
     cost_alert_threshold_usd_per_day: Decimal = Field(default=Decimal("40.00"))
+    # Spec 077: «Solo envío por API» in the wizard. Off = today's client.
+    send_only: bool = Field(default=False)
 
     @field_validator("business_hours")
     @classmethod

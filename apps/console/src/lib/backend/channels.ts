@@ -138,11 +138,18 @@ export type TemplateCreateBody = {
   language: string;
   category: "MARKETING" | "UTILITY" | "AUTHENTICATION";
   header_text?: string;
-  body_text: string;
+  /** Required except with AUTHENTICATION, whose body Meta fixes (spec 077). */
+  body_text?: string;
   footer_text?: string;
   buttons?: TemplateButton[];
   /** Example per body variable, as Meta requires to review it. */
   examples?: Record<string, string>;
+  /** Spec 077: only with AUTHENTICATION — the copy-code button, ≤ 25 characters. */
+  otp_button_text?: string;
+  /** Spec 077: only with AUTHENTICATION — 1 to 90; absent, no expiry line. */
+  otp_expiration_minutes?: number;
+  /** Spec 077: only with AUTHENTICATION — «Por tu seguridad, no lo compartas.» */
+  otp_security_recommendation?: boolean;
 };
 export type TemplateCreated = { id: string | null; name: string; status: string | null; category: string | null };
 

@@ -56,6 +56,7 @@ from nexus_api.db.models.partner_wallet import (
     KIND_BAG_RETURN,
     KIND_DEBIT,
     KIND_EXPIRY,
+    KIND_FIXED_FEE,
 )
 from nexus_api.services.attention import (
     CONDITION_CODES,
@@ -212,7 +213,7 @@ def _outflow() -> sa.ColumnElement[Any]:
     caducidad; lo que vuelve de una bolsa resta (research.md §R2)."""
     return sa.case(
         (
-            UsageLedger.kind.in_((KIND_DEBIT, KIND_BAG_ASSIGN, KIND_EXPIRY)),
+            UsageLedger.kind.in_((KIND_DEBIT, KIND_BAG_ASSIGN, KIND_EXPIRY, KIND_FIXED_FEE)),
             UsageLedger.qty,
         ),
         (UsageLedger.kind == KIND_BAG_RETURN, -UsageLedger.qty),

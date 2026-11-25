@@ -109,6 +109,7 @@ from nexus_worker.streams.reservation_offers_cron import run_reservation_offers_
 from nexus_worker.streams.reservation_outbox_cron import run_reservation_outbox_cron
 from nexus_worker.streams.reservation_templates_cron import run_reservation_templates_cron
 from nexus_worker.streams.reservations_cron import run_reservations_cron
+from nexus_worker.streams.service_memberships_cron import run_service_memberships_cron
 from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
@@ -182,6 +183,9 @@ SCHEDULER_TASK_NAMES = frozenset(
         "agent-sales-poll-cron",
         "partner-receipt-cron",
         "partner-charges-cron",
+        # Spec 077: la membresía de los clientes (cargo al saldo y relectura de
+        # Stripe). También en ``_spawn`` y en ``ALL_EXPECTED``.
+        "service-memberships-cron",
         "wallet-renewal-cron",
         # Spec 005: caduca el crédito comprado doce meses después de una baja.
         "expire-credit-cron",
@@ -625,6 +629,7 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.
         _spawn("partner-charges-cron", run_partner_charges_cron(stop=ctx.stop)),
+        _spawn("service-memberships-cron", run_service_memberships_cron(stop=ctx.stop)),
         _spawn("wallet-renewal-cron", run_wallet_renewal_cron(stop=ctx.stop)),
         _spawn("expire-credit-cron", run_expire_credit_cron(stop=ctx.stop)),
         _spawn("expire-signups-cron", run_expire_signups_cron(stop=ctx.stop)),

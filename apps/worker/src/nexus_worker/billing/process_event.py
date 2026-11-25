@@ -207,6 +207,20 @@ async def handle_entry(session: Any, client: Any, fields: dict[str, str]) -> str
         )
         return "processed"
 
+    # Spec 077 (R7.2-R7.6): a client's own membership. Its notices never carry
+    # a partner (no ``client_reference_id``, no ``partner_id`` metadata), so a
+    # partner's notice never comes this way and its path is unchanged. The
+    # object is fetched from Stripe and its mark decides; one that is not
+    # ours falls through to the orphan path below, as before.
+    if partner_id is None:
+        from nexus_api.services.service_memberships import (
+            MEMBERSHIP_EVENTS,
+            apply_stripe_event,
+        )
+
+        if event_type in MEMBERSHIP_EVENTS and await apply_stripe_event(client, event_type, fields):
+            return "processed"
+
     if partner_id is None:
         # An orphan notice is kept, not dropped: losing the trail of a notice
         # about money is worse than having a row nobody can act on.

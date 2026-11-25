@@ -4,6 +4,7 @@ import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebr
 import { backend } from "@/lib/backend";
 
 import { BillingForm } from "./billing-form";
+import { MembershipCard, type MembershipState } from "./membership-card";
 import { PaymentsCard } from "./payments-card";
 import { UnlimitedCard } from "./unlimited-card";
 
@@ -34,14 +35,26 @@ export default async function TenantBillingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [billing, partners, plans, payments, unlimited] = await Promise.all([
+  const [billing, partners, plans, payments, unlimited, membership, charges] = await Promise.all([
     backend.getTenantBilling(id),
     backend.listPartners(),
     backend.listBillingPlans(),
     backend.listTenantPayments(id),
     backend.getUnlimitedConsumption(id).catch(() => null),
+    // Spec 077: `null` = no membership (404); a failed read is said, never taken for «none».
+    backend.getMembership(id).then(
+      (m) => m,
+      () => "error" as const,
+    ),
+    backend.listMembershipCharges(id).catch(() => null),
   ]);
   if (!billing) notFound();
+  const membershipState: MembershipState =
+    membership === "error"
+      ? { kind: "error" }
+      : membership === null
+        ? { kind: "none" }
+        : { kind: "ok", membership, charges };
 
   return (
     <div className="grid gap-6">
@@ -107,6 +120,25 @@ export default async function TenantBillingPage({
               </div>
             )}
           </dl>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <Eyebrow>Membresía</Eyebrow>
+          <CardTitle>Membresía mensual</CardTitle>
+          <CardDescription>
+            Opcional. Si se exige y no está activa, su API no envía. Es aparte del recibo del partner y de los pagos
+            anotados a mano, que siguen igual.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <MembershipCard
+            tenantId={id}
+            tenantName={billing.tenant_name}
+            partner={billing.partner_id ? { id: billing.partner_id, name: billing.partner_name } : null}
+            state={membershipState}
+          />
         </CardContent>
       </Card>
 

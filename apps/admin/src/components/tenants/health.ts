@@ -13,7 +13,10 @@ export type Reason = { key: string; label: string; tone: "danger" | "warning" };
 /** A client is quiet when it serves but nobody has written in this long. */
 export const QUIET_DAYS = 14;
 
-export function reasonsFor(tenant: Pick<Tenant, "status">, health: TenantHealth | undefined): Reason[] {
+export function reasonsFor(
+  tenant: Pick<Tenant, "status"> & { send_only?: boolean },
+  health: TenantHealth | undefined,
+): Reason[] {
   if (tenant.status === "archived" || tenant.status === "paused") return [];
   if (tenant.status === "provisioning") return [{ key: "provisioning", label: "A medio montar", tone: "warning" }];
   if (!health) return [];
@@ -23,7 +26,10 @@ export function reasonsFor(tenant: Pick<Tenant, "status">, health: TenantHealth 
   if (health.channels_active === 0 && health.channels_attention === 0) {
     out.push({ key: "no_channel", label: "Sin canal", tone: "warning" });
   }
-  if (health.agent_version === null) out.push({ key: "no_agent", label: "Agente sin publicar", tone: "warning" });
+  // Spec 077 (1.3): a send-only client has no agent by design — never a reason.
+  if (health.agent_version === null && !tenant.send_only) {
+    out.push({ key: "no_agent", label: "Agente sin publicar", tone: "warning" });
+  }
   return out;
 }
 

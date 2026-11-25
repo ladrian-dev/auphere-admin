@@ -657,9 +657,15 @@ class _Turn:
 async def _load_turn(ref: turns.TurnRef) -> _Turn | None:
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, ref.tenant_id):
-        tenant_status_raw = await session.scalar(
-            sa.select(Tenant.status).where(Tenant.id == ref.tenant_id)
-        )
+        tenant_row = (
+            await session.execute(
+                sa.select(Tenant.status, Tenant.send_only).where(Tenant.id == ref.tenant_id)
+            )
+        ).first()
+        tenant_status_raw = tenant_row[0] if tenant_row is not None else None
+        # Spec 077 (R2.4): every number of a send-only client is send-only,
+        # whatever path connected it — a reply to a code waits for nobody.
+        tenant_send_only = bool(tenant_row[1]) if tenant_row is not None else False
         conversation = await session.get(Conversation, ref.conversation_id)
         if tenant_status_raw is None or conversation is None:
             return None
@@ -776,7 +782,7 @@ async def _load_turn(ref: turns.TurnRef) -> _Turn | None:
         facts = TurnFacts(
             tenant_status=TenantStatus(tenant_status_raw),
             channel_status=channel_status,
-            send_only_channel=not config_agent_enabled(channel_config),
+            send_only_channel=tenant_send_only or not config_agent_enabled(channel_config),
             has_active_agent=active_agent is not None,
             ever_had_agent=ever_had_agent,
             agent_active=conversation.agent_active,

@@ -461,6 +461,10 @@ async def rotate_key(
             PartnerApiKey(
                 id=uuid.uuid4(),
                 partner_id=partner_id,
+                # Spec 077 (R5.3): a client's send key stays that client's.
+                # Without this the new key lost its tenant and every send got
+                # 403 once the old one's grace ran out.
+                tenant_id=old.tenant_id,
                 type=old.type,
                 prefix_snippet=generated.prefix_snippet,
                 key_hash=generated.key_hash,

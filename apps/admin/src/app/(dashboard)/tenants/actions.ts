@@ -16,6 +16,8 @@
 import { revalidatePath } from "next/cache";
 
 import { BackendError, backend, type TenantStatus } from "@/lib/backend";
+import { toCodedFailure } from "@/lib/action-result";
+import { SEND_ONLY_ERRORS } from "@/lib/send-only";
 import { requireOperator } from "@/lib/session";
 
 export type ActionResult<T> =
@@ -74,8 +76,9 @@ export async function updateTenantBillingAction(
   tenantId: string,
   body: import("@/lib/backend").TenantBillingUpdateInput,
 ): Promise<ActionResult<import("@/lib/backend").TenantBillingOut>> {
+  const operator = await requireOperator();
   try {
-    const r = await backend.updateTenantBilling(tenantId, body);
+    const r = await backend.updateTenantBilling(tenantId, body, operator.id);
     if (!r) return { ok: false, error: "empty response" };
     revalidatePath(`/tenants/${tenantId}/billing`);
     revalidatePath(`/tenants/${tenantId}`);
@@ -156,5 +159,23 @@ export async function setUnlimitedConsumptionAction(
       }
     }
     return err(e);
+  }
+}
+
+/** Spec 077 (1.5): mark or unmark a client as send-only. Asked for with a
+ *  confirmation; the audit names the operator. */
+export async function setSendOnlyAction(
+  tenantId: string,
+  sendOnly: boolean,
+): Promise<ActionResult<{ send_only: boolean }>> {
+  const operator = await requireOperator();
+  try {
+    const r = await backend.setSendOnly(tenantId, sendOnly, operator.id);
+    revalidatePath("/tenants");
+    revalidatePath(`/tenants/${tenantId}`, "layout");
+    return { ok: true, data: { send_only: r?.send_only ?? sendOnly } };
+  } catch (e) {
+    const failure = toCodedFailure(e, SEND_ONLY_ERRORS);
+    return { ok: false, error: failure.error };
   }
 }

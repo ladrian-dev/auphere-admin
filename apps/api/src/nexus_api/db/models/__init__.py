@@ -293,6 +293,7 @@ from nexus_api.db.models.scheduled_job import (
     ScheduledJobKind,
     ScheduledJobStatus,
 )
+from nexus_api.db.models.service_membership import ServiceMembership
 from nexus_api.db.models.signup import SignupProvider, SignupRequest, SignupStatus
 from nexus_api.db.models.support_ticket import (
     EVENT_KINDS,
@@ -568,6 +569,7 @@ __all__ = [
     "ScheduledJobStatus",
     "SectorGuide",
     "SectorTestCatalog",
+    "ServiceMembership",
     "SignupProvider",
     "SignupRequest",
     "SignupStatus",

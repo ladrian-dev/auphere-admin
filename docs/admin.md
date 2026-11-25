@@ -147,6 +147,34 @@ En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar u
 - **Resumen.** A dos columnas. A la izquierda va lo que falta para operar, solo lo pendiente y con lo hecho plegado; con todo hecho es una línea. Debajo, las conversaciones recientes. A la derecha, los datos del cliente, la **restricción soberana** (spec 047, [abajo](#palancas-del-partner-y-del-cliente-spec-047)) y las pruebas del agente.
 - **Conversaciones.** Nombra al contacto por su nombre o número y dice quién responde. El control es un botón «Tomar control» / «Devolver», que no aparece en las conversaciones resueltas.
 
+### Cliente de solo envío (spec 077)
+
+Un cliente sin agente cuyo sistema envía plantillas por la API, como Tecfin o New
+Air. Se crea con «Solo envío por API» en Nuevo cliente, o se marca después desde
+Acciones; marcar y desmarcar piden confirmación y nombran al operador. Con la marca
+(`tenants.send_only`):
+
+- **Pestañas y cabecera.** Sin Agente, Habilidades, Playground, Canal del dueño ni
+  «Probar agente». La pestaña nueva es «Envío por API», en Conectar.
+- **Resumen.** «Puesta en marcha» con cuatro pasos y su estado real
+  (`GET /admin/tenants/{id}/send-readiness`): número conectado, plantilla de
+  autenticación aprobada, membresía activa (solo si tiene) y clave activa.
+- **Canales.** Conectar un número termina sin pasos de agente. El número queda sin
+  agente y como línea de avisos.
+- **Envío por API.** Las claves del cliente: crear (se ve completa una vez), rotar
+  con gracia y revocar. También cómo llama su sistema y los 50 últimos envíos.
+- **Plantillas.** En el diálogo de siempre, la categoría Autenticación pide el
+  botón, la caducidad y el aviso de seguridad en lugar del texto.
+- **Facturación.** Lo de siempre y, además, la tarjeta **Membresía**:
+  - quién la paga, el importe y el estado;
+  - el enlace de pago de Stripe con su caducidad;
+  - «Actualizar» y «Cobrar ahora»;
+  - cancelar o quitar la membresía;
+  - los cobros.
+
+Sin la marca, la ficha es la de siempre. Todo esto se explica en
+[envio-directo.md](envio-directo.md).
+
 Los logos de canales y conectores son las marcas de cada app (Simple Icons, CC0) sobre su
 color, en `components/brand/brand-marks.ts`. Lo que no tiene marca usa la imagen del
 catálogo o sus iniciales.
