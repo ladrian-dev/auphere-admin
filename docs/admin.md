@@ -189,8 +189,9 @@ Acciones; marcar y desmarcar piden confirmación y nombran al operador. Con la m
   agente y como línea de avisos.
 - **Envío por API.** Las claves del cliente: crear (se ve completa una vez), rotar
   con gracia y revocar. También cómo llama su sistema y los 50 últimos envíos.
-- **Plantillas.** En el diálogo de siempre, la categoría Autenticación pide el
-  botón, la caducidad y el aviso de seguridad en lugar del texto.
+- **Plantillas.** En el diálogo de siempre y con el mismo editor que la consola
+  (spec 075, requisito 10), la categoría Autenticación pide el botón, la
+  caducidad y el aviso de seguridad en lugar del texto.
 - **Facturación.** Lo de siempre y, además, la tarjeta **Membresía**:
   - quién la paga, el importe y el estado;
   - el enlace de pago de Stripe con su caducidad;

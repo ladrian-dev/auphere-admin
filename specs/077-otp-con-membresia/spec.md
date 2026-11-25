@@ -1,6 +1,6 @@
 # Especificación: clientes de solo envío, códigos por WhatsApp y membresía que corta
 
-**Rama**: `077-otp-con-membresia` · **Creada**: 2026-11-24 · **Estado**: Implementada (2026-11-24), pendiente de staging
+**Rama**: `077-otp-con-membresia` · **Creada**: 2026-11-24 · **Estado**: Implementada (2026-11-24), pendiente de staging. **Requisito 3 enmendado el 2026-11-25** por la 075 (requisito 10, D7): las plantillas de autenticación se crean con el editor compartido, en la consola y en el panel
 
 **Entrada**: Luis, 2026-11-24: «Tengo un cliente que se llama Tecfin que necesito configurarlo y darlo de alta en Auphere, pero este cliente no va a tener un agente activo sino que utilizará un endpoint que le vamos a proveer con unos tokens de acceso para que utilicen Auphere solo para enviar mensajes OTP. El cliente New Air tiene una configuración similar. Adicionalmente este cliente debe tener asociada una membresía de 40 dólares mensuales y si la membresía no está activa no se deben enviar los mensajes». Después: «Asegúrate que este feature no vaya a romper nada y que todo se pueda administrar desde la UI sin romper lo que existe ni quede como puesto obligado sino que sea parte del flujo». Y: «actualmente se le puede cobrar de la bolsa del partner o directamente, así que debe mantenerse esa opción».
 
@@ -154,8 +154,8 @@ En Facturación el operador ve los cobros de la membresía. En «Envío por API�
 
 1. WHEN se elige la categoría Autenticación en el diálogo de plantillas THEN el formulario DEBE pedir el texto del botón de copiar código, la caducidad en minutos (1 a 90) y si lleva aviso de seguridad, en lugar del texto del mensaje, y mostrar el texto fijo de Meta.
 2. WHEN se envía una plantilla de autenticación a Meta THEN el sistema DEBE construirla con el formato de autenticación de Meta (cuerpo con aviso de seguridad, pie con caducidad, botón de código de un solo uso de tipo copiar).
-3. WHERE la categoría es Marketing o Utilidad EL formulario y lo que se envía a Meta DEBEN quedar exactamente como hoy.
-4. El sistema DEBE ofrecer lo mismo en el panel de operador y en la consola de partners.
+3. WHERE la categoría es Marketing o Utilidad EL formulario y lo que se envía a Meta DEBEN quedar exactamente como hoy. _(Enmendado el 2026-11-25 por la 075, requisito 10: «el formulario» es ya el editor compartido en las dos pantallas. En la consola nada cambia. En el panel, Marketing y Utilidad ganan cabecera, pie, botones y ejemplos, el idioma pasa de texto libre a la lista de la consola, y el alta manda a la API la forma de la consola. Para el mismo mensaje, lo que llega a Meta es lo mismo; con variables con nombre, ahora va además `parameter_format`, que el panel no mandaba.)_
+4. El sistema DEBE ofrecer lo mismo en el panel de operador y en la consola de partners. _(Desde el 2026-11-25, con el mismo componente: el `TemplateEditor` de `@nexus/ui`.)_
 
 ### Requisito 4 — Enviar un código por la API
 

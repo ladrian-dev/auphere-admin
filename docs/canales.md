@@ -260,7 +260,70 @@ enciende.
   (`test_076_logs_carry_no_click.py`), y el evento de un contacto nunca lleva el
   clic de otro (`test_076_ad_click_customer_axis.py`).
 
-## 8. Dónde mirar si algo falla
+## 8. Plantillas: crear, editar y borrar (spec 075)
+
+La consola de partners (Canales → WhatsApp → Plantillas) y el panel de operador
+(cliente → integraciones → Plantillas de WhatsApp) crean, editan y borran las
+plantillas de la cuenta de WhatsApp del cliente. Meta es la fuente de verdad: la
+lista se lee de Meta en vivo y el espejo `whatsapp_template_status` guarda lo que
+dicen sus avisos (motivo de rechazo, calidad, recategorización).
+
+**Un solo editor** (spec 075, requisito 10). Crear, «Duplicar» y editar usan el
+`TemplateEditor` de `@nexus/ui`, en la consola y en el panel. También lo usan
+los clientes de solo envío (spec 077), que crean en el mismo diálogo que
+cualquier otro cliente. No hay otro formulario de plantillas.
+
+- **Crear.** Se elige la categoría: Utilidad, Marketing o Autenticación.
+  - Con Utilidad o Marketing se escriben la cabecera, el cuerpo, el pie, los
+    botones y un ejemplo por variable.
+  - Con Autenticación, Meta fija el texto. Solo se eligen el botón de copiar
+    código, la caducidad (de 1 a 90 minutos, o ninguna) y el aviso de
+    seguridad. La vista previa es el texto fijo de Meta, en español solo si la
+    plantilla es en español.
+- **Una sola forma de alta.** Las dos pantallas mandan a la API la misma forma
+  (`TemplateCreateIn`, en `nexus_api/schemas/whatsapp_templates.py`). Las dos
+  rutas crean con `services/whatsapp_templates.submit_template`, que arma lo que
+  va a Meta con `to_components` y `parameter_format`. El alta del panel ya no
+  acepta los `components` de Meta tal cual.
+
+**Editar** cambia el contenido con el mismo nombre. Meta no deja cambiar el
+nombre ni el idioma; para eso sigue «Duplicar». Las reglas viven en un solo
+sitio, `services/whatsapp_template_edit.py`, y la consola y el panel las usan
+igual:
+
+- **Qué se puede editar.** Plantillas aprobadas, rechazadas o pausadas, cuyo
+  contenido el editor sepa pintar entero: cabecera de texto sin variables,
+  cuerpo, pie y hasta tres botones de respuesta, URL sin variable o teléfono.
+  Lo demás sale sin «Editar» y con una línea que dice por qué y que se edita en
+  WhatsApp Manager: en revisión, de autenticación, con imagen, vídeo o documento,
+  botones de código, carrusel, o algo que el viaje de ida y vuelta no reproduce.
+  Meta sustituye el contenido entero al editar, así que lo que no se pinta se
+  perdería.
+- **Aprobadas.** Antes de mandar se pide confirmación: vuelve a revisión, y
+  mientras está «en revisión» Auphere no la manda (agentes, Reservas y cobros
+  exigen `APPROVED`). Meta limita las ediciones de una aprobada; Auphere no lleva
+  la cuenta y enseña el motivo que dé Meta. La categoría de una aprobada no se
+  cambia.
+- **Variables.** Si una edición quita o renombra variables y hay envíos en cola
+  con esa plantilla, el aviso dice cuántos fallarán y deja guardar.
+- **Plantillas que Auphere manda por su nombre.** Las seis de Reservas
+  (`reserva_*`) llevan exactamente las variables de su catálogo. Las dos de
+  cobros (`recordatorio_pago_proximo` y `recordatorio_pago_vencido`) no pueden
+  ganar una variable fuera de `cliente`, `negocio`, `monto` y `fecha`, ni perder
+  una de las que ya llevan.
+- **Cambio ajeno.** Cada fila trae una huella de su contenido. Si la plantilla
+  cambió en Meta desde que se abrió el editor, por otra persona o por WhatsApp
+  Manager, no se pisa: se avisa y se ofrece recargar.
+- **Después de guardar.** Se vacía la caché de plantillas de la cuenta, se vuelve
+  a leer de Meta y el espejo pasa al estado nuevo sin el motivo de rechazo, salvo
+  que el aviso de Meta haya llegado antes. La pantalla de Reservas de la consola
+  lite lo ve enseguida.
+- **Rastro.** Cada edición deja `console.template.edit` (la persona de la
+  consola) o `admin.template.edit` (el operador de la cabecera `X-Operator-Id`),
+  con el antes y el después. El texto de error de Meta va a la pantalla, nunca a
+  los registros.
+
+## 9. Dónde mirar si algo falla
 
 - El estado visible del canal sale de `services/agent_lifecycle.channel_visible_state`
   (`pending_link`, `disconnected`, `problem`, `paused`, `unconfigured`,

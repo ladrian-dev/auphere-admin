@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.config import get_settings
+from nexus_api.schemas.whatsapp_templates import TemplateCreateIn
 
 log = structlog.get_logger(__name__)
 
@@ -106,6 +107,33 @@ def meta_error_to_http(exc: MetaAPIError, *, context: str) -> HTTPException:
         else status.HTTP_502_BAD_GATEWAY
     )
     return HTTPException(status_code=http_status, detail=detail)
+
+
+async def submit_template(session: AsyncSession, body: TemplateCreateIn) -> dict[str, Any]:
+    """Submit a new template to Meta for review: the one way to create, from
+    the console and from the operator panel (spec 075, 10.5 and 9.3). What
+    goes to Meta is built by ``to_components`` and ``parameter_format``, and
+    nowhere else. Returns Meta's answer; each caller audits in its own words.
+    """
+    creds = await require_meta_credentials(session)
+    client = build_meta_client()
+    try:
+        try:
+            result: dict[str, Any] = await client.create_template(
+                waba_id=creds.waba_id,
+                access_token=creds.bisuat,
+                name=body.name,
+                language=body.language,
+                category=body.category,
+                components=body.to_components(),
+                parameter_format=body.parameter_format(),
+            )
+        except MetaAPIError as exc:
+            raise meta_error_to_http(exc, context="la creación de la plantilla") from exc
+    finally:
+        await client.close()
+    invalidate_template_cache(creds.waba_id)
+    return result
 
 
 async def fetch_templates(

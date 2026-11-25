@@ -17,16 +17,18 @@ customer's words — so it does not fall under C8. It is NOT called
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
-from nexus_api.schemas.whatsapp_authentication import (
-    DEFAULT_OTP_BUTTON_TEXT,
-    authentication_components,
+from nexus_api.schemas.whatsapp_templates import (
+    TemplateButtonIn,
+    TemplateCategory,
+    TemplateContentIn,
+    TemplateContentOut,
+    TemplateCreateIn,
 )
 
 from .schemas import ChannelOut, ClientHealthOut
@@ -197,12 +199,6 @@ class WhatsAppSignupOut(BaseModel):
 
 # ── templates (CP-18) ──────────────────────────────────────────────────
 
-_TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
-_BODY_VAR_RE = re.compile(r"\{\{\s*([a-z0-9_]+)\s*\}\}")
-_VAR_NAME_RE = re.compile(r"^[a-z0-9_]{1,40}$")
-
-TemplateCategory = Literal["MARKETING", "UTILITY", "AUTHENTICATION"]
-
 #: Short, stable codes the UI translates. Mapped from Meta's rejection
 #: reasons in ``api/console/templates.py::suggested_action_for``.
 SuggestedAction = Literal[
@@ -215,6 +211,11 @@ SuggestedAction = Literal[
     "wait_review",
     "none",
 ]
+
+
+class SystemVariablesOut(BaseModel):
+    mode: Literal["exact", "subset_keep"]
+    variables: list[str]
 
 
 class TemplateRowOut(BaseModel):
@@ -236,6 +237,16 @@ class TemplateRowOut(BaseModel):
     rejection_reason: str | None = None
     suggested_action: SuggestedAction = "none"
     last_event_at: datetime | None = None
+    #: Spec 075: why the template cannot be edited here (closed codes, the
+    #: UI writes the sentence), or ``None`` when it can.
+    edit_blocker: str | None = None
+    #: The content split into the editor's parts; ``None`` when a part of it
+    #: cannot be painted (the edit would drop it).
+    draft: TemplateContentOut | None = None
+    #: Fingerprint of ``{category, components}``, sent back on save (7.1).
+    version: str | None = None
+    #: Set for the templates Auphere sends by name (075, requisito 4).
+    system_variables: SystemVariablesOut | None = None
 
 
 class TemplateListOut(BaseModel):
@@ -245,114 +256,22 @@ class TemplateListOut(BaseModel):
     pending: int
 
 
-class TemplateButtonIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class TemplateEditIn(TemplateContentIn):
+    """Spec 075: the whole content again (Meta replaces it as a whole), the
+    fingerprint the editor opened (7.1) and whether the person already
+    confirmed what the server warned about (2.2, 5.1). ``extra="forbid"``
+    (inherited) keeps a Meta ``template_id`` or ``waba_id`` out (8.1)."""
 
-    type: Literal["QUICK_REPLY", "URL", "PHONE_NUMBER"]
-    label: str = Field(min_length=1, max_length=25)
-    url: str | None = Field(default=None, max_length=2000)
-    phone_number: str | None = Field(default=None, max_length=20)
+    version: str = Field(min_length=16, max_length=16, pattern=r"^[0-9a-f]{16}$")
+    confirm: bool = False
 
 
-class TemplateCreateIn(BaseModel):
-    """Minimal authoring form: header/body/footer text + up to 3 buttons.
-    Server builds the Cloud API ``components`` array."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=512)
-    language: str = Field(default="es", min_length=2, max_length=15)
-    category: TemplateCategory = "UTILITY"
-    header_text: str | None = Field(default=None, max_length=60)
-    #: Required except for AUTHENTICATION, whose body Meta fixes (spec 077).
-    body_text: str = Field(default="", max_length=1024)
-    footer_text: str | None = Field(default=None, max_length=60)
-    buttons: list[TemplateButtonIn] = Field(default_factory=list, max_length=3)
-    #: Example value per body variable (``{"nombre": "Camila"}`` or
-    #: ``{"1": "Camila"}``). Meta needs one for every variable to review it.
-    examples: dict[str, str] = Field(default_factory=dict, max_length=20)
-    #: Spec 077: what an AUTHENTICATION template lets us choose.
-    otp_button_text: str = Field(default=DEFAULT_OTP_BUTTON_TEXT, min_length=1, max_length=25)
-    otp_expiration_minutes: int | None = Field(default=None, ge=1, le=90)
-    otp_security_recommendation: bool = True
-
-    @model_validator(mode="after")
-    def _body_unless_authentication(self) -> TemplateCreateIn:
-        if self.category != "AUTHENTICATION" and not self.body_text.strip():
-            raise ValueError("body_text is required")
-        return self
-
-    @field_validator("examples")
-    @classmethod
-    def _validate_examples(cls, v: dict[str, str]) -> dict[str, str]:
-        for key, value in v.items():
-            if not _VAR_NAME_RE.match(key) or not value.strip() or len(value) > 200:
-                raise ValueError(f"invalid example for {key!r}")
-        return v
-
-    def variables(self) -> list[str]:
-        """Body variables in order of first appearance, without repeats."""
-        out: list[str] = []
-        for match in _BODY_VAR_RE.finditer(self.body_text):
-            name = match.group(1)
-            if name not in out:
-                out.append(name)
-        return out
-
-    def parameter_format(self) -> str | None:
-        if self.category == "AUTHENTICATION":
-            return None
-        names = self.variables()
-        if names and not all(n.isdigit() for n in names):
-            return "NAMED"
-        return None
-
-    @field_validator("name")
-    @classmethod
-    def _validate_name(cls, v: str) -> str:
-        if not _TEMPLATE_NAME_RE.match(v):
-            raise ValueError(
-                "name must be lowercase letters, digits and underscores (e.g. reminder_24h)"
-            )
-        return v
-
-    def to_components(self) -> list[dict[str, Any]]:
-        if self.category == "AUTHENTICATION":
-            # Spec 077: Meta's shape, never free text (it rejects that).
-            return authentication_components(
-                button_text=self.otp_button_text,
-                code_expiration_minutes=self.otp_expiration_minutes,
-                add_security_recommendation=self.otp_security_recommendation,
-            )
-        components: list[dict[str, Any]] = []
-        if self.header_text:
-            components.append({"type": "HEADER", "format": "TEXT", "text": self.header_text})
-        body: dict[str, Any] = {"type": "BODY", "text": self.body_text}
-        names = self.variables()
-        if names and all(n in self.examples for n in names):
-            if self.parameter_format() == "NAMED":
-                body["example"] = {
-                    "body_text_named_params": [
-                        {"param_name": n, "example": self.examples[n]} for n in names
-                    ]
-                }
-            else:
-                ordered = sorted(names, key=int)
-                body["example"] = {"body_text": [[self.examples[n] for n in ordered]]}
-        components.append(body)
-        if self.footer_text:
-            components.append({"type": "FOOTER", "text": self.footer_text})
-        if self.buttons:
-            buttons: list[dict[str, Any]] = []
-            for b in self.buttons:
-                btn: dict[str, Any] = {"type": b.type, "text": b.label}
-                if b.type == "URL" and b.url:
-                    btn["url"] = b.url
-                if b.type == "PHONE_NUMBER" and b.phone_number:
-                    btn["phone_number"] = b.phone_number
-                buttons.append(btn)
-            components.append({"type": "BUTTONS", "buttons": buttons})
-        return components
+class TemplateEditOut(BaseModel):
+    name: str
+    language: str
+    changed: bool
+    status: str | None
+    category: str | None
 
 
 class TemplateCreateOut(BaseModel):

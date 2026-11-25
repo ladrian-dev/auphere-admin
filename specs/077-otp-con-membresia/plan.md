@@ -115,6 +115,8 @@ El **cargo fijo** es un asiento de un tipo nuevo, `kind='fixed_fee'` (se amplía
 
 `services/whatsapp_templates.authentication_components(button_text, code_expiration_minutes, add_security_recommendation)`. El `TemplateCreateIn` de admin acepta `otp` y deja `components` opcional con `AUTHENTICATION`; el de la consola acepta `otp_button_text`, `otp_expiration_minutes` y `otp_security_recommendation` y no exige `body_text` con `AUTHENTICATION`.
 
+> **Enmienda del 2026-11-25 (075, requisito 10).** Ya no hay dos `TemplateCreateIn`: el alta del panel recibe el de la consola, que vive en `nexus_api/schemas/whatsapp_templates.py`, y las dos rutas crean con la misma función (`services/whatsapp_templates.create_template`). `OtpTemplateIn` y la entrada `components` del panel desaparecen.
+
 ### H. Conexión por enlace
 
 Dos capas, para que ningún camino de alta de número se escape:
@@ -128,13 +130,13 @@ Dos capas, para que ningún camino de alta de número se escape:
 - Ficha: pestañas y cabecera según `send_only`; Resumen con la puesta en marcha de solo envío; acción «Marcar como solo envío» en el menú.
 - «Envío por API»: claves, cómo llamar, últimos envíos.
 - Facturación: tarjeta de membresía (estado, quién paga, importe, enlace, actualizar, cobrar ahora, cancelar, quitar) y cobros; lo de hoy, igual. En pantalla, quien paga es «El cliente, con tarjeta» o «Del saldo del partner»: la palabra «bolsa» ya nombra la bolsa de cada cliente de la spec 047.
-- Diálogo de plantillas: campos de autenticación.
+- Diálogo de plantillas: campos de autenticación. _(Desde el 2026-11-25, con el editor compartido de `@nexus/ui`; `otp-template.ts` y el formulario propio desaparecen.)_
 - Conexión de canal de un cliente de solo envío: termina al conectar.
 
 ### J. Consola (`apps/console`)
 
 - Página pública `/pago-recibido` (y `?estado=cancelado`), fuera del middleware de sesión.
-- Formulario de plantillas: campos de autenticación, ES/EN.
+- Formulario de plantillas: campos de autenticación, ES/EN. _(Desde el 2026-11-25, dentro del `TemplateEditor` compartido.)_
 
 ### K. Documentación
 

@@ -81,14 +81,17 @@ from nexus_api.services.channel_routing import (
     describe_channel,
     resolve_whatsapp_channel,
 )
+from nexus_api.services.whatsapp_template_edit import COBROS_PROXIMO, COBROS_VENCIDO
 from sqlalchemy.ext.asyncio import AsyncSession
 
 log = structlog.get_logger(__name__)
 
 MAX_PAGES = 20
 
-TEMPLATE_PROXIMO = "recordatorio_pago_proximo"
-TEMPLATE_VENCIDO = "recordatorio_pago_vencido"
+# Spec 075 (4.1): los nombres viven con la regla que impide editarles las
+# variables; lo que se manda y lo que se deja editar salen del mismo sitio.
+TEMPLATE_PROXIMO = COBROS_PROXIMO
+TEMPLATE_VENCIDO = COBROS_VENCIDO
 LANGUAGE = "es"
 
 #: Stage windows, in the order they are evaluated. ``lo``/``hi`` bound

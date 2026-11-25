@@ -1,8 +1,12 @@
 /**
- * Pure rules of the WhatsApp template composer. No React, no network: the
- * dialog asks these what to show, and the tests pin them. Every rule here
+ * Pure rules of the WhatsApp template editor. No React, no network: the
+ * editor asks these what to show, and the tests pin them. Every rule here
  * mirrors something Meta refuses, so the partner learns it before sending,
  * not from a rejection a day later.
+ *
+ * Spec 075 (R9): moved from the console to `@nexus/ui` with the editor, so the
+ * console and the operator panel say the same thing. What decides whether a
+ * template can be edited lives in the API (R3), never here.
  */
 
 export const LIMITS = { name: 512, header: 60, body: 1024, footer: 60, button: 25, buttons: 3, example: 200 } as const;
@@ -124,7 +128,15 @@ export function buttonIssue(button: ButtonDraft): ButtonIssue | null {
   return null;
 }
 
-export type MissingPiece = "name" | "body" | "examples" | "buttons" | "body_rules" | "otp_button" | "otp_minutes";
+export type MissingPiece =
+  | "name"
+  | "body"
+  | "examples"
+  | "buttons"
+  | "body_rules"
+  | "system_variables"
+  | "otp_button"
+  | "otp_minutes";
 
 /** Spec 077 (3.1): what an authentication template lets us choose; Meta fixes the rest. */
 export type OtpDraft = { buttonText: string; minutes: string; security: boolean };
@@ -137,6 +149,26 @@ export function otpMinutes(text: string): number | null | "invalid" {
   if (!/^\d+$/.test(t)) return "invalid";
   const n = Number(t);
   return n >= OTP_LIMITS.minMinutes && n <= OTP_LIMITS.maxMinutes ? n : "invalid";
+}
+
+/** Where a new authentication template starts: the caller's default button, ten minutes and the notice. */
+export function defaultOtp(buttonText: string): OtpDraft {
+  return { buttonText, minutes: "10", security: true };
+}
+
+/**
+ * Pure: Meta's fixed text of an authentication template, as the customer reads
+ * it in Spanish (Meta writes it in the template's language; the sample here is
+ * Spanish, so it stands only for a Spanish template: `isSpanishTemplate`). It
+ * follows the fields: no security sentence when it is off, no expiry line
+ * without valid minutes. One text for the console and the panel (spec 075, 10.3).
+ */
+export function otpPreviewText(otp: OtpDraft, code = "123456"): { body: string; expiry: string | null } {
+  const minutes = otpMinutes(otp.minutes);
+  return {
+    body: `${code} es tu código de verificación.${otp.security ? " Por tu seguridad, no lo compartas." : ""}`,
+    expiry: typeof minutes === "number" ? `Este código caduca en ${minutes} ${minutes === 1 ? "minuto" : "minutos"}.` : null,
+  };
 }
 
 /** Pure: what still stops an authentication template from being sent. */
@@ -277,4 +309,195 @@ export function isSpanishTemplate(language: string): boolean {
 /** Pure: a language code as people read it (`es_CL` → «Español de Chile»). */
 export function languageLabel(code: string): string {
   return LANGUAGES.find((l) => l.code === code)?.label ?? code;
+}
+
+/** A template with a message of its own (Utility, Marketing): the API's shape, trimmed. */
+export type ContentSubmission = {
+  name: string;
+  language: string;
+  category: "UTILITY" | "MARKETING";
+  header_text?: string;
+  body_text: string;
+  footer_text?: string;
+  buttons: Array<{ type: ButtonDraft["type"]; label: string; url?: string; phone_number?: string }>;
+  /** One example per body variable, and only those. */
+  examples: Record<string, string>;
+};
+
+/** Spec 077 (3.4): an authentication template carries what can be chosen, never a body. */
+export type OtpSubmission = {
+  name: string;
+  language: string;
+  category: "AUTHENTICATION";
+  otp_button_text: string;
+  /** Left out when the field is empty: no expiry line. */
+  otp_expiration_minutes?: number;
+  otp_security_recommendation: boolean;
+};
+
+/**
+ * What the editor hands to whoever saves it, as the console's create action
+ * and the API take it (spec 075, 10.5): one shape in both screens.
+ */
+export type TemplateSubmission = ContentSubmission | OtpSubmission;
+
+/** Pure: a draft → what is sent. An emptied header or footer is left out (the edit replaces it all). */
+export function toSubmission(draft: TemplateDraft): TemplateSubmission {
+  if (draft.category === "AUTHENTICATION") {
+    const otp = draft.otp ?? defaultOtp("");
+    const minutes = otpMinutes(otp.minutes);
+    return {
+      name: finalTemplateName(draft.name),
+      language: draft.language,
+      category: "AUTHENTICATION",
+      otp_button_text: otp.buttonText.trim(),
+      ...(typeof minutes === "number" ? { otp_expiration_minutes: minutes } : {}),
+      otp_security_recommendation: otp.security,
+    };
+  }
+  return {
+    name: finalTemplateName(draft.name),
+    language: draft.language,
+    category: draft.category,
+    header_text: draft.header.trim() || undefined,
+    body_text: draft.body.trim(),
+    footer_text: draft.footer.trim() || undefined,
+    buttons: draft.buttons.map((b) => ({
+      type: b.type,
+      label: b.label.trim(),
+      url: b.type === "URL" ? b.url?.trim() : undefined,
+      phone_number: b.type === "PHONE_NUMBER" ? b.phone_number?.replace(/[\s-]/g, "") : undefined,
+    })),
+    examples: Object.fromEntries(templateVariables(draft.body).map((v) => [v, (draft.examples[v] ?? "").trim()])),
+  };
+}
+
+/**
+ * A template's content as the API lists it (spec 075, `draft` of each row):
+ * already split by the server, the one place that decides what can be edited.
+ */
+export type TemplateContent = {
+  category: string | null;
+  header_text: string | null;
+  body_text: string;
+  footer_text: string | null;
+  buttons: Array<{ type: string; label: string; url?: string | null; phone_number?: string | null }>;
+  examples: Record<string, string>;
+};
+
+const BUTTON_TYPES: ReadonlyArray<ButtonDraft["type"]> = ["QUICK_REPLY", "URL", "PHONE_NUMBER"];
+
+/** Pure: the API's `draft` of a template → what the editor starts from, keeping its name. */
+export function draftFromContent(name: string, language: string, content: TemplateContent): TemplateDraft {
+  return {
+    name,
+    language,
+    category: content.category === "MARKETING" ? "MARKETING" : "UTILITY",
+    header: content.header_text ?? "",
+    body: content.body_text ?? "",
+    footer: content.footer_text ?? "",
+    buttons: (content.buttons ?? [])
+      .filter((b): b is typeof b & { type: ButtonDraft["type"] } => BUTTON_TYPES.includes(b.type as ButtonDraft["type"]))
+      .map((b) => ({
+        type: b.type,
+        label: b.label ?? "",
+        ...(b.type === "URL" ? { url: b.url ?? "" } : {}),
+        ...(b.type === "PHONE_NUMBER" ? { phone_number: b.phone_number ?? "" } : {}),
+      })),
+    examples: { ...(content.examples ?? {}) },
+  };
+}
+
+/**
+ * The variables of a template Auphere sends by its name (spec 075, 4.1):
+ * `exact` — exactly these (Reservas); `subset_keep` — none outside these, and
+ * none the current version carries may go (cobros).
+ */
+export type SystemVariables = { mode: "exact" | "subset_keep"; variables: string[] };
+
+/** Pure (4.2, 4.3): what the body lacks and what it carries that Auphere does not send. */
+export function systemVariableIssues(
+  body: string,
+  system: SystemVariables,
+  currentBody: string,
+): { missing: string[]; extra: string[] } {
+  const present = templateVariables(body);
+  const extra = present.filter((v) => !system.variables.includes(v));
+  // subset_keep protects what the current version carries **and** Auphere sends, as the API does.
+  const required =
+    system.mode === "exact" ? system.variables : templateVariables(currentBody).filter((v) => system.variables.includes(v));
+  return { missing: required.filter((v) => !present.includes(v)), extra };
+}
+
+/**
+ * Pure (spec 075, 1.1, 3.1, 3.2): whether to offer «Editar». The API decides
+ * (`edit_blocker`, R3); without its draft and fingerprint there is nothing to
+ * edit from, so an API that does not send them yet opens no editor.
+ */
+export function canEditTemplate(row: { edit_blocker?: string | null; draft?: unknown; version?: string | null }): boolean {
+  return !row.edit_blocker && !!row.draft && !!row.version;
+}
+
+/** Why the server asks to confirm before sending to Meta (2.2, 5.1). */
+export type TemplateConfirmReason = { kind: string; count?: number };
+
+/** What the API answered when an edit was not saved, read the same way in both screens (9.3). */
+export type TemplateEditFailure =
+  | { kind: "template_changed" }
+  | { kind: "template_not_found" }
+  | { kind: "not_editable"; blocker: string | null }
+  | { kind: "confirmation_required"; reasons: TemplateConfirmReason[] }
+  | { kind: "category_locked" }
+  | { kind: "system_variables"; missing: string[]; extra: string[] }
+  | { kind: "missing_examples"; variables: string[] }
+  | { kind: "meta_rejected"; metaCode: number | null; metaSubcode: number | null; userMessage: string | null }
+  | { kind: "whatsapp_not_connected" }
+  | { kind: "forbidden" }
+  | { kind: "unknown" };
+
+const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+const integer = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) ? v : null);
+
+/**
+ * Pure: the closed code of a failed edit (contract `template-edit.md`) and the
+ * fields it carried → what the screen says. Meta's own text (`user_message`)
+ * is passed through as data, to be shown, never logged (8.5).
+ */
+export function templateEditFailure(
+  code: string | null | undefined,
+  info: Record<string, unknown> | null | undefined,
+  status?: number,
+): TemplateEditFailure {
+  const data = info ?? {};
+  switch (code) {
+    case "template_changed":
+    case "template_not_found":
+    case "category_locked":
+    case "whatsapp_not_connected":
+      return { kind: code };
+    case "not_editable":
+      return { kind: "not_editable", blocker: typeof data.blocker === "string" ? data.blocker : null };
+    case "confirmation_required": {
+      const reasons = Array.isArray(data.reasons) ? data.reasons : [];
+      return {
+        kind: "confirmation_required",
+        reasons: reasons
+          .filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && typeof (r as { kind?: unknown }).kind === "string")
+          .map((r) => (integer(r.count) === null ? { kind: r.kind as string } : { kind: r.kind as string, count: integer(r.count) as number })),
+      };
+    }
+    case "system_variables":
+      return { kind: "system_variables", missing: strings(data.missing), extra: strings(data.extra) };
+    case "missing_examples":
+      return { kind: "missing_examples", variables: strings(data.variables) };
+    case "meta_rejected":
+      return {
+        kind: "meta_rejected",
+        metaCode: integer(data.meta_code),
+        metaSubcode: integer(data.meta_subcode),
+        userMessage: typeof data.user_message === "string" && data.user_message.trim() ? data.user_message : null,
+      };
+    default:
+      return status === 403 ? { kind: "forbidden" } : { kind: "unknown" };
+  }
 }

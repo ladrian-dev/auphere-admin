@@ -21,6 +21,7 @@
  * token must not reach the browser.
  */
 
+import type { TemplateSubmission } from "@nexus/ui";
 import "server-only";
 
 import type { ChannelRole } from "@/lib/channels";
@@ -310,13 +311,6 @@ export type MembershipChargeOut = {
   url: string | null;
 };
 
-/** Spec 077: what an AUTHENTICATION template lets us choose (Meta fixes the rest). */
-export type WhatsAppOtpTemplateInput = {
-  button_text: string;
-  code_expiration_minutes?: number | null;
-  add_security_recommendation: boolean;
-};
-
 export type TenantUpdateInput = Partial<{
   name: string;
   plan: TenantPlan;
@@ -391,6 +385,47 @@ export type WhatsAppTemplate = {
   status: string | null;
   quality_score: string | null;
   components: Array<Record<string, unknown>>;
+  /** Spec 075 (R3): why it cannot be edited from the panel, or `null`. The API decides. */
+  edit_blocker?: string | null;
+  /** Spec 075: the content already split by the API, what the editor starts from. */
+  draft?: WhatsAppTemplateContent | null;
+  /** Spec 075 (7.1): the fingerprint of the content, sent back on save. */
+  version?: string | null;
+  /** Spec 075 (4.1): a template Auphere sends by its name, and the variables it may carry. */
+  system_variables?: { mode: "exact" | "subset_keep"; variables: string[] } | null;
+  /** Meta's literal rejection text, when the list carries it. */
+  rejection_reason?: string | null;
+};
+
+/** Spec 075: a template's content as the editor reads it (`TemplateContentOut`). */
+export type WhatsAppTemplateContent = {
+  category: string | null;
+  header_text: string | null;
+  body_text: string;
+  footer_text: string | null;
+  buttons: Array<{ type: string; label: string; url?: string | null; phone_number?: string | null }>;
+  examples: Record<string, string>;
+};
+
+/** Spec 075: `TemplateEditIn` — the name and the language go in the path. */
+export type WhatsAppTemplateEditInput = {
+  version: string;
+  confirm: boolean;
+  category?: "MARKETING" | "UTILITY" | "AUTHENTICATION";
+  header_text?: string;
+  body_text: string;
+  footer_text?: string;
+  buttons?: Array<{ type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER"; label: string; url?: string; phone_number?: string }>;
+  examples?: Record<string, string>;
+};
+
+/** `changed: false` — nothing changed, so Meta was not called (3.4). */
+export type WhatsAppTemplateEditResult = {
+  name: string;
+  language: string;
+  changed: boolean;
+  status: string | null;
+  category: string | null;
 };
 
 export type WhatsAppTemplateList = {
@@ -398,21 +433,9 @@ export type WhatsAppTemplateList = {
   waba_id: string;
 };
 
-/** Spec 077: AUTHENTICATION goes with `otp` and without `components` (the API
- *  builds Meta's fixed format and refuses both together); the rest, as before. */
-export type WhatsAppTemplateCreateInput =
-  | {
-      name: string;
-      language?: string;
-      category?: string;
-      components: Array<Record<string, unknown>>;
-    }
-  | {
-      name: string;
-      language?: string;
-      category: "AUTHENTICATION";
-      otp: WhatsAppOtpTemplateInput;
-    };
+/** Spec 075 (10.5): the panel creates with the console's shape, what the
+ *  shared editor hands over; the API builds Meta's components from it. */
+export type WhatsAppTemplateCreateInput = TemplateSubmission;
 
 export type WhatsAppTemplateCreateResult = {
   id: string | null;
@@ -2345,6 +2368,20 @@ export const backend = {
     call<{ name: string; deleted: boolean }>(
       `/admin/tenants/${tenantId}/whatsapp/templates/${encodeURIComponent(name)}`,
       { method: "DELETE" },
+    ),
+
+  /** Spec 075: replace one language of a template, by name and language. The
+   *  audit names the operator (`X-Operator-Id`, required by the route). */
+  editWhatsAppTemplate: (
+    tenantId: string,
+    name: string,
+    language: string,
+    body: WhatsAppTemplateEditInput,
+    operatorId: string,
+  ) =>
+    call<WhatsAppTemplateEditResult>(
+      `/admin/tenants/${encodeURIComponent(tenantId)}/whatsapp/templates/${encodeURIComponent(name)}/${encodeURIComponent(language)}`,
+      { method: "PUT", body, headers: { "X-Operator-Id": operatorId } },
     ),
 
   /** Spec 049: what a person sent through an Instagram or Messenger channel is emptied. */

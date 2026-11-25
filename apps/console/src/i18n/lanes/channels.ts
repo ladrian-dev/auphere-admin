@@ -283,8 +283,8 @@ export const channelsMessages = {
     en: "Fix the format: every variable with its example, no text that is only a variable, and no trailing line breaks.",
   },
   "tpl.action.change_category": {
-    es: "El contenido no encaja con la categoría. Créala de nuevo como Marketing (promociones) o Utilidad (avisos de una compra, cita o pago).",
-    en: "The content does not match the category. Create it again as Marketing (promotions) or Utility (updates on a purchase, booking or payment).",
+    es: "El contenido no encaja con la categoría. Edítala y cámbiala a Marketing (promociones) o Utilidad (avisos de una compra, cita o pago).",
+    en: "The content does not match the category. Edit it and switch it to Marketing (promotions) or Utility (updates on a purchase, booking or payment).",
   },
   "tpl.action.rewrite_content": { es: "Meta considera el contenido abusivo o engañoso. Reescribe el mensaje sin urgencia artificial ni promesas.", en: "Meta considers the content abusive or misleading. Rewrite without artificial urgency or promises." },
   "tpl.action.remove_promotional": { es: "Quita el lenguaje promocional o cambia la categoría a MARKETING.", en: "Remove promotional language or change the category to MARKETING." },
@@ -429,12 +429,100 @@ export const channelsMessages = {
     es: "Meta pone el texto fijo en {lang}, el idioma de la plantilla. Aquí solo se previsualiza en español.",
     en: "Meta writes the fixed text in {lang}, the template's language. The preview here is only in Spanish.",
   },
-  "tpl.otp.preview.body": { es: "{code} es tu código de verificación.", en: "{code} is your verification code." },
-  "tpl.otp.preview.security": { es: "Por tu seguridad, no lo compartas.", en: "For your security, do not share this code." },
-  "tpl.otp.preview.expiry": { es: "Este código caduca en {n} minutos.", en: "This code expires in {n} minutes." },
-  "tpl.otp.preview.expiry.one": { es: "Este código caduca en 1 minuto.", en: "This code expires in 1 minute." },
   "tpl.missing.otp_button": { es: "el texto del botón (hasta 25 caracteres)", en: "the button text (up to 25 characters)" },
   "tpl.missing.otp_minutes": { es: "una caducidad de 1 a 90 minutos", en: "an expiry from 1 to 90 minutes" },
+  "tpl.missing.system_variables": { es: "ajustar las variables que manda Auphere", en: "fixing the variables Auphere sends" },
+
+  // ── spec 075: editar una plantilla ──────────────────────────────────
+  "tpl.edit": { es: "Editar", en: "Edit" },
+  "tpl.edit.title": { es: "Editar plantilla", en: "Edit template" },
+  "tpl.edit.intro": {
+    es: "Meta vuelve a revisar la plantilla con el mismo nombre. El nombre y el idioma no cambian. El resto se manda entero, también lo que no toques.",
+    en: "Meta reviews the template again under the same name. The name and language do not change. Everything else is sent whole, including what you leave as is.",
+  },
+  "tpl.edit.error": { es: "No se pudo guardar la plantilla", en: "The template could not be saved" },
+  "tpl.edited": { es: "Cambios enviados a Meta. Estado: {status}.", en: "Changes sent to Meta. Status: {status}." },
+  "tpl.edit.unchanged": { es: "No había cambios: no se ha mandado nada a Meta.", en: "There were no changes: nothing was sent to Meta." },
+  "tpl.edit.changed": {
+    es: "Alguien cambió esta plantilla mientras la editabas, aquí o en WhatsApp Manager. Tus cambios no se han guardado: recarga para ver la versión actual.",
+    en: "Someone changed this template while you were editing it, here or in WhatsApp Manager. Your changes were not saved: reload to see the current version.",
+  },
+  "tpl.edit.reload": { es: "Recargar", en: "Reload" },
+  "tpl.edit.meta_rejected": { es: "Meta no aceptó el cambio y la plantilla sigue como estaba.", en: "Meta did not accept the change and the template stays as it was." },
+  "tpl.edit.meta_rejected.with": { es: "Meta no aceptó el cambio: {message}", en: "Meta did not accept the change: {message}" },
+  "tpl.edit.category_locked": { es: "Una plantilla aprobada no puede cambiar de categoría.", en: "An approved template cannot change its category." },
+  "tpl.edit.missing_examples": { es: "Falta un ejemplo para {list}.", en: "An example is missing for {list}." },
+  "tpl.edit.not_found": { es: "Esta plantilla ya no existe en ese idioma. Recarga la lista.", en: "This template no longer exists in that language. Reload the list." },
+  "tpl.edit.gone": { es: "Esta plantilla ya no existe en ese idioma.", en: "This template no longer exists in that language." },
+  "tpl.edit.reload_failed": {
+    es: "No se pudo recargar la plantilla. Inténtalo de nuevo en un momento.",
+    en: "The template could not be reloaded. Try again in a moment.",
+  },
+  "tpl.edit.failed": { es: "No se pudo guardar. Inténtalo de nuevo en un momento.", en: "It could not be saved. Try again in a moment." },
+  "tpl.edit.blocked.title": { es: "No se puede editar desde aquí", en: "It cannot be edited from here" },
+  "tpl.blocker.status": {
+    es: "Meta no deja editarla mientras está en revisión, en apelación o desactivada.",
+    en: "Meta does not allow editing it while it is in review, in appeal or disabled.",
+  },
+  "tpl.blocker.authentication": {
+    es: "Es de autenticación y Meta fija su formato: se edita en WhatsApp Manager.",
+    en: "It is an authentication template and Meta fixes its format: it is edited in WhatsApp Manager.",
+  },
+  "tpl.blocker.media_header": {
+    es: "Lleva una imagen, un vídeo o un documento en el encabezado, que este editor no maneja: se edita en WhatsApp Manager.",
+    en: "Its header carries an image, a video or a document, which this editor does not handle: it is edited in WhatsApp Manager.",
+  },
+  "tpl.blocker.header_variable": {
+    es: "El encabezado lleva una variable, que este editor no maneja: se edita en WhatsApp Manager.",
+    en: "Its header carries a variable, which this editor does not handle: it is edited in WhatsApp Manager.",
+  },
+  "tpl.blocker.unsupported_button": {
+    es: "Lleva un botón de código, de catálogo o de formulario, que este editor no maneja: se edita en WhatsApp Manager.",
+    en: "It carries a code, catalog or form button, which this editor does not handle: it is edited in WhatsApp Manager.",
+  },
+  "tpl.blocker.url_variable": {
+    es: "Un botón de enlace lleva una variable en la dirección, que este editor no maneja: se edita en WhatsApp Manager.",
+    en: "A link button carries a variable in its address, which this editor does not handle: it is edited in WhatsApp Manager.",
+  },
+  "tpl.blocker.too_many_buttons": {
+    es: "Lleva más de tres botones, más de los que deja este editor: se edita en WhatsApp Manager.",
+    en: "It carries more than three buttons, more than this editor allows: it is edited in WhatsApp Manager.",
+  },
+  "tpl.blocker.unsupported_component": {
+    es: "Lleva una parte que este editor no sabe pintar, como un carrusel o una oferta por tiempo limitado: se edita en WhatsApp Manager.",
+    en: "It carries a part this editor cannot draw, such as a carousel or a limited-time offer: it is edited in WhatsApp Manager.",
+  },
+  "tpl.blocker.unknown": {
+    es: "Tiene algo que este editor no sabe editar: se edita en WhatsApp Manager.",
+    en: "It has something this editor cannot edit: it is edited in WhatsApp Manager.",
+  },
+  "tpl.edit.confirm.title": { es: "Antes de mandarla a Meta", en: "Before sending it to Meta" },
+  "tpl.edit.confirm.go": { es: "Guardar y mandar a revisión", en: "Save and send for review" },
+  "tpl.edit.confirm.back": { es: "Seguir editando", en: "Keep editing" },
+  "tpl.edit.confirm.approved": {
+    es: "Está aprobada: al guardar vuelve a revisión, Auphere puede dejar de mandarla hasta que Meta la apruebe otra vez, y Meta limita cuántas veces se edita una plantilla aprobada.",
+    en: "It is approved: saving sends it back to review, Auphere may stop sending it until Meta approves it again, and Meta limits how many times an approved template can be edited.",
+  },
+  "tpl.edit.confirm.queued_sends.one": {
+    es: "Cambias sus variables y hay 1 envío en cola preparado con las de antes: fallará.",
+    en: "You change its variables and 1 queued send was prepared with the old ones: it will fail.",
+  },
+  "tpl.edit.confirm.queued_sends.other": {
+    es: "Cambias sus variables y hay {n} envíos en cola preparados con las de antes: fallarán.",
+    en: "You change its variables and {n} queued sends were prepared with the old ones: they will fail.",
+  },
+  "tpl.edit.confirm.other": { es: "Meta o Auphere piden confirmarlo antes de guardar.", en: "Meta or Auphere ask you to confirm before saving." },
+  "tpl.system.title": { es: "Auphere manda esta plantilla por su nombre", en: "Auphere sends this template by its name" },
+  "tpl.system.help.exact": {
+    es: "Reservas la manda con estas variables: tiene que llevarlas todas y ninguna más.",
+    en: "Bookings sends it with these variables: it has to carry all of them and no others.",
+  },
+  "tpl.system.help.subset_keep": {
+    es: "Los recordatorios de cobro la mandan con estas variables: no puede llevar otras ni perder las que ya tiene.",
+    en: "Payment reminders send it with these variables: it cannot carry others or lose the ones it already has.",
+  },
+  "tpl.system.missing": { es: "Falta {list}.", en: "Missing {list}." },
+  "tpl.system.extra": { es: "Auphere no manda {list}.", en: "Auphere does not send {list}." },
 
   // ── diagnostics ──────────────────────────────────────────────────
   "diag.title": { es: "Diagnóstico del canal", en: "Channel diagnostics" },
