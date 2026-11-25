@@ -12,7 +12,7 @@ Play Console › Política y programas › Contenido de la app. Las declaracione
 | Apps de gobierno | No |
 | Funciones financieras | Ninguna |
 | Apps de salud | Ninguna |
-| ID de publicidad | No lo usa. Comprobado en el manifiesto del AAB 1.1.0 (3), que no trae `AD_ID`; **falta comprobarlo en el AAB 1.3.0** cuando exista |
+| ID de publicidad | No lo usa. Comprobado en los manifiestos de los AAB 1.1.0 (3) y 1.3.0 (12): ninguno trae `AD_ID` |
 
 ## Te toca (Luis)
 
@@ -28,12 +28,13 @@ El público objetivo no se puede empezar hasta guardar esta declaración.
 
 Edad: **18 y más** solamente. No está dirigida a niños.
 
-### Seguridad de los datos («Data safety») — borrador para revisar
+### Seguridad de los datos («Data safety»)
 
-Es una declaración legal: revísala antes de enviarla. Es el mismo inventario que la privacidad del App Store (`../app-store/revision.md`); si cambia uno, cambia el otro.
+**Rellenada en Play Console el 2026-11-21 y guardada como borrador.** Play no deja enviarla hasta declarar el público objetivo, y el público objetivo no se puede empezar sin los datos de inicio de sesión. Es el mismo inventario que la privacidad del App Store (`../app-store/revision.md`); si cambia uno, cambia el otro.
 
 - ¿Recoge o comparte datos? **Sí**. ¿Cifrados en tránsito? **Sí** (HTTPS).
-- ¿Se puede pedir el borrado? **Sí**: Ajustes › «Solicitar el borrado de la cuenta», o por correo a contacto@auphere.com. La app no crea cuentas; **por verificar en la consola** si Play pide de todos modos una URL web para el borrado. Si la pide, hace falta una página en auphere.com que explique cómo solicitarlo.
+- Creación de cuentas: **«My app does not allow users to create an account»**. A la pregunta «Can users login with accounts created outside of the app?» se respondió **Sí**, y en «How are these accounts created?», **«Through employment, or enterprise accounts»**: las da Auphere o el partner.
+- ¿Se puede pedir el borrado de los datos? **Sin responder (es opcional).** Responder «Sí» obliga a poner una URL web que explique cómo pedirlo, y esa página no existe. La app ya permite pedirlo desde Ajustes › «Solicitar el borrado de la cuenta» y por correo a contacto@auphere.com. Cuando haya página en auphere.com, se responde «Sí» con su URL.
 - Ningún dato se «comparte» en el sentido de Play: lo que sale hacia WhatsApp, Instagram o Messenger es el envío que pide la propia persona, y Play no lo cuenta como compartir.
 
 | Tipo (Play) | Qué es en la app | ¿Obligatorio? | Para qué |
@@ -45,10 +46,22 @@ Es una declaración legal: revísala antes de enviarla. Es el mismo inventario q
 | Mensajes › Otros mensajes en la app | Lo que escribe a un cliente desde la Bandeja | No | Funcionalidad |
 | Fotos y vídeos › Fotos | Una imagen enviada a un cliente (galería o cámara) | No | Funcionalidad |
 | Archivos y documentos | Un documento enviado a un cliente | No | Funcionalidad |
-| ID del dispositivo u otros | El token de avisos (FCM) y el identificador del servicio de actualizaciones de Expo | No | Funcionalidad (avisos y actualizaciones) |
+| ID del dispositivo u otros | El token de avisos (FCM) y el identificador del servicio de actualizaciones de Expo | Sí (el de actualizaciones se envía siempre) | Funcionalidad (avisos y actualizaciones) |
+
+Ninguno se procesa de forma efímera ni se comparte, y ninguno se usa para analítica, publicidad ni personalización.
 
 Sin analítica ni informes de errores de terceros: la app no los lleva y el proyecto de Firebase se creó sin Google Analytics.
 
 ### Permisos del AAB
 
-La 1.3.0 bloquea `RECORD_AUDIO` y `ACCESS_FINE_LOCATION` (`android.blockedPermissions` en `app.config.ts`). El AAB 1.1.0 pedía además `SYSTEM_ALERT_WINDOW`, `READ_EXTERNAL_STORAGE` y `WRITE_EXTERNAL_STORAGE`, que vienen de dependencias. Hay que mirar el manifiesto del AAB 1.3.0 cuando el build salga: lo que sobre se bloquea con su spec, porque es un cambio de la app.
+La 1.3.0 bloquea `RECORD_AUDIO` y `ACCESS_FINE_LOCATION` (`android.blockedPermissions` en `app.config.ts`).
+
+Manifiesto del AAB 1.3.0 (12), leído con `aapt2 dump xmltree` el 2026-11-21. Pide:
+
+- los que usa: `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `CAMERA`, `POST_NOTIFICATIONS`, `VIBRATE`, `WAKE_LOCK`, `RECEIVE_BOOT_COMPLETED` y `com.google.android.c2dm.permission.RECEIVE` (avisos de FCM);
+- `USE_BIOMETRIC` y `USE_FINGERPRINT`, que la app no usa (no hay desbloqueo con huella ni cara en el código). No vienen de ningún paquete de `node_modules`: los trae una librería de Android, seguramente `androidx.biometric` por `expo-secure-store`, sin comprobar;
+- los de los globos con el número de avisos en el icono (`READ_APP_BADGE` y los de los lanzadores de Samsung, Huawei, HTC, Sony, Oppo y otros), que vienen de la librería de avisos;
+- `BIND_GET_INSTALL_REFERRER_SERVICE`, de una dependencia de Google;
+- y los que sobran, igual que en la 1.1.0: `SYSTEM_ALERT_WINDOW`, `READ_EXTERNAL_STORAGE` y `WRITE_EXTERNAL_STORAGE`.
+
+`android.permission.DUMP` aparece en el manifiesto pero no lo pide la app: protege el receptor `androidx.profileinstaller.ProfileInstallReceiver`, que llevan todas las apps con androidx. Ninguno de la lista exige una declaración de permisos en Play, y Play no ha pedido ninguna al subir la versión 12 a la pista interna (comprobado el 2026-11-21). Lo que sobra se bloquea con su spec (la 070), porque es un cambio de la app.

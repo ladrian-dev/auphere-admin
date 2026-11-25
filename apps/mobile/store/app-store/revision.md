@@ -29,7 +29,7 @@ Lo que App Store Connect pide además de la ficha (`ficha.md`): la información 
 >
 > Account deletion: Settings > "Request account deletion". Auphere confirms the request by email and deletes the account and its personal data within one month at most.
 
-La segunda frase del segundo párrafo solo se pega si la cuenta de revisión cumple eso. Si no, se quita: Apple prueba lo que se le dice.
+La segunda frase del segundo párrafo solo se pega si la cuenta de revisión cumple eso. Si no, se quita: Apple prueba lo que se le dice. **El 2026-11-21 se pegó sin ella**, porque la cuenta de revisión aún no existe; se añade cuando exista y cumpla.
 
 ## Privacidad de la app (App Privacy)
 
@@ -43,30 +43,32 @@ Mismo inventario que la sección «Seguridad de los datos» de Play (`../play/ap
 | Contact Info | Name | El nombre de quien entra y el de los clientes a los que reserva |
 | Contact Info | Email Address | El correo con el que entra |
 | Contact Info | Phone Number | El teléfono del cliente al crear una reserva |
+| User Content | Emails or Text Messages | Los mensajes que escribe a sus clientes desde la Bandeja |
 | User Content | Photos or Videos | Una foto o imagen enviada a un cliente desde la Bandeja |
-| User Content | Other User Content | Los mensajes que escribe a sus clientes y los archivos que les envía |
+| User Content | Other User Content | Los archivos que envía a sus clientes |
 | Identifiers | User ID | El identificador de su cuenta de Auphere |
 | Identifiers | Device ID | El token de avisos del teléfono y el identificador que usa el servicio de actualizaciones de Expo |
 
 - **No se recogen**: ubicación, salud, datos financieros, contactos del teléfono, historial de navegación, historial de búsqueda, audio ni diagnósticos.
+- **Publicada en App Store Connect el 2026-11-21**, tal como está esta tabla. Los mensajes van como «Emails or Text Messages», que Apple define como el contenido y los destinatarios de un mensaje; los archivos, como «Other User Content».
 - El manifiesto de privacidad (`PrivacyInfo.xcprivacy`) del build 4 de TestFlight declara las razones de uso de `UserDefaults`, marcas de tiempo de archivos y hora de arranque, y `NSPrivacyTracking: false`, pero su lista de datos recogidos (`NSPrivacyCollectedDataTypes`) está vacía. Hay que alinearla con esta tabla: es un cambio de la app y va en su spec (`../README.md`).
 
 ## Clasificación por edad
 
-Respuestas al cuestionario de App Store Connect. Apple calcula la edad a partir de ellas; no se elige.
+Respuestas dadas en App Store Connect el 2026-11-21, con las definiciones de Apple a la vista. Apple calcula la edad a partir de ellas: **4+** (A12 en Brasil, ALL en Corea, 00+ en Vietnam), sin subirla a mano.
 
-| Tema | Respuesta |
+| Pregunta de Apple | Respuesta |
 |---|---|
-| Violencia, sexo, desnudez, lenguaje soez, drogas, alcohol, tabaco, terror, temas maduros | Ninguno |
-| Información médica o de tratamientos | No. La app no da información médica, aunque la use una clínica |
-| Juegos de azar, concursos | No |
-| Acceso a la web sin restricciones | No. Solo abre en el navegador la consola de Auphere y la política de privacidad |
-| Mensajería o chat entre usuarios | Sí: la persona del negocio escribe a sus clientes |
-| Contenido generado por usuarios | Sí: los mensajes de los clientes del negocio |
-| Anuncios | No |
-| Controles parentales o verificación de edad | No |
+| Parental Controls, Age Assurance | No |
+| Unrestricted Web Access | No. Solo abre en el navegador la consola de Auphere y la política de privacidad |
+| User-Generated Content («broad distribution of content created by users») | No. Los mensajes van de un cliente al negocio; no se difunden a otros usuarios |
+| Social Media, Shared Location, Advertising | No |
+| Messaging and Chat («users can directly communicate with one another») | Sí: la persona del negocio escribe a sus clientes |
+| Temas maduros, sexo, desnudez, violencia | Ninguno |
+| Medical or Treatment Information, Health or Wellness Topics | No. La app no da información médica, aunque la use una clínica |
+| Juegos de azar, concursos, cajas de botín | No |
 
-Play ya está clasificada (IARC 12+ y equivalentes) por «los usuarios interactúan». Es de esperar que Apple llegue a algo parecido por la mensajería.
+Play está clasificada IARC 12+ por «los usuarios interactúan»: los cuestionarios son distintos y no tienen por qué coincidir.
 
 ## Cifrado
 

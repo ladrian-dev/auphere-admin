@@ -109,9 +109,10 @@ First public release.
 | URL de soporte | https://www.auphere.com (el soporte es por correo: contacto@auphere.com, el mismo que abre Ajustes) |
 | URL de marketing | https://www.auphere.com |
 | Política de privacidad | https://www.auphere.com/es/privacidad · https://www.auphere.com/en/privacy |
-| Copyright | **Lo decide Luis**: el titular de los derechos (Auphere o FACELAD SpA) |
+| Copyright | 2026 FACELAD SpA (Luis, 2026-11-21) |
 | Precio | Gratis |
-| Disponibilidad | **Lo decide Luis**: los países donde hay clientes |
+| Disponibilidad | Todos los países menos China continental: 174 (Luis, 2026-11-21) |
+| Derechos de contenido | No contiene ni muestra contenido de terceros (Luis, 2026-11-21) |
 | Cifrado | `ITSAppUsesNonExemptEncryption: false` (solo TLS del sistema): Apple no pregunta nada más |
 
 ## Capturas
