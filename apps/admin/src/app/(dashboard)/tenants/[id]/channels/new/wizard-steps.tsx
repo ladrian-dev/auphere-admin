@@ -12,23 +12,32 @@ const STEPS = [
   { title: "¡Listo!", body: "El agente ya responde por aquí." },
 ];
 
+/** Spec 077 (2.2): a send-only client has no agent: it is done when the number connects. */
+const SEND_ONLY_STEPS = [
+  { title: "Elegir canal", body: "Por dónde envía este cliente." },
+  { title: "Conectar", body: "Conecta su número con su cuenta de Meta." },
+  { title: "¡Listo!", body: "El número envía lo que pide su sistema, sin agente." },
+];
+
 /** Which step a wizard path is on: /new · /new/{c} · /new/{c}/agent · /new/{c}/done. */
-export function stepOf(pathname: string): number {
+export function stepOf(pathname: string, sendOnly = false): number {
   const rest = pathname.split("/channels/new")[1] ?? "";
   const parts = rest.split("/").filter(Boolean);
   if (parts.length === 0) return 0;
+  if (sendOnly) return parts[1] === "done" || parts[1] === "agent" ? 2 : 1;
   if (parts[1] === "agent") return 2;
   if (parts[1] === "done") return 3;
   return 1;
 }
 
 /** Spec 035: Chatwoot's wizard rail — numbered steps, done ones checked. */
-export function WizardSteps({ compact = false }: { compact?: boolean }) {
-  const current = stepOf(usePathname());
+export function WizardSteps({ compact = false, sendOnly = false }: { compact?: boolean; sendOnly?: boolean }) {
+  const current = stepOf(usePathname(), sendOnly);
+  const steps = sendOnly ? SEND_ONLY_STEPS : STEPS;
   if (compact) {
     return (
       <ol className="flex flex-wrap items-center gap-x-6 gap-y-2" aria-label="Pasos">
-        {STEPS.map((s, i) => {
+        {steps.map((s, i) => {
           const done = i < current;
           const active = i === current;
           return (
@@ -50,7 +59,7 @@ export function WizardSteps({ compact = false }: { compact?: boolean }) {
   }
   return (
     <ol className="flex flex-col gap-6" aria-label="Pasos">
-      {STEPS.map((s, i) => {
+      {steps.map((s, i) => {
         const done = i < current;
         const active = i === current;
         return (

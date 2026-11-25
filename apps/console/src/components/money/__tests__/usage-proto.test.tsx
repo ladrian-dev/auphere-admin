@@ -57,7 +57,9 @@ describe("Consumo · como el prototipo", () => {
 
   it("el periodo de «Gasto por día» es el conmutador de vidrio y cambia la URL", async () => {
     const user = userEvent.setup();
-    wrap(<SpendFilters days={30} client="" line={null} clients={[{ ref: "flor", name: "Flor" }]} />);
+    wrap(<SpendFilters days={30} client="" clients={[{ ref: "flor", name: "Flor" }]} />);
+    // Spec 072 (4.2, D3): el periodo y el cliente; sin el desplegable de partida.
+    expect(screen.getAllByRole("combobox").map((c) => c.getAttribute("aria-label"))).toEqual(["Cliente"]);
     const period = screen.getByRole("group", { name: "Periodo" });
     expect(period).toHaveAttribute("data-slot", "segmented-control");
     expect(period.className).toMatch(/\bglass\b/);
@@ -80,6 +82,14 @@ describe("Consumo · como el prototipo", () => {
     expect(items.at(-1)).toHaveTextContent("Abrir ficha del cliente");
     expect(items.at(-1)).toHaveAttribute("href", "/clients/flor-y-encanto");
     expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("spec 071 (5.2): un cliente con saldo bajo lo dice en la tabla, con texto y no solo color", () => {
+    wrap(<UsageClientsTable canWrite days={30} clients={[client(), client({ ref: "cultor", name: "Cultor", bag: M(10) })]} low={new Set(["cultor"])} />);
+    const table = screen.getByRole("region", { name: "Saldo por cliente" });
+    const [, first, second] = within(table).getAllByRole("row");
+    expect(within(second!).getByText("Saldo bajo")).toBeInTheDocument();
+    expect(within(first!).queryByText("Saldo bajo")).toBeNull();
   });
 
   it("el detalle técnico dice qué hay dentro y gira su flecha", () => {

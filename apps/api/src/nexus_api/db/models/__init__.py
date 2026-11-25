@@ -1,5 +1,10 @@
 """Aggregate import for ORM models. Alembic autogenerate reads metadata from here."""
 
+from nexus_api.db.models.ad_conversion import (
+    AdConversionEvent,
+    ChannelAdMeasurement,
+    CustomerAdReferral,
+)
 from nexus_api.db.models.admin_impersonation import (
     REASON_MIN_LEN,
     TTL_DEFAULT_SECONDS,
@@ -288,6 +293,7 @@ from nexus_api.db.models.scheduled_job import (
     ScheduledJobKind,
     ScheduledJobStatus,
 )
+from nexus_api.db.models.service_membership import ServiceMembership
 from nexus_api.db.models.signup import SignupProvider, SignupRequest, SignupStatus
 from nexus_api.db.models.support_ticket import (
     EVENT_KINDS,
@@ -373,6 +379,7 @@ __all__ = [
     "TTL_MAX_SECONDS",
     "TTL_MIN_SECONDS",
     "USAGE_METERS",
+    "AdConversionEvent",
     "AdminImpersonationSession",
     "Agent",
     "AgentConfig",
@@ -419,6 +426,7 @@ __all__ = [
     "BusinessSpecialShift",
     "BusinessSuggestion",
     "Channel",
+    "ChannelAdMeasurement",
     "ChannelAudienceNumber",
     "ChannelConfigChange",
     "ChannelEscalationRecipient",
@@ -457,6 +465,7 @@ __all__ = [
     "ConversationStatus",
     "ConversationTag",
     "Customer",
+    "CustomerAdReferral",
     "CustomerConnectorAccount",
     "DailyCostSnapshot",
     "DeviceClientLink",
@@ -560,6 +569,7 @@ __all__ = [
     "ScheduledJobStatus",
     "SectorGuide",
     "SectorTestCatalog",
+    "ServiceMembership",
     "SignupProvider",
     "SignupRequest",
     "SignupStatus",

@@ -460,6 +460,9 @@ class BagBlock:
     alerts: tuple[str, ...]
     #: Para la regla de atención (``attention.ClientFacts``).
     empty: bool
+    #: Spec 071: lo que queda en la bolsa, en cien milésimas de ``currency``, para la
+    #: cifra de la fila de saldo. ``None`` sin bolsa (o con el cupo de antes).
+    balance_micros: int | None = None
 
 
 def pace(daily_credits: list[int]) -> tuple[float, int]:
@@ -631,6 +634,16 @@ def client_actions(permissions: frozenset[str] | set[str], *, archived: bool) ->
     return out
 
 
+def client_delete_blocked(permissions: frozenset[str] | set[str], *, archived: bool) -> str | None:
+    """Spec 073 (2.2): por qué «Eliminar» aún no se puede, para decirlo antes
+    del diálogo y no después de escribir el nombre. ``archive_first`` es el
+    mismo código con que el servidor rechaza eliminar un cliente sin archivar;
+    sin permiso de eliminar no hay nada que explicar."""
+    if "clients:delete" not in permissions or archived:
+        return None
+    return "archive_first"
+
+
 __all__ = [
     "MISSING_ORDER",
     "SEVERITY",
@@ -642,6 +655,7 @@ __all__ = [
     "attention_items",
     "bag_block",
     "client_actions",
+    "client_delete_blocked",
     "credit_block",
     "credit_low_items",
     "days_until",

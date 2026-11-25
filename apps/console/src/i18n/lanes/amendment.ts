@@ -98,8 +98,10 @@ export const amendmentMessages = {
   "business.faqs.list": { es: "Preguntas confirmadas", en: "Confirmed questions" },
   "business.faqs.suggested": { es: "Por confirmar", en: "To confirm" },
   "business.faqs.remove": { es: "Quitar", en: "Remove" },
-  "business.faqs.remove.label": { es: "Quitar {q}", en: "Remove {q}" },
   "business.faqs.removed": { es: "Pregunta quitada.", en: "Question removed." },
+  // Spec 073 (4.4): las acciones de cada pregunta, en su ⋯.
+  "business.faqs.actions": { es: "Acciones de {q}", en: "Actions for {q}" },
+  "business.faqs.search.none": { es: "Ninguna pregunta coincide con «{q}».", en: "No question matches “{q}”." },
   "business.faqs.saved": { es: "Pregunta guardada.", en: "Question saved." },
   "business.faqs.error.required": { es: "Escribe la pregunta y la respuesta.", en: "Type the question and the answer." },
 

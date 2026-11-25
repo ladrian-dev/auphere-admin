@@ -11,10 +11,9 @@
  */
 
 import "server-only";
+import { adminToken } from "@/lib/admin-token";
 
 const BACKEND_URL = process.env.NEXUS_BACKEND_URL ?? "http://localhost:8000";
-const ADMIN_TOKEN =
-  process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me";
 
 export class QAApiError extends Error {
   constructor(
@@ -49,7 +48,7 @@ async function qaCall<T>(
   const init: RequestInit = {
     method: opts.method ?? "GET",
     headers: {
-      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      Authorization: `Bearer ${adminToken()}`,
       "X-Operator-Id": operatorId,
       Accept: "application/json",
       ...(opts.body !== undefined ? { "Content-Type": "application/json" } : {}),

@@ -70,3 +70,32 @@ def _actor(operator: OperatorAccount) -> str:
 def operator_actor(operator: OperatorAccount) -> str:
     """The audit actor for an operator: their e-mail, never the token."""
     return f"operator:{operator.email}"
+
+
+async def operator_from_header(raw: str | None) -> OperatorAccount | None:
+    """The operator an optional ``X-Operator-Id`` names, or ``None`` without it.
+
+    For writes that predate ADR-034 and still accept the bare admin token:
+    when the panel sends the header the audit names the person; a header that
+    does not name an enabled operator is refused like everywhere else. Opens
+    its own session so it can sit next to a tenant-scoped one.
+    """
+    if raw is None or not raw.strip():
+        return None
+    try:
+        operator_id = uuid.UUID(raw.strip())
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Operator-Id must be an operator principal id",
+        ) from None
+    from nexus_api.db.base import get_sessionmaker
+
+    async with get_sessionmaker()() as session, session.begin():
+        account = await session.get(OperatorAccount, operator_id)
+    if account is None or not operator_identity.load_operator_view(account).ok:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="X-Operator-Id must be an operator principal id",
+        )
+    return account

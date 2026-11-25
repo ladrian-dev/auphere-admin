@@ -21,13 +21,15 @@ describe("Servicios · week (R3.1)", () => {
     res({ id: "c", date: "2026-10-22", start: 600, end: 630, service: corte, pro: marcos }),
   ];
 
-  it("a card per day with its count, «Cerrado» on Sunday, and its rows", async () => {
-    const onOpen = jest.fn();
-    await render(<WeekServices config={servicesConfig} items={items} from="2026-10-19" onOpen={onOpen} onDay={noop} t={t} locale="es" />);
-    expect(screen.getByText("Martes, 20 de octubre · 1 reserva")).toBeTruthy();
-    expect(screen.getByText("Domingo, 25 de octubre · Cerrado")).toBeTruthy();
-    await fireEvent.press(screen.getByTestId("res-c"));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "c" }));
+  // Spec 069 (R13.5, design §4.6) amends 044 R3.1: a row per day with its count and how full it is; the row leads to the day.
+  it("a row per day with its count and its occupancy, «Cerrado» on Sunday, and it takes you to that day", async () => {
+    const onDay = jest.fn();
+    const days = [{ date: "2026-10-20", pct: 25, closed: false }];
+    await render(<WeekServices config={servicesConfig} items={items} days={days} from="2026-10-19" today="2026-10-22" onDay={onDay} t={t} locale="es" />);
+    expect(screen.getByLabelText("Martes, 20 de octubre: 1 reserva, 25 % ocupado")).toBeTruthy();
+    expect(screen.getByLabelText("Domingo, 25 de octubre: cerrado")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Jueves, 22 de octubre: 1 reserva, 0 % ocupado"));
+    expect(onDay).toHaveBeenCalledWith("2026-10-22");
   });
 });
 
@@ -80,13 +82,17 @@ describe("the month (R3.3)", () => {
     { date: "2026-10-22", pct: 72, closed: false },
   ];
 
-  it("starts on Monday, says each day's % or «Cerrado», and a day takes you to it", async () => {
+  // Spec 069 (R13.5, design §4.7) amends 044 R3.3: a dot per booking, not a %; «Cerrado» stays.
+  it("starts on Monday, says each day's bookings or «Cerrado», and a day takes you to it", async () => {
     const onDay = jest.fn();
-    await render(<MonthGrid month="2026-10-15" days={days} today="2026-10-22" onDay={onDay} t={t} locale="es" />);
+    await render(<MonthGrid month="2026-10-15" days={days} counts={{ "2026-10-22": 2, "2026-10-01": 1 }} today="2026-10-22" onDay={onDay} t={t} locale="es" />);
     // The weekday letters are for the eye; each day says its whole name to the screen reader.
     expect(screen.getAllByText("L", { includeHiddenElements: true })).toHaveLength(1);
     expect(screen.getByLabelText("Domingo, 4 de octubre: cerrado")).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText("Jueves, 22 de octubre: 72 % ocupado"));
+    expect(screen.getByLabelText("Jueves, 1 de octubre, 1 reserva")).toBeTruthy();
+    expect(screen.getByLabelText("Viernes, 2 de octubre, sin reservas")).toBeTruthy();
+    expect(screen.getByText("Cada punto es una reserva. Toca un día para verlo.")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Jueves, 22 de octubre, 2 reservas"));
     expect(onDay).toHaveBeenCalledWith("2026-10-22");
   });
 

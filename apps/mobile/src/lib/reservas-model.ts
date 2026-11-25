@@ -134,6 +134,100 @@ export function openSpan(config: ResConfig, date: LocalDate): { open: Minutes; c
   return { open: Math.min(...spans.map((s) => s.open)), close: Math.max(...spans.map((s) => s.close)) };
 }
 
+/** The open spans of a day in order, with the breaks between them (spec 069, R13.2). */
+export function openSpans(config: ResConfig, date: LocalDate): { open: Minutes; close: Minutes }[] {
+  const wd = weekday(date);
+  const spans = config.hours
+    .filter((h) => h.weekday === wd && h.close > h.open)
+    .map((h) => ({ open: h.open, close: h.close }))
+    .sort((a, b) => a.open - b.open);
+  // Overlapping or touching spans are one.
+  const out: { open: Minutes; close: Minutes }[] = [];
+  for (const s of spans) {
+    const last = out[out.length - 1];
+    if (last && s.open <= last.close) last.close = Math.max(last.close, s.close);
+    else out.push({ ...s });
+  }
+  return out;
+}
+
+// ── what may be offered (spec 069, R13.4, R15.2) ─────────────────────
+
+/** The first moment a time may be offered: now plus the agent's minimum notice, in the business's wall time (24 h reaches into tomorrow). */
+export function earliestFrom(now: WallTime, minNoticeMin: number): WallTime {
+  const total = now.minutes + Math.max(0, minNoticeMin);
+  const days = Math.floor(total / 1440);
+  return { date: addDays(now.date, days), minutes: total - days * 1440 };
+}
+
+/** Whether a time of a day comes before a moment: the past, or inside the notice. */
+export function isBefore(date: LocalDate, minutes: Minutes, at: WallTime): boolean {
+  return date < at.date || (date === at.date && minutes < at.minutes);
+}
+
+/**
+ * The free bands of the day's grid (spec 069, R13.3, R13.4): steps of the
+ * open hours where none of the shown reservations is, from `earliest` on,
+ * merged. With the whole team shown a band means nobody is booked then; with
+ * one person chosen, that person is free — the form then asks the API.
+ */
+export function freeBands(
+  spans: { open: Minutes; close: Minutes }[],
+  booked: readonly Pick<Reservation, "start" | "end">[],
+  stepMin: number,
+  date: LocalDate,
+  earliest: WallTime,
+): { from: Minutes; to: Minutes }[] {
+  const out: { from: Minutes; to: Minutes }[] = [];
+  const step = Math.max(5, stepMin);
+  for (const span of spans) {
+    for (let t = span.open; t < span.close; t += step) {
+      const end = Math.min(t + step, span.close);
+      if (isBefore(date, t, earliest)) continue;
+      if (booked.some((r) => r.start < end && t < r.end)) continue;
+      const last = out[out.length - 1];
+      if (last && last.to === t) last.to = end;
+      else out.push({ from: t, to: end });
+    }
+  }
+  return out;
+}
+
+/**
+ * Reservations that overlap, side by side (spec 069, R13.2): each gets a
+ * column within its cluster of overlapping ones, and how many columns the
+ * cluster has.
+ */
+export function sideBySide<R extends Pick<Reservation, "id" | "start" | "end">>(items: readonly R[]): { r: R; column: number; columns: number }[] {
+  const sorted = [...items].sort((a, b) => a.start - b.start || a.end - b.end);
+  const out: { r: R; column: number; columns: number }[] = [];
+  let cluster: { r: R; column: number; columns: number }[] = [];
+  let clusterEnd = -1;
+  const close = () => {
+    const n = Math.max(1, ...cluster.map((c) => c.column + 1));
+    for (const c of cluster) c.columns = n;
+    out.push(...cluster);
+    cluster = [];
+  };
+  for (const r of sorted) {
+    if (cluster.length && r.start >= clusterEnd) close();
+    const used = new Set(cluster.filter((c) => c.r.end > r.start).map((c) => c.column));
+    let column = 0;
+    while (used.has(column)) column += 1;
+    cluster.push({ r, column, columns: 1 });
+    clusterEnd = Math.max(clusterEnd, r.end);
+  }
+  if (cluster.length) close();
+  return out;
+}
+
+/** The next open days from a day on, as many as asked (the form's strip: the seven open days ahead). */
+export function nextOpenDays(config: ResConfig, from: LocalDate, count: number, within = 60): LocalDate[] {
+  const out: LocalDate[] = [];
+  for (let d = from; out.length < count && d <= addDays(from, within); d = addDays(d, 1)) if (!isClosed(config, d)) out.push(d);
+  return out;
+}
+
 /** Aforo: the arrival times of a day, shift by shift, without the shifts closed that weekday. */
 export function slotsOfDay(config: ResConfig, date: LocalDate): { shift: string; time: Minutes }[] {
   const cap = config.capacity;

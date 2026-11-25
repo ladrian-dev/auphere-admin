@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatBytes, formatCurrency, formatDuration, formatLatency, formatNumber, formatPercent, formatRelative } from "./format";
+import { currencyFormat, formatBytes, formatCurrency, formatDuration, formatLatency, formatNumber, formatPercent, formatRelative } from "./format";
 
 describe("format (Intl, locale-aware)", () => {
   it("numbers follow the locale", () => {
@@ -10,6 +10,14 @@ describe("format (Intl, locale-aware)", () => {
   });
   it("currency and percent", () => {
     expect(formatCurrency(1234.5, "USD", "en")).toBe("$1,234.50");
+  });
+  it("currencyFormat: the dollar with its code, never US$ (spec 072, D1)", () => {
+    const f = (v: number, c: string, l: string) => new Intl.NumberFormat(l, currencyFormat(c)).format(v).replace(/ /g, " ");
+    expect(f(10, "USD", "es")).toBe("10,00 USD");
+    expect(f(10, "USD", "en")).toBe("USD 10.00");
+    expect(f(1500, "EUR", "es")).toBe("1.500,00 €");
+    expect(f(10, "EUR", "en")).toBe("€10.00");
+    expect(f(15000, "CLP", "es")).toBe("15.000 CLP");
     expect(formatPercent(0.825, "en")).toBe("83%");
   });
   it("relative time uses Intl.RelativeTimeFormat", () => {

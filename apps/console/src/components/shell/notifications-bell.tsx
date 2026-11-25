@@ -17,19 +17,23 @@ import {
   formatRelative,
 } from "@nexus/ui";
 
-import {
-  listNotificationsAction,
-  markAllNotificationsReadAction,
-  unreadCountAction,
-} from "@/app/(console)/notifications/actions";
+import { attentionAction, listNotificationsAction, markAllNotificationsReadAction } from "@/app/(console)/notifications/actions";
+import { attentionKey } from "@/components/attention/attention-model";
+import { AttentionRow } from "@/components/attention/attention-row";
 import { notificationText, severityTone } from "@/components/notifications/render";
 import { useLocale, useT } from "@/i18n/client";
+import type { PanelAttention } from "@/lib/backend/home-usage";
 import type { Notification } from "@/lib/backend/onboarding";
 
 /**
  * The unread count (CP-29): soft polling every 60 s, paused when the tab is
  * hidden, refreshed on route change. Never blocks render. Shared by today's
  * bell and the new one so both count the same way.
+ *
+ * It reads `GET /api/notifications/count`, not server actions: a server action
+ * goes through the router's queue, and one that was still running when a link
+ * was clicked put the page back to where it started once it finished (spec
+ * 074). A background read must never navigate.
  */
 function useUnreadNotifications(initialUnread: number | null) {
   const pathname = usePathname();
@@ -40,8 +44,12 @@ function useUnreadNotifications(initialUnread: number | null) {
     async function tick() {
       if (document.visibilityState === "hidden") return;
       try {
-        const res = await unreadCountAction();
-        if (alive && res.ok) setUnread(res.data.unread);
+        // Spec 071 (3.1): el número es lo que te necesita ahora más los avisos
+        // sin leer; la ruta ya lo suma. La API no cuenta como «sin leer» los de una condición.
+        const res = await fetch("/api/notifications/count", { cache: "no-store", headers: { accept: "application/json" } });
+        if (!res.ok) return;
+        const body = (await res.json()) as { unread: number };
+        if (alive) setUnread(body.unread);
       } catch {
         /* keep the last value */
       }
@@ -104,6 +112,8 @@ type Feed =
   | { state: "loading" }
   | { state: "error" }
   | { state: "ready"; items: Notification[]; markError: boolean; announce: boolean };
+/** Spec 071: «Ahora», la lista viva. `null`: no se pudo leer. */
+type Now = PanelAttention[] | null;
 
 /**
  * Spec 047 (R47.3): the bell of the new frame opens a panel with the 5
@@ -122,17 +132,20 @@ export function NotificationsBellMenu({ initialUnread }: { initialUnread: number
   const [open, setOpen] = React.useState(false);
   const [feed, setFeed] = React.useState<Feed>({ state: "loading" });
   const [marking, setMarking] = React.useState(false);
+  const [now, setNow] = React.useState<Now>([]);
   const seq = React.useRef(0);
 
   const load = React.useCallback(async () => {
     const my = ++seq.current;
     setFeed({ state: "loading" });
     try {
-      const res = await listNotificationsAction({ limit: LIMIT });
+      const [res, live] = await Promise.all([listNotificationsAction({ limit: LIMIT }), attentionAction().catch(() => null)]);
       if (my !== seq.current) return;
+      const items = live && live.ok ? live.data.items : null;
+      setNow(items);
       if (!res.ok) return setFeed({ state: "error" });
       setFeed({ state: "ready", items: res.data.items.slice(0, LIMIT), markError: false, announce: false });
-      setUnread(res.data.unread);
+      setUnread(res.data.unread + (items?.length ?? 0));
     } catch {
       if (my === seq.current) setFeed({ state: "error" });
     }
@@ -144,8 +157,9 @@ export function NotificationsBellMenu({ initialUnread }: { initialUnread: number
     try {
       const res = await markAllNotificationsReadAction();
       if (!res.ok) return setFeed({ ...feed, markError: true, announce: false });
-      setFeed({ state: "ready", items: feed.items.map((n) => ({ ...n, read: true })), markError: false, announce: true });
-      setUnread(0);
+      setFeed({ state: "ready", items: feed.items.map((n) => (n.condition ? n : { ...n, read: true })), markError: false, announce: true });
+      // Lo de «Ahora» no se marca como leído: se arregla (3.3).
+      setUnread(now?.length ?? 0);
     } catch {
       setFeed({ ...feed, markError: true, announce: false });
     } finally {
@@ -154,7 +168,8 @@ export function NotificationsBellMenu({ initialUnread }: { initialUnread: number
   }
 
   const label = unread ? `${t("notif.bell")} — ${t("notif.bell.unread", { count: unread })}` : t("notif.bell");
-  const anyUnread = feed.state === "ready" && feed.items.some((n) => !n.read);
+  // Spec 071 (3.3): «Marcar todo como leído» solo toca los informativos.
+  const anyUnread = feed.state === "ready" && feed.items.some((n) => !n.read && !n.condition);
 
   return (
     <Popover
@@ -182,6 +197,28 @@ export function NotificationsBellMenu({ initialUnread }: { initialUnread: number
         </div>
 
         <div className="min-h-0 px-2 py-2">
+          {/* Spec 071 (D1): «Ahora», lo que te necesita y se arregla aquí. */}
+          {feed.state !== "loading" && (now === null || now.length > 0) ? (
+            <section aria-labelledby="bell-now-h" className="mb-1 border-b border-border pb-1" data-slot="bell-now">
+              <h3 id="bell-now-h" className="px-2 pt-1 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">
+                {t("att.bell.now")}
+              </h3>
+              {now === null ? (
+                <p role="status" className="px-2 py-2 text-xs text-muted-foreground">
+                  {t("att.bell.nowError")}
+                </p>
+              ) : (
+                <ul className="divide-y divide-border px-2">
+                  {now.map((row) => (
+                    <AttentionRow key={attentionKey(row)} row={row} compact />
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : null}
+          {feed.state !== "loading" && (now === null || now.length > 0) ? (
+            <h3 className="px-2 pt-2 text-[11px] font-semibold tracking-[0.08em] text-muted-foreground uppercase">{t("att.bell.before")}</h3>
+          ) : null}
           {feed.state === "loading" ? (
             <div role="status" aria-label={t("ui.loading")} className="flex flex-col">
               {Array.from({ length: 3 }, (_, i) => (
@@ -218,12 +255,19 @@ export function NotificationsBellMenu({ initialUnread }: { initialUnread: number
                       onClick={() => setOpen(false)}
                       className="flex min-w-0 items-start gap-3 rounded-sm px-2 py-3 hover:bg-muted"
                     >
-                      <StatusDot tone={severityTone(n.severity)} className="mt-2" />
+                      <StatusDot tone={n.handled ? "muted" : severityTone(n.severity)} className="mt-2" />
                       <span className="flex min-w-0 flex-1 flex-col gap-1">
-                        <span className={cn("text-sm text-pretty", !n.read && "font-medium")}>{text}</span>
+                        <span className={cn("text-sm text-pretty", !n.read && !n.condition && "font-medium", n.handled && "text-muted-foreground")}>
+                          {text}
+                        </span>
                         <span className="text-xs text-muted-foreground">
                           {formatRelative(n.created_at, locale)}
-                          {!n.read ? (
+                          {n.handled ? (
+                            <>
+                              {" · "}
+                              <span data-slot="bell-resolved">{t("att.bell.resolved")}</span>
+                            </>
+                          ) : !n.read && !n.condition ? (
                             <>
                               {" · "}
                               <span>{t("shell.bell.unread")}</span>

@@ -27,14 +27,32 @@ async function expectNoSeriousAxe(page: Page) {
   expect(blocking.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
 }
 
+/**
+ * Como el prototipo aprobado (spec 047, «Consola de partners v2»): el nombre del agente es
+ * el h1 y la pantalla va en pestañas. Un agente que ya atiende abre en Rendimiento; el
+ * chat de prueba, la tarjeta de pruebas y la barra de «Guardar» viven en «Configuración».
+ */
 async function open(page: Page) {
   const res = await page.goto(PAGE);
   expect(res?.status(), `${PAGE} respondió ${res?.status()}`).toBeLessThan(400);
   await page.waitForLoadState("networkidle").catch(() => undefined);
-  await expect(page.getByRole("heading", { level: 2, name: "Recepción" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Recepción" })).toBeVisible();
+  const tab = page.getByRole("tab", { name: "Configuración" });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
 }
 
-const section = (page: Page, name: string) => page.locator("section").filter({ has: page.getByRole("heading", { level: 3, name, exact: true }) });
+// Cada prueba, la revisión entera y el historial van plegados en «Más ajustes» (66.6).
+const section = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
+
+async function unfold(page: Page, name: string) {
+  const more = page.getByRole("button", { name: /Más ajustes/ });
+  if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
+  const details = section(page, name).locator("details");
+  if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) await section(page, name).locator("summary").click();
+  await expect(details).toHaveAttribute("open", "");
+  return section(page, name);
+}
 
 test.describe("Spec 047 — probar y guardar un agente", () => {
   test.beforeEach(async ({ request, page }) => {
@@ -45,14 +63,16 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
   test("el probador: burbujas, «Lo que habría hecho», la agenda que cambia y la hora", async ({ page }) => {
     await open(page);
     const tester = page.locator("[data-slot=agent-playground]");
-    await tester.getByRole("button", { name: "Empezar una conversación" }).click();
-    await expect(tester.getByText("Probando el borrador v2")).toBeVisible();
+    // Como el prototipo (§5): el chat está listo para escribir; el primer mensaje abre la conversación.
     await tester.getByRole("textbox", { name: "Mensaje del cliente" }).fill("quiero reservar mañana a las 11");
     await tester.getByRole("button", { name: "Enviar" }).click();
     const chat = tester.getByRole("list", { name: "Conversación de prueba" });
     await expect(chat.getByText("¡Claro! Mañana a las 11 tengo hueco para un corte.")).toBeVisible();
     await expect(chat.getByText("Respondió en 2 mensajes seguidos")).toBeVisible();
     await expect(chat.getByText("Lo que habría hecho: crear cita de Corte el 28/10/2026 a las 11:00")).toBeVisible();
+    // La versión que se prueba, la hora y la agenda simuladas van en «Opciones del chat de prueba».
+    await tester.getByRole("button", { name: "Opciones del chat de prueba" }).click();
+    await expect(tester.getByText("Probando el borrador v2")).toBeVisible();
     await expect(tester.getByText("Corte · 28/10/2026 a las 11:00")).toBeVisible();
     await expect(tester.locator("[data-slot=playground-now]")).toContainText("11:20");
 
@@ -66,8 +86,9 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
 
   test("las pruebas y la revisión: ejecutar, «Por qué falló», «No aplica» y los hallazgos", async ({ page, request }) => {
     await open(page);
-    const tests = section(page, "Pruebas");
-    await expect(tests.getByText("El juez aún no decide: solo cuenta el estado final.")).toBeVisible();
+    const tests = await unfold(page, "Pruebas");
+    // Desde la 6169814a el juez sin calibrar no hace fallar: deja la prueba en «No sé».
+    await expect(tests.getByText("El juez aún no está calibrado: si ve un problema, la prueba queda en «No sé» en lugar de fallar.")).toBeVisible();
     await tests.getByRole("button", { name: "Ejecutar todas" }).click();
     const failing = tests.getByRole("listitem", { name: "Reserva una cita" });
     await expect(failing.getByText("Falla")).toBeVisible({ timeout: 20_000 });
@@ -79,7 +100,10 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
     await parking.getByRole("button", { name: "Marcar Pregunta por aparcamiento como «No aplica»" }).click();
     await parking.getByRole("textbox", { name: /Por qué no aplica/ }).fill("Es una barbería a domicilio");
     await parking.getByRole("button", { name: "Guardar la razón" }).click();
-    await expect(parking.getByText("No aplica: Es una barbería a domicilio")).toBeVisible();
+    // Las que no aplican no cuentan ni cuestan (65.8): pasan a su grupo plegado, con su razón.
+    const notApplying = tests.locator("[data-slot=tests-not-applicable]");
+    await notApplying.getByText("1 no aplica a este agente").click();
+    await expect(notApplying.getByRole("listitem", { name: "Pregunta por aparcamiento" }).getByText("No aplica: Es una barbería a domicilio")).toBeVisible();
     const sent = await (await request.get(`${API}/__test/state`)).json();
     expect(Object.values(sent.notApplicable)).toEqual(["Es una barbería a domicilio"]);
 
@@ -88,7 +112,7 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
     await expect(page.getByRole("form", { name: "Editar «Instrucciones»" })).toBeVisible();
     await page.getByRole("form", { name: "Editar «Instrucciones»" }).getByRole("button", { name: "Cancelar" }).click();
 
-    const review = section(page, "Revisión");
+    const review = await unfold(page, "Revisión");
     await expect(review.getByText("Contradice la ficha: horario del domingo.")).toBeVisible();
     await expect(review.getByRole("link", { name: "Ir a Conectores" })).toHaveAttribute("href", "/clients/barberia-cultor/integrations");
     await expect(review.locator("[data-slot=review-check][data-ok=true]")).toHaveCount(6);
@@ -106,8 +130,11 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
     await sheet.getByRole("textbox", { name: /Nota del cambio/ }).fill("Lista de espera");
     await sheet.getByRole("button", { name: "Guardar cambios" }).click();
 
-    const gate = page.locator("[data-slot=publish-gate]");
-    await expect(page.getByText("No se guardó: no pasa la puerta")).toBeVisible({ timeout: 20_000 });
+    // La barra lo dice en una línea y la hoja «Por qué no se guardó» lo explica (prototipo, §4.5).
+    await expect(page.locator("[data-slot=publish-bar] [role=status]")).toHaveText("No se guardó: no pasa la puerta", { timeout: 20_000 });
+    const why = page.getByRole("dialog", { name: "Por qué no se guardó" });
+    await expect(why.getByText("No se guardó: no pasa la puerta")).toBeVisible();
+    const gate = why.locator("[data-slot=publish-gate]");
     await expect(gate.getByText("La prueba crítica «Reserva una cita» no pasa 3 de 3.")).toBeVisible();
     await expectNoSeriousAxe(page);
     await page.getByRole("button", { name: "Guardar igualmente…" }).click();
@@ -123,7 +150,7 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
       { note: "Lista de espera", override_reason: "Google Calendar se conecta mañana a primera hora", accept_normal_failures: true },
     ]);
     await expect(page.getByText("No hay cambios sin guardar.")).toBeVisible();
-    const history = section(page, "Historial");
+    const history = await unfold(page, "Historial");
     await expect(history.getByRole("listitem", { name: "v2" }).getByText(/Guardada saltando la puerta/)).toBeVisible();
 
     await toast.getByRole("button", { name: "Deshacer" }).click();
@@ -142,11 +169,10 @@ test.describe("Spec 047 — probar y guardar un agente", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await open(page);
     const tester = page.locator("[data-slot=agent-playground]");
-    await tester.getByRole("button", { name: "Empezar una conversación" }).click();
     await tester.getByRole("textbox", { name: "Mensaje del cliente" }).fill("quiero reservar mañana a las 11");
     await tester.getByRole("button", { name: "Enviar" }).click();
     await expect(tester.getByText("Respondió en 2 mensajes seguidos")).toBeVisible();
-    await section(page, "Pruebas").getByRole("button", { name: "Ejecutar todas" }).click();
+    await (await unfold(page, "Pruebas")).getByRole("button", { name: "Ejecutar todas" }).click();
     await expect(section(page, "Pruebas").getByRole("listitem", { name: "Reserva una cita" }).getByText("Falla")).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(300);
     expect(await overflowOffenders(page), "@390px se desborda").toEqual([]);

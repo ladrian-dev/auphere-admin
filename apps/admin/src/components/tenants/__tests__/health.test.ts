@@ -16,6 +16,14 @@ const healthy: TenantHealth = {
   connectors_attention: 0,
 };
 
+describe("a send-only client (spec 077, 1.3)", () => {
+  it("has no agent by design: never «Agente sin publicar»", () => {
+    const noAgent = { ...healthy, agent_version: null };
+    expect(reasonsFor({ status: "active", send_only: true }, noAgent)).toEqual([]);
+    expect(reasonsFor({ status: "active", send_only: false }, noAgent).map((r) => r.key)).toEqual(["no_agent"]);
+  });
+});
+
 describe("client health (spec 036, R2)", () => {
   it("a client that serves needs nothing", () => {
     expect(reasonsFor({ status: "active" }, healthy)).toEqual([]);

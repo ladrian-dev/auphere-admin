@@ -10,12 +10,12 @@ señuelo) vienen de :mod:`nexus_api.services.identity`, compartidas con la
 consola. Lo propio de este módulo es corto a propósito, porque la
 autorización del panel también lo es:
 
-**No hay roles.** ADR-009 define el panel como god-mode del equipo de
-Auphere: quien entra puede todo. La única distinción que existe es si la
-cuenta sigue habilitada (``disabled_at``), que es lo que hace falta cuando
-alguien deja el equipo. Inventar una rejilla de permisos sin un caso que
-la pida sería complejidad especulativa — y la Fase 2 de ADR-009, cuando
-llegue, es sobre cómo viaja la autorización, no sobre inventar roles.
+**Roles y permisos (spec 079).** ADR-009 definía el panel como god-mode del
+equipo de Auphere. Desde la spec 079 el rol sí decide: la matriz de
+``core/operator_permissions.py`` da a cada rol sus permisos, y el panel la
+aplica en cada acción, página y ruta. Esta API todavía no la aplica en
+``/admin/*``: eso es la fase 2 de la spec 079 (la Fase 2 de ADR-009). Además
+del rol, sigue contando si la cuenta está habilitada (``disabled_at``).
 
 Y una frontera que conviene no borrar: este módulo NUNCA consulta
 ``console_auth``. Un principal de partner no puede resolver aquí porque
@@ -67,10 +67,10 @@ OperatorAccess = Literal["ok", "disabled"]
 ACCESS_OK: OperatorAccess = "ok"
 ACCESS_DISABLED: OperatorAccess = "disabled"
 
-#: Los tres roles que ya existían en ``auth.user.role``. Sólo gatean el QA
-#: Playground; NO deciden qué se puede tocar en ``/admin/*``.
+#: Los tres roles del panel. Qué puede hacer cada uno lo dice
+#: ``core/operator_permissions.py`` (spec 079).
 OperatorRole = Literal["admin", "qa_operator", "viewer"]
-#: Los que el Playground admite (``apps/admin/src/lib/qa-access.ts``).
+#: Los que tienen el permiso ``qa`` en la matriz (``core/operator_permissions.py``).
 QA_ROLES: frozenset[str] = frozenset({"admin", "qa_operator"})
 DEFAULT_ROLE: OperatorRole = "qa_operator"
 

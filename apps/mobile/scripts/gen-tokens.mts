@@ -108,6 +108,77 @@ const ROLES = {
   brandGround: "--color-dark-green",
 } as const;
 
+/**
+ * Spec 069 (D2): roles only the app reads, for the design the owner approved
+ * (selection in ink, the mint highlight, the agent's bubble, the inverted
+ * toast). They are computed from the same CSS variables, so `tokens.css` and
+ * the web stay as they are. `over(color, alpha, ground)` lays a colour at an
+ * alpha over an opaque ground and gives the opaque result (the design's
+ * `color-mix(hi 16%, surface)`), because a bubble must not let the thread show
+ * through.
+ */
+type Expr = string | { over: string; alpha: number; ground: string };
+const APP_ROLES: Record<string, { light: Expr; dark: Expr }> = {
+  /** What is chosen (a chip, a segment): ink, with a check, never colour alone. */
+  selection: { light: "var(--color-rich-black)", dark: "var(--color-anti-flash)" },
+  onSelection: { light: "var(--color-anti-flash)", dark: "var(--color-ink-surface)" },
+  /** What deserves attention (unread dot, «hoy», the calm card): the brand's mint. */
+  highlight: { light: "var(--color-mountain-meadow)", dark: "var(--color-mountain-meadow)" },
+  highlightSoft: {
+    light: "color-mix(in oklab, var(--color-mountain-meadow) 16%, transparent)",
+    dark: "color-mix(in oklab, var(--color-mountain-meadow) 16%, transparent)",
+  },
+  onHighlight: { light: "var(--color-dark-green)", dark: "var(--color-dark-green)" },
+  /** Small text in the highlight's hue that still reads at 4.5:1 on the ground (basil, not the demo's #087F5C). */
+  highlightInk: { light: "var(--color-basil)", dark: "var(--color-mountain-meadow)" },
+  /**
+   * The edge of a control (a chip, a free hour, a block, the chosen segment):
+   * the ink at half, 3:1 or more on a card, the screen and a muted track (R3.5).
+   * `border` stays for dividers and cards, which are not controls.
+   */
+  controlBorder: {
+    light: "color-mix(in oklab, var(--foreground) 50%, transparent)",
+    dark: "color-mix(in oklab, var(--foreground) 50%, transparent)",
+  },
+  /** The agent's bubble: the mint at 16 % over the card, made opaque. */
+  bubbleAgent: {
+    light: { over: "var(--color-mountain-meadow)", alpha: 0.16, ground: "var(--card)" },
+    dark: { over: "var(--color-mountain-meadow)", alpha: 0.16, ground: "var(--card)" },
+  },
+  /** The toast is the inverse of the screen: dark on a light screen, light on a dark one. */
+  toastBg: { light: "var(--foreground)", dark: "var(--foreground)" },
+  toastFg: { light: "var(--background)", dark: "var(--background)" },
+  toastAccent: { light: "var(--color-mountain-meadow)", dark: "var(--color-bangladesh-green)" },
+};
+
+/**
+ * The channels' own colours (the logos of WhatsApp, Instagram and Messenger),
+ * lighter in dark so they keep their contrast. Brand marks, not theme roles:
+ * they live here so no screen writes a hex.
+ */
+const GOOGLE = { googleRed: "#EA4335", googleBlue: "#4285F4", googleYellow: "#FBBC05", googleGreen: "#34A853" };
+const BRAND = {
+  light: { whatsapp: "#1FA855", instagram: "#D6336C", messenger: "#0A7CFF", onBrand: "#FFFFFF", ...GOOGLE },
+  dark: { whatsapp: "#25D366", instagram: "#F06595", messenger: "#4DA3FF", onBrand: "#FFFFFF", ...GOOGLE },
+} as const;
+
+function overHex(fg: string, alpha: number, ground: string): string {
+  const a = gamut(color(fg));
+  const b = gamut(color(ground));
+  const mix = (x: number | undefined, y: number | undefined) => (x ?? 0) * alpha + (y ?? 0) * (1 - alpha);
+  return formatHex({ mode: "rgb", r: mix(a.r, b.r), g: mix(a.g, b.g), b: mix(a.b, b.b) } as Color).toUpperCase();
+}
+
+function appPalette(vars: Record<string, string>, scheme: "light" | "dark"): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(APP_ROLES).map(([role, by]) => {
+      const e = by[scheme];
+      if (typeof e === "string") return [role, hex(resolve(e, vars))];
+      return [role, overHex(resolve(e.over, vars), e.alpha, resolve(e.ground, vars))];
+    }),
+  );
+}
+
 function palette(vars: Record<string, string>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(ROLES).map(([role, name]) => {
@@ -126,8 +197,9 @@ function px(name: string): number {
 }
 
 const out = {
-  light: palette(light),
-  dark: palette(dark),
+  light: { ...palette(light), ...appPalette(light, "light") },
+  dark: { ...palette(dark), ...appPalette(dark, "dark") },
+  brand: BRAND,
   radius: { sm: px("--radius-sm"), md: px("--radius-md"), full: px("--radius-full") },
   text: {
     xs: px("--text-xs"),

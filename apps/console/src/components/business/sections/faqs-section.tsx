@@ -1,17 +1,19 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Field, Input, Textarea } from "@nexus/ui";
+import { Button, Field, Input, Textarea, cn } from "@nexus/ui";
 
 import { archiveFaqAction, createFaqAction, reloadSectionAction, updateFaqAction } from "@/app/(console)/clients/[ref]/business/actions";
 import { decideSuggestionAction } from "@/app/(console)/clients/[ref]/client-v2-actions";
+import { RowActions } from "@/components/row-actions";
 import { useT } from "@/i18n/client";
 import type { Faq, FaqBody, FaqPatch, Faqs, SectionState } from "@/lib/backend/business-sections";
 import type { Suggestion } from "@/lib/backend/client-records";
 
+import { matchesText } from "./business-search";
 import { asFaq, faqSuggestions, sourceKey, type FaqValue } from "./proposals-model";
 import { ConflictNotice, SectionFrame, problemOf, useReportState, useSectionEdit, type Result } from "./section-frame";
 import { SuggestionCard, type Decision } from "./suggestion-card";
@@ -49,6 +51,8 @@ export function FaqsSection({
   canWrite,
   actions = SERVER_ACTIONS,
   onStateChange,
+  confirmable = false,
+  query = "",
 }: {
   refId: string;
   faqs: Faqs;
@@ -56,6 +60,10 @@ export function FaqsSection({
   canWrite: boolean;
   actions?: FaqsActions;
   onStateChange?: (state: SectionState) => void;
+  /** Spec 073 (4.5): «Es correcto» de lo leído, también aquí. */
+  confirmable?: boolean;
+  /** Spec 073 (4.1): lo buscado arriba de Negocio; las que coinciden salen abiertas. */
+  query?: string;
 }) {
   const t = useT();
   const suggestedId = React.useId();
@@ -63,7 +71,8 @@ export function FaqsSection({
   useReportState(faqs.state, onStateChange);
   const [suggestions, setSuggestions] = React.useState(() => (initialSuggestions ? faqSuggestions(initialSuggestions) : null));
   const add = useSectionEdit("business-faqs");
-  const confirmed = faqs.items.filter((f) => !f.suggested);
+  const searching = query.trim() !== "";
+  const confirmed = faqs.items.filter((f) => !f.suggested && (!searching || matchesText(query, f.q, f.a)));
   const savedSuggested = faqs.items.filter((f) => f.suggested);
   const proposals = suggestions ?? [];
   const toConfirm = savedSuggested.length + proposals.length;
@@ -98,6 +107,7 @@ export function FaqsSection({
       title={t("business.faqs.title")}
       state={faqs.state}
       canWrite={canWrite}
+      confirm={confirmable ? { refId, section: "faqs", onConfirmed: () => setFaqs((prev) => ({ ...prev, state: "complete" as const })) } : undefined}
       action={
         add.editing ? null : (
           <Button type="button" size="sm" variant="outline" onClick={add.open}>
@@ -132,6 +142,7 @@ export function FaqsSection({
               key={faq.id}
               faq={faq}
               canWrite={canWrite}
+              openAtFirst={searching}
               onReload={reloadAfterConflict}
               onSave={async (body) => {
                 const res = await actions.update({ ref: refId, revision: faqs.revision, id: faq.id, body });
@@ -153,6 +164,8 @@ export function FaqsSection({
             />
           ))}
         </ul>
+      ) : searching ? (
+        <p className="text-sm text-muted-foreground">{t("business.faqs.search.none", { q: query.trim() })}</p>
       ) : !toConfirm && !add.editing ? (
         <p className="text-sm text-muted-foreground">{t("business.faqs.empty")}</p>
       ) : null}
@@ -200,12 +213,15 @@ export function FaqsSection({
 function FaqRow({
   faq,
   canWrite,
+  openAtFirst = false,
   onSave,
   onRemove,
   onReload,
 }: {
   faq: Faq;
   canWrite: boolean;
+  /** Spec 073 (4.1): al buscar, las que coinciden salen abiertas. */
+  openAtFirst?: boolean;
   onSave: (body: FaqBody) => Promise<Result<Faqs>>;
   onRemove: () => Promise<void>;
   onReload: () => Promise<boolean>;
@@ -213,6 +229,14 @@ function FaqRow({
   const t = useT();
   const edit = useSectionEdit(`business-faqs-${faq.id}`);
   const [removing, setRemoving] = React.useState(false);
+  const [open, setOpen] = React.useState(openAtFirst);
+  // Al empezar o dejar de buscar, abierta o cerrada según lo buscado (sin un efecto).
+  const [seen, setSeen] = React.useState(openAtFirst);
+  if (seen !== openAtFirst) {
+    setSeen(openAtFirst);
+    setOpen(openAtFirst);
+  }
+  const answerId = React.useId();
   if (canWrite && edit.editing) {
     return (
       <li className="min-w-0 py-3">
@@ -229,32 +253,44 @@ function FaqRow({
       </li>
     );
   }
+  // Spec 073 (4.4): se ve la pregunta y se abre para leer la respuesta;
+  // «Editar» y «Quitar» van en su ⋯, no a la vista en cada una.
   return (
-    <li className="flex min-w-0 flex-wrap items-start justify-between gap-x-4 gap-y-2 py-3">
-      <div className="grid min-w-0 flex-1 basis-64 gap-1">
-        <p className="min-w-0 text-sm font-medium text-pretty break-words">{faq.q}</p>
-        <p className="min-w-0 text-sm text-pretty break-words whitespace-pre-line text-muted-foreground">{faq.a}</p>
+    <li className="flex min-w-0 items-start justify-between gap-x-3 py-2">
+      <div className="grid min-w-0 flex-1 gap-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={open ? answerId : undefined}
+          onClick={() => setOpen((v) => !v)}
+          className="flex min-w-0 items-start gap-2 rounded-sm py-1 text-left text-sm font-medium text-pretty break-words hover:text-primary-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <ChevronRight aria-hidden="true" className={cn("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-90")} />
+          <span className="min-w-0">{faq.q}</span>
+        </button>
+        {open ? (
+          <p id={answerId} className="min-w-0 pl-6 text-sm text-pretty break-words whitespace-pre-line text-muted-foreground">
+            {faq.a}
+          </p>
+        ) : null}
       </div>
       {canWrite ? (
-        <div className="flex shrink-0 flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" onClick={edit.open} aria-label={t("business.suggested.edit.label", { item: faq.q })}>
-            {t("business.section.edit")}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            loading={removing}
-            onClick={async () => {
-              setRemoving(true);
-              await onRemove();
-              setRemoving(false);
-            }}
-            aria-label={t("business.faqs.remove.label", { q: faq.q })}
-          >
-            {t("business.faqs.remove")}
-          </Button>
-        </div>
+        <RowActions
+          menu
+          ariaLabel={t("business.faqs.actions", { q: faq.q })}
+          actions={[
+            { label: t("business.section.edit"), onSelect: edit.open, primary: true },
+            {
+              label: t("business.faqs.remove"),
+              disabled: removing,
+              onSelect: async () => {
+                setRemoving(true);
+                await onRemove();
+                setRemoving(false);
+              },
+            },
+          ]}
+        />
       ) : null}
     </li>
   );

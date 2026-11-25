@@ -32,6 +32,7 @@ from typing import Any, Literal
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 from nexus_channels.meta_social import META_SOCIAL_PROVIDERS
 from pydantic import BaseModel, ConfigDict, Field
 from redis.asyncio import Redis
@@ -47,8 +48,8 @@ from nexus_api.db.models import (
     ChannelStatus,
     ChannelType,
 )
+from nexus_api.services import ad_measurement, meta_social_service
 from nexus_api.services import channel_config as svc
-from nexus_api.services import meta_social_service
 from nexus_api.services.agent_lifecycle import ChannelFacts, channel_visible_state
 
 from .agent_draft_routes import agent_in_path, etag, parse_revision
@@ -189,6 +190,34 @@ class InstagramCommentsIO(BaseModel):
     public_reply: str | None = Field(default=None, max_length=300)
 
 
+class AdMeasurementErrorOut(BaseModel):
+    code: str
+    at: datetime | None = None
+    #: Una clave de i18n de la consola que dice qué hacer; la API no escribe la frase.
+    hint: str
+
+
+class AdMeasurementOut(BaseModel):
+    """Spec 076 (4.6): la medición de resultados de anuncios del número."""
+
+    state: Literal["on", "off", "reauthorize"]
+    #: Encendida o no, también cuando ``state`` es ``reauthorize`` (para «Apagar»).
+    enabled: bool
+    dataset_linked: bool
+    sent_7d: int
+    last_error: AdMeasurementErrorOut | None = None
+    #: La configuración del registro insertado para «Volver a conectar».
+    reconnect_config_id: str
+
+
+class AdMeasurementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    #: Requisito 4.8: quien activa confirma que el negocio puede enviar estos datos.
+    confirm_data_sharing: bool = False
+
+
 class ChannelPageOut(BaseModel):
     id: uuid.UUID
     type: str
@@ -228,6 +257,8 @@ class ChannelPageOut(BaseModel):
     catalog: CatalogOut | None = None
     catalog_state: CatalogState | None = None
     catalog_error: CatalogErrorOut | None = None
+    #: Spec 076 (4.6, 4.7): ``None`` si el número no admite la medición.
+    ad_measurement: AdMeasurementOut | None = None
 
 
 class ChangeOut(BaseModel):
@@ -400,7 +431,29 @@ async def page(scope: ClientScope, channel: Channel) -> ChannelPageOut:
         allowed=allowed,
         whatsapp=whatsapp_account_of(channel),
         instagram_comments=_comments_of(channel),
+        ad_measurement=await _ad_measurement_out(session, channel),
         **_catalog_fields(channel),
+    )
+
+
+async def _ad_measurement_out(session: Any, channel: Channel) -> AdMeasurementOut | None:
+    found = await ad_measurement.status_of(session, channel)
+    if found is None:
+        return None
+    error = (
+        AdMeasurementErrorOut(
+            code=found.last_error_code, at=found.last_error_at, hint=found.last_error_code
+        )
+        if found.last_error_code
+        else None
+    )
+    return AdMeasurementOut(
+        state=found.state,
+        enabled=found.enabled,
+        dataset_linked=found.dataset_linked,
+        sent_7d=found.sent_7d,
+        last_error=error,
+        reconnect_config_id=found.reconnect_config_id,
     )
 
 
@@ -687,6 +740,54 @@ async def put_instagram_comments(
     await scope.session.flush()
     await _drop_cache(scope, redis, channel)
     return await page(scope, channel)
+
+
+@router.put(
+    "/channels/{channel_id}/ad-measurement",
+    response_model=AdMeasurementOut,
+    responses={409: {"description": "reauthorize"}, 422: {}, 502: {}},
+)
+async def put_ad_measurement(
+    channel_id: uuid.UUID,
+    body: AdMeasurementIn,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+) -> Any:
+    """Spec 076 (requisito 4): activar o desactivar que el número envíe sus
+    resultados a los anuncios de Meta del cliente. Activar pide confirmación,
+    el permiso de eventos en el token y el conjunto de datos de Meta. Queda en la
+    auditoría con quién y la confirmación."""
+    channel = await _channel(scope, channel_id)
+    if not ad_measurement.available(channel):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown channel")
+    actor = scope.principal.actor
+    if body.enabled:
+        if not body.confirm_data_sharing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"code": "confirm_required"},
+            )
+        try:
+            row = await ad_measurement.enable(scope.session, channel, actor=actor)
+        except ad_measurement.MeasurementError as exc:
+            if exc.code == ad_measurement.REAUTHORIZE:
+                # Not raised: the transaction keeps the mark, so the page says
+                # «Volver a conectar» from now on.
+                return JSONResponse(status_code=exc.status, content={"detail": {"code": exc.code}})
+            raise HTTPException(status_code=exc.status, detail={"code": exc.code}) from None
+    else:
+        row = await ad_measurement.disable(scope.session, channel, actor=actor)
+    scope.session.add(
+        _audit(
+            scope,
+            channel,
+            "console.channel.ad_measurement",
+            ad_measurement.audit_after(row, confirm_data_sharing=body.confirm_data_sharing),
+        )
+    )
+    await scope.session.flush()
+    out = await _ad_measurement_out(scope.session, channel)
+    assert out is not None
+    return out
 
 
 @router.post("/channels/{channel_id}/resume", response_model=ChannelPageOut)

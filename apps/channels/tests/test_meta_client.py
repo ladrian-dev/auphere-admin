@@ -425,3 +425,61 @@ async def test_get_product_filters_by_retailer_id_and_is_none_when_missing() -> 
         assert json.loads(route.calls.last.request.url.params["filter"]) == {
             "retailer_id": {"eq": "SKU-9"}
         }
+
+
+# ── spec 075: editar una plantilla ──────────────────────────────────────────
+
+
+async def test_edit_template_posts_components_to_the_template_id() -> None:
+    """075 (1.5): se edita con ``POST /{template_id}``; nombre e idioma no
+    viajan porque Meta no deja cambiarlos."""
+    components = [{"type": "BODY", "text": "Hola {{nombre}}"}]
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.post("/2156906515031678").respond(200, json={"success": True})
+        async with MetaClient(_SECRET) as client:
+            out = await client.edit_template(
+                template_id="2156906515031678",
+                access_token=_TOKEN,
+                components=components,
+            )
+        assert out == {"success": True}
+        body = json.loads(route.calls.last.request.content)
+        assert body == {"components": components}
+
+
+async def test_edit_template_sends_category_and_named_format_only_when_given() -> None:
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        route = mock.post("/TPL_1").respond(200, json={"success": True})
+        async with MetaClient(_SECRET) as client:
+            await client.edit_template(
+                template_id="TPL_1",
+                access_token=_TOKEN,
+                components=[],
+                category="MARKETING",
+                parameter_format="NAMED",
+            )
+        body = json.loads(route.calls.last.request.content)
+        assert body["category"] == "MARKETING"
+        assert body["parameter_format"] == "NAMED"
+        assert "name" not in body and "language" not in body
+
+
+async def test_edit_template_surfaces_graph_error_codes() -> None:
+    """075 (1.6): el rechazo de Meta llega con su código y subcódigo."""
+    async with respx.mock(base_url=META_GRAPH_BASE_URL) as mock:
+        mock.post("/TPL_1").respond(
+            400,
+            json={
+                "error": {
+                    "message": "Invalid parameter",
+                    "code": 100,
+                    "error_subcode": 2388299,
+                    "error_user_msg": "Esta plantilla no se puede editar ahora.",
+                }
+            },
+        )
+        async with MetaClient(_SECRET, max_retries=1) as client:
+            with pytest.raises(MetaAPIError) as info:
+                await client.edit_template(template_id="TPL_1", access_token=_TOKEN, components=[])
+        assert info.value.code == 100
+        assert info.value.subcode == 2388299

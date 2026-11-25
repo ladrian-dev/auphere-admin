@@ -30,6 +30,24 @@ export function formatPercent(ratio: number | null | undefined, locale: Locale =
   return new Intl.NumberFormat(locale, { style: "percent", maximumFractionDigits: 0 }).format(ratio);
 }
 
+/**
+ * Las opciones de Intl para el dinero de la consola de partners — spec 072 (D1).
+ * El dólar va con su código, nunca «US$» ni «$»: «10,00 USD» en español,
+ * «USD 10.00» en inglés. Las demás monedas, con lo que dé Intl («€»; las que no
+ * tienen símbolo propio salen con su código). Miles siempre agrupados, como
+ * `formatMoney`. `formatCurrency` (el Admin) no cambia.
+ */
+export function currencyFormat(currency: string, options: Intl.NumberFormatOptions = {}): Intl.NumberFormatOptions {
+  return {
+    style: "currency",
+    currency,
+    currencyDisplay: currency.toUpperCase() === "USD" ? "code" : "symbol",
+    useGrouping: true,
+    ...options,
+  };
+}
+
+/** El Admin: «1.234,50 US$». La consola de partners usa {@link currencyFormat}. */
 export function formatCurrency(amount: number | null | undefined, currency = "USD", locale: Locale = "es"): string {
   if (amount == null || Number.isNaN(amount)) return EM_DASH;
   return new Intl.NumberFormat(locale, { style: "currency", currency }).format(amount);

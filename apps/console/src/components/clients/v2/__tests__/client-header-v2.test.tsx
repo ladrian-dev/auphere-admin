@@ -76,13 +76,33 @@ describe("ClientHeaderV2", () => {
     expect(back.parentElement).toBe(screen.getByRole("heading", { level: 1 }).parentElement);
     expect(screen.getByText("Atiende desde el 3 sept 2026")).toBeVisible();
     const tabs = screen.getByRole("navigation", { name: "Secciones del cliente" });
-    expect(tabs.querySelector("ul")?.className).toMatch(/(^|\s)glass(\s|$)/);
+    expect(tabs.querySelector("[data-slot=client-tabs]")?.className).toMatch(/(^|\s)glass(\s|$)/);
     // Sin número en la pestaña (Andrés, 2026-10-28).
     expect(screen.getByRole("link", { name: "Agentes" })).toHaveAttribute("href", "/clients/barberia-cultor/agents");
     expect(screen.getByRole("link", { name: "Nuevo agente" })).toHaveAttribute("href", "/clients/barberia-cultor/agents/new");
-    // Activo, la cabecera no lleva insignia ni «⋯»: archivar y borrar están en la lista.
+    // Activo, la cabecera no lleva insignia, pero el «⋯» siempre está (spec 073, 2.1).
     expect(screen.queryByText("Activo")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Acciones de Barbería Cultor" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Acciones de Barbería Cultor" })).toBeVisible();
+  });
+
+  // Spec 074 (3.2): axe «list» (serious) en cada pestaña del cliente. La lente iba en un
+  // `<li role="none">` dentro de la lista, y un `ul` solo puede llevar elementos de lista.
+  it("la lista de pestañas solo lleva elementos de lista: la lente va fuera, a su lado", () => {
+    render(
+      <LocaleProvider locale="es">
+        <ClientHeaderV2 client={DETAIL} />
+      </LocaleProvider>,
+    );
+    const tabs = screen.getByRole("navigation", { name: "Secciones del cliente" });
+    const list = screen.getByRole("list");
+    expect(tabs).toContainElement(list);
+    const children = Array.from(list.children);
+    expect(children.map((c) => [c.tagName, c.getAttribute("role")])).toEqual(children.map(() => ["LI", null]));
+    expect(screen.getAllByRole("listitem")).toHaveLength(children.length);
+    const lens = tabs.querySelector("[data-slot=lens]");
+    expect(lens).not.toBeNull();
+    expect(list).not.toContainElement(lens as HTMLElement);
+    expect(lens?.parentElement).toBe(list.parentElement);
   });
 
   it.each([
@@ -118,7 +138,7 @@ describe("ClientHeaderV2", () => {
       );
       const tabs = screen.getByRole("navigation", { name: "Secciones del cliente" });
       const links = Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent);
-      expect(links).toEqual(["Panel", "Negocio", "Agentes", "Acceso"]);
+      expect(links).toEqual(["Panel", "Negocio", "Agentes", "Anuncios", "Acceso"]);
       const access = screen.getByRole("link", { name: "Acceso" });
       expect(access).toHaveAttribute("href", "/clients/barberia-cultor/access");
       expect(access).toHaveAttribute("aria-current", "page");

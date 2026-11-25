@@ -30,7 +30,7 @@ export async function setAgentModelAction(
   modelId: string | null,
   reason: string,
 ): Promise<Result<AgentModelView>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   if (!UUID_RE.test(tenantId) || !UUID_RE.test(agentId)) return { ok: false, error: "Ese agente no existe." };
   const why = reason.trim();
   if (!why) return { ok: false, code: "reason_required", error: "Hace falta el motivo." };

@@ -55,6 +55,7 @@ from nexus_channels.whatsapp_meta.credentials import resolve_send_credentials
 from nexus_worker.billing.expire_credit_cron import run_expire_credit_cron
 from nexus_worker.billing.process_event import run_billing_event_consumer
 from nexus_worker.config import WorkerSettings, get_api_settings, get_worker_settings
+from nexus_worker.conversions.dispatcher import run_conversion_dispatcher
 from nexus_worker.guardrails import OutcomeGrader
 from nexus_worker.health import models_payload, run_heartbeat
 from nexus_worker.jobs import run_jobs_consumer
@@ -68,6 +69,7 @@ from nexus_worker.runtime.llm import LiteLLMProvider, build_default_router
 from nexus_worker.runtime.pipeline import build_pipeline
 from nexus_worker.runtime.promote_subscriber import run_promote_subscriber
 from nexus_worker.signup.expire_signups_cron import run_expire_signups_cron
+from nexus_worker.streams.ad_referral_retention_cron import run_ad_referral_retention_cron
 from nexus_worker.streams.agent_sales_poll_cron import run_agent_sales_poll_cron
 from nexus_worker.streams.checkpoint_retention_cron import run_checkpoint_retention_cron
 from nexus_worker.streams.claimer import run_stream_claimer
@@ -107,10 +109,12 @@ from nexus_worker.streams.reservation_offers_cron import run_reservation_offers_
 from nexus_worker.streams.reservation_outbox_cron import run_reservation_outbox_cron
 from nexus_worker.streams.reservation_templates_cron import run_reservation_templates_cron
 from nexus_worker.streams.reservations_cron import run_reservations_cron
+from nexus_worker.streams.service_memberships_cron import run_service_memberships_cron
 from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
 from nexus_worker.streams.usage_alerts_cron import run_usage_alerts_cron
 from nexus_worker.streams.wallet_crons import (
+    run_attention_resolve_cron,
     run_bag_alerts_cron,
     run_bag_refill_cron,
     run_fx_rates_cron,
@@ -163,6 +167,9 @@ EGRESS_TASK_NAMES = frozenset(
         # Spec 031: los avisos al teléfono (APNs y FCM). Egress como los otros
         # dos: envía hacia fuera, drena un outbox y no es un cron.
         "push-dispatcher",
+        # Spec 076: los eventos de conversión a Meta. Egress, como push: drena
+        # una cola hacia fuera. También en ``_spawn`` y en ``ALL_EXPECTED``.
+        "conversion-events-dispatcher",
     }
 )
 SCHEDULER_TASK_NAMES = frozenset(
@@ -176,6 +183,9 @@ SCHEDULER_TASK_NAMES = frozenset(
         "agent-sales-poll-cron",
         "partner-receipt-cron",
         "partner-charges-cron",
+        # Spec 077: la membresía de los clientes (cargo al saldo y relectura de
+        # Stripe). También en ``_spawn`` y en ``ALL_EXPECTED``.
+        "service-memberships-cron",
         "wallet-renewal-cron",
         # Spec 005: caduca el crédito comprado doce meses después de una baja.
         "expire-credit-cron",
@@ -216,6 +226,10 @@ SCHEDULER_TASK_NAMES = frozenset(
         # Spec 064 (requisito 5) — el cierre por inactividad de la Bandeja (5 min).
         # También en ``_spawn`` y en ``ALL_EXPECTED``.
         "inbox-autoclose-cron",
+        # Spec 076 (requisito 1.7) — el identificador del clic de un anuncio se
+        # borra a los 90 días (una vez al día). También en ``_spawn`` y en
+        # ``ALL_EXPECTED``.
+        "ad-referral-retention-cron",
         # Spec 047 (T037): lo entregado por Meta frente a lo guardado, por canal
         # y día. Sin persona y una vez al día: del planificador.
         "meta-reconciliation-cron",
@@ -226,6 +240,9 @@ SCHEDULER_TASK_NAMES = frozenset(
         "bag-refill-cron",
         "bag-alerts-cron",
         "ledger-reconciliation-cron",
+        # Spec 071 (2.3): cada hora, los avisos de condición que ya no pasan. También
+        # en ``_spawn`` y en ``ALL_EXPECTED``.
+        "attention-resolve-cron",
         # Spec 047, 51.7 (enmienda del 2026-11-10): las sugerencias semanales
         # (``weekly-suggestions-cron``) ya no arrancan. El módulo se queda.
     }
@@ -539,6 +556,8 @@ def egress_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[asyncio.
             run_owner_outbox_dispatcher(stop=ctx.stop, meta_client=ctx.meta_client),
         ),
         _spawn("push-dispatcher", run_push_dispatcher(stop=ctx.stop)),
+        # Spec 076: los resultados del agente a la API de conversiones de Meta.
+        _spawn("conversion-events-dispatcher", run_conversion_dispatcher(stop=ctx.stop)),
     ]
 
 
@@ -596,16 +615,21 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         _spawn("reservation-templates-cron", run_reservation_templates_cron(stop=ctx.stop)),
         # Spec 064 (requisito 5): las conversaciones sin mensajes se resuelven solas.
         _spawn("inbox-autoclose-cron", run_inbox_autoclose_cron(stop=ctx.stop, redis=ctx.redis)),
+        # Spec 076 (requisito 1.7): el clic del anuncio pierde su identificador.
+        _spawn("ad-referral-retention-cron", run_ad_referral_retention_cron(stop=ctx.stop)),
         _spawn("meta-reconciliation-cron", run_meta_reconciliation_cron(stop=ctx.stop)),
         _spawn("model-lifecycle-cron", run_model_lifecycle_cron(stop=ctx.stop, redis=ctx.redis)),
         _spawn("fx-rates-cron", run_fx_rates_cron(stop=ctx.stop)),
         _spawn("bag-refill-cron", run_bag_refill_cron(stop=ctx.stop)),
         _spawn("bag-alerts-cron", run_bag_alerts_cron(stop=ctx.stop)),
         _spawn("ledger-reconciliation-cron", run_ledger_reconciliation_cron(stop=ctx.stop)),
+        # Spec 071 (2.3): los avisos de condición que ya no pasan se resuelven solos.
+        _spawn("attention-resolve-cron", run_attention_resolve_cron(stop=ctx.stop)),
         _spawn("agent-sales-poll-cron", run_agent_sales_poll_cron(stop=ctx.stop)),
         _spawn("partner-receipt-cron", run_partner_receipt_cron(stop=ctx.stop)),
         # Spec 041: automatic recharge and the postpaid settlement on the 1st.
         _spawn("partner-charges-cron", run_partner_charges_cron(stop=ctx.stop)),
+        _spawn("service-memberships-cron", run_service_memberships_cron(stop=ctx.stop)),
         _spawn("wallet-renewal-cron", run_wallet_renewal_cron(stop=ctx.stop)),
         _spawn("expire-credit-cron", run_expire_credit_cron(stop=ctx.stop)),
         _spawn("expire-signups-cron", run_expire_signups_cron(stop=ctx.stop)),

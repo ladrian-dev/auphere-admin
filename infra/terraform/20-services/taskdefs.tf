@@ -336,6 +336,12 @@ locals {
               value = aws_secretsmanager_secret.litellm_admin[0].arn
             },
           ] : [],
+          # Spec 076: los clientes que ven «Resultados en anuncios» en la página
+          # de su número. Solo lo lee la API (la consola); la cola y el envío
+          # miran la medición de cada número. Vacío, la taskdef no cambia.
+          var.ad_measurement_tenants != "" ? [
+            { name = "NEXUS_AD_MEASUREMENT_TENANTS", value = var.ad_measurement_tenants },
+          ] : [],
         )
         portMappings = [{ containerPort = 8000, protocol = "tcp" }]
         healthCheck = {

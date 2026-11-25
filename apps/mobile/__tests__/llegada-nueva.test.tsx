@@ -84,7 +84,8 @@ describe("new reservation · Servicios (R5.2, R5.5–R5.8)", () => {
       <NewReservationForm config={servicesConfig} today={TODAY} initialDate={TODAY} slots={free} slotsLoading={false} onQuery={onQuery} onSave={noop} saving={false} error={null} online t={t} locale="es" />,
     );
     expect(onQuery).toHaveBeenLastCalledWith({ date: TODAY, serviceId: "s-corte", proId: null });
-    await fireEvent.press(screen.getByText("Mañana"));
+    // Spec 069 (R15.1): the days are the strip of the seven open days ahead, each named in full.
+    await fireEvent.press(screen.getByLabelText("Viernes, 23 de octubre"));
     expect(onQuery).toHaveBeenLastCalledWith({ date: "2026-10-23", serviceId: "s-corte", proId: null });
     expect(screen.getByLabelText("17:00 con Marcos Soto")).toBeTruthy();
   });
@@ -105,8 +106,9 @@ describe("new reservation · Servicios (R5.2, R5.5–R5.8)", () => {
     await render(
       <NewReservationForm config={servicesConfig} today={TODAY} initialDate={TODAY} slots={five} slotsLoading={false} onQuery={noop} onSave={noop} saving={false} error={null} online t={t} locale="es" />,
     );
-    // Four to a row: the fifth is followed by three empty places, so it does not stretch.
-    expect(screen.getAllByTestId("slot-filler", { includeHiddenElements: true })).toHaveLength(3);
+    // Four to a row, per group (spec 069, R15.1: morning and afternoon, the taken times in place):
+    // 9:00–13:30 are ten and 14:00–18:30 ten, so each group's last row gets two empty places.
+    expect(screen.getAllByTestId("slot-filler", { includeHiddenElements: true })).toHaveLength(4);
   });
 
   it("saves once with a name and a time, and says the summary", async () => {
@@ -114,16 +116,21 @@ describe("new reservation · Servicios (R5.2, R5.5–R5.8)", () => {
     await render(
       <NewReservationForm config={servicesConfig} today={TODAY} initialDate={TODAY} slots={free} slotsLoading={false} onQuery={noop} onSave={onSave} saving={false} error={null} online t={t} locale="es" />,
     );
-    expect(screen.getByRole("button", { name: "Guardar reserva" }).props.accessibilityState).toMatchObject({ disabled: true });
+    // Spec 069 (Historia 5, escenario 2): «Guardar» always answers; with nothing chosen it says what is missing.
+    await fireEvent.press(screen.getByText("Guardar reserva"));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText("Elige una hora.")).toBeTruthy();
     await fireEvent.press(screen.getByLabelText("17:00 con Marcos Soto"));
     await fireEvent.changeText(screen.getByLabelText("Nombre y apellido"), "Lucía Fernández");
     expect(screen.getByText("Hoy a las 17:00 · Corte con Marcos")).toBeTruthy();
+    // Spec 064 R3 (now in the app, spec 069 R15.1): the phone is required.
+    await fireEvent.changeText(screen.getByLabelText("Teléfono"), "+56 9 6123 4567");
     await fireEvent.press(screen.getByText("Guardar reserva"));
     expect(onSave).toHaveBeenCalledTimes(1);
     expect(onSave).toHaveBeenCalledWith({
       date: TODAY,
       time: 17 * 60,
-      customer: { name: "Lucía Fernández", phone: null },
+      customer: { name: "Lucía Fernández", phone: "+56 9 6123 4567" },
       serviceId: "s-corte",
       proId: "p-marcos",
     });

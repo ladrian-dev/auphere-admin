@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Archive, Plus } from "lucide-react";
+import { Archive, ChevronRight, Pencil, Plus } from "lucide-react";
 import * as React from "react";
 import { toast } from "sonner";
 
@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
   Textarea,
+  cn,
 } from "@nexus/ui";
 
 import {
@@ -42,8 +43,9 @@ import { amountInput, parseAmount } from "@/lib/amount";
 import type { Price, SectionState, Service, ServiceBody, Services } from "@/lib/backend/business-sections";
 import { CATEGORY_MAX, NAME_MAX } from "@/lib/business-rules";
 
+import { matchesText } from "./business-search";
 import { ConflictNotice, SectionFrame, problemOf, useReportState, type Result } from "./section-frame";
-import { DURATIONS, byCategory, categoriesOf, priceText } from "./services-model";
+import { DURATIONS, byCategory, categoriesOf, openGroupsByDefault, priceText, unusedColumns } from "./services-model";
 
 type Act<B> = (body: B) => Promise<Result<Services>>;
 export type ServicesActions = {
@@ -94,6 +96,7 @@ export function ServicesSection({
   onStateChange,
   onPriceCurrencyChange,
   categorizable = true,
+  query = "",
 }: {
   refId: string;
   services: Services;
@@ -108,6 +111,8 @@ export function ServicesSection({
   onPriceCurrencyChange?: () => void;
   /** Spec 055: la consola lite enseña los grupos pero no edita la categoría. */
   categorizable?: boolean;
+  /** Spec 073 (4.1): lo buscado arriba de Negocio. */
+  query?: string;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -123,9 +128,24 @@ export function ServicesSection({
     ? { refId, section: "services" as const, onConfirmed: () => setServices((prev) => ({ ...prev, state: "complete" as const })) }
     : undefined;
   const live = services.items.filter((s) => !s.archived);
-  const groups = byCategory(live, locale);
-  const grouped = groups.some((g) => g.category !== null);
-  const columns = canWrite ? 5 : 4;
+  // Spec 073 (4.1): lo buscado filtra; los grupos con resultados se abren.
+  const searching = query.trim() !== "";
+  const matched = searching ? live.filter((s) => matchesText(query, s.name, s.description, s.category)) : live;
+  const groups = byCategory(matched, locale);
+  const grouped = byCategory(live, locale).some((g) => g.category !== null);
+  // Spec 073 (4.2): con más de 12, plegados salvo el primero.
+  const [open, setOpen] = React.useState(() => openGroupsByDefault(byCategory(live, locale)));
+  const isOpen = (category: string | null) => searching || !grouped || open.has(category);
+  const toggle = (category: string | null) =>
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  // Spec 073 (4.3): lo que es igual en todos se dice una vez, sin su columna.
+  const same = unusedColumns(live);
+  const columns = 1 + (same.booking ? 0 : 1) + (same.price ? 0 : 1) + (same.agent ? 0 : 1) + (canWrite ? 1 : 0);
 
   // Spec 056 (13.1): el dinero con el formato del idioma de la persona (`lib/amount.ts`).
   const price = (s: Service) =>
@@ -190,17 +210,35 @@ export function ServicesSection({
     >
       <div className="grid min-w-0 gap-4">
         {conflict ? <ConflictNotice /> : null}
+        {live.length > 0 && (same.price || same.booking || same.agent) ? (
+          <ul aria-label={t("business.services.same.label")} className="grid min-w-0 gap-1 text-sm text-pretty text-muted-foreground" data-slot="services-same">
+            {same.price ? (
+              <li className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <span>{t("business.services.same.price", { n: live.length })}</span>
+                {canWrite ? (
+                  <Button type="button" size="sm" variant="link" className="h-auto px-0" onClick={() => setEditing(live[0]!)}>
+                    {t("business.services.same.price.fix")}
+                  </Button>
+                ) : null}
+              </li>
+            ) : null}
+            {same.booking ? <li>{t("business.services.same.booking")}</li> : null}
+            {same.agent ? <li>{t("business.services.same.agent", { agent: same.agent })}</li> : null}
+          </ul>
+        ) : null}
         {live.length === 0 ? (
           <EmptyState title={t("business.services.empty")} readonly />
+        ) : matched.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("business.services.search.none", { q: query.trim() })}</p>
         ) : (
           <div className="min-w-0 overflow-x-auto" data-scroll-x>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>{t("business.services.columns.service")}</TableHead>
-                  <TableHead>{t("business.services.columns.booking")}</TableHead>
-                  <TableHead>{t("business.services.price")}</TableHead>
-                  <TableHead>{t("business.services.used_by")}</TableHead>
+                  {same.booking ? null : <TableHead>{t("business.services.columns.booking")}</TableHead>}
+                  {same.price ? null : <TableHead>{t("business.services.price")}</TableHead>}
+                  {same.agent ? null : <TableHead>{t("business.services.used_by")}</TableHead>}
                   {canWrite ? <TableHead className="text-right">{t("business.services.columns.actions")}</TableHead> : null}
                 </TableRow>
               </TableHeader>
@@ -210,23 +248,36 @@ export function ServicesSection({
                     {grouped ? (
                       <TableRow data-slot="service-category">
                         <TableHead colSpan={columns} scope="colgroup" className="bg-muted/50 text-xs font-medium text-muted-foreground">
-                          {group.category ?? t("business.services.category.none")}
+                          <button
+                            type="button"
+                            aria-expanded={isOpen(group.category)}
+                            disabled={searching}
+                            onClick={() => toggle(group.category)}
+                            className="inline-flex min-w-0 items-center gap-1 rounded-sm text-left hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-default"
+                          >
+                            <ChevronRight aria-hidden="true" className={cn("size-4 shrink-0 transition-transform motion-reduce:transition-none", isOpen(group.category) && "rotate-90")} />
+                            {t("business.services.group", { category: group.category ?? t("business.services.category.none"), n: group.items.length })}
+                          </button>
                         </TableHead>
                       </TableRow>
                     ) : null}
-                    {group.items.map((s) => (
+                    {(isOpen(group.category) ? group.items : []).map((s) => (
                       <TableRow key={s.id}>
                         <TableCell className="min-w-40 whitespace-normal">
                           <span className="font-medium text-pretty break-words">{s.name}</span>
                           {s.description ? <span className="block text-xs text-pretty text-muted-foreground">{s.description}</span> : null}
                         </TableCell>
-                        <TableCell>
-                          {s.bookable && s.duration_min ? t("business.services.minutes", { n: s.duration_min }) : t("business.services.not_bookable")}
-                        </TableCell>
-                        <TableCell className="tabular-nums">{price(s)}</TableCell>
-                        <TableCell className="min-w-32 whitespace-normal">
-                          {s.used_by.length ? s.used_by.map((a) => a.name).join(", ") : t("business.services.used_by.nobody")}
-                        </TableCell>
+                        {same.booking ? null : (
+                          <TableCell>
+                            {s.bookable && s.duration_min ? t("business.services.minutes", { n: s.duration_min }) : t("business.services.not_bookable")}
+                          </TableCell>
+                        )}
+                        {same.price ? null : <TableCell className="tabular-nums">{price(s)}</TableCell>}
+                        {same.agent ? null : (
+                          <TableCell className="min-w-32 whitespace-normal">
+                            {s.used_by.length ? s.used_by.map((a) => a.name).join(", ") : t("business.services.used_by.nobody")}
+                          </TableCell>
+                        )}
                         {canWrite ? (
                           <TableCell className="text-right">
                             {menu ? (

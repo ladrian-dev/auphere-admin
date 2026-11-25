@@ -36,7 +36,7 @@ async function done(row: AuphereOwnerChannelOut | null): Promise<Result<AuphereO
  * session (`X-Operator-Id`); the API records that person in the audit.
  */
 export async function createNumberAction(body: AuphereChannelCreateInput): Promise<Result<AuphereOwnerChannelOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     return await done(await backend.createAuphereChannel(body, operator.id));
   } catch (err) {
@@ -49,7 +49,7 @@ export async function updateNumberAction(
   id: string,
   body: AuphereChannelUpdateInput,
 ): Promise<Result<AuphereOwnerChannelOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     return await done(await backend.updateAuphereChannel(id, body, operator.id));
   } catch (err) {
@@ -59,7 +59,7 @@ export async function updateNumberAction(
 
 /** Spec 059 (6.3, 6.4): deactivating, confirmed in the page, with a reason. */
 export async function deactivateNumberAction(id: string, reason: string): Promise<Result<AuphereOwnerChannelOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     return await done(await backend.deactivateAuphereChannel(id, reason, operator.id));
   } catch (err) {

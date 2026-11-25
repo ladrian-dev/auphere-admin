@@ -29,7 +29,7 @@ export async function reviewGeneratedGuideAction(
   guideId: string,
   body: ReviewBody,
 ): Promise<GuideResult<GeneratedGuide>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     const data = await sectorGuidesBackend.review(tenantId, guideId, body, operator.id);
     revalidatePath(LIST_PATH);
@@ -50,7 +50,7 @@ export async function promoteGeneratedGuideAction(
   guideId: string,
   body: PromoteBody,
 ): Promise<GuideResult<SectorGuide>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     const data = await sectorGuidesBackend.promote(tenantId, guideId, body, operator.id);
     revalidatePath(LIST_PATH);

@@ -214,7 +214,7 @@ Test primero (constitución §VII): la prueba se escribe, se ve en rojo y solo e
   _Requisitos: 6.1–6.5_
 - [ ] T042 [US5] Entrantes:
   - `button` va al agente con su plantilla;
-  - `referral` se guarda en `conversations.ad_referral` (migración `0207`) y va como contexto de datos;
+  - ~~`referral` se guarda en `conversations.ad_referral` (migración `0207`) y va como contexto de datos;~~ Pasa a la spec 076 (requisito 1), que lo guarda por contacto para medir conversiones;
   - `contacts` legibles.
 
   Pruebas de webhook y de turno.

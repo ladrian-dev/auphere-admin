@@ -7,6 +7,7 @@ import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 
 import { CertificationsView } from "./certifications-view";
 import { RunCertification } from "./run-certification";
+import { requirePageOperator } from "@/lib/session";
 
 /**
  * Spec 059 (2.3): parked, the address is «no existe» from the metadata on — before
@@ -28,6 +29,7 @@ export default async function CertificationsPage({
 }: {
   searchParams: Promise<{ deployment?: string; task?: string }>;
 }) {
+  await requirePageOperator("read");
   // Spec 059 (2.3): parked, the address is «no existe», before asking the API.
   if (!ROUTER_PANEL_VISIBLE) notFound();
   const { deployment, task } = await searchParams;

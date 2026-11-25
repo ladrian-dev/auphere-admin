@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { BrandLockup, Eyebrow } from "@nexus/ui";
+import { safeRedirect } from "@/lib/safe-redirect";
 import { getOperator } from "@/lib/session";
 
 import { LoginForm } from "./login-form";
@@ -34,7 +35,7 @@ export default async function LoginPage({
           </div>
         </header>
 
-        <LoginForm redirectTo={from && from.startsWith("/") ? from : "/tenants"} />
+        <LoginForm redirectTo={safeRedirect(from)} />
 
         <footer className="flex items-center justify-between text-xs font-mono text-muted-foreground uppercase tracking-eyebrow"
         >

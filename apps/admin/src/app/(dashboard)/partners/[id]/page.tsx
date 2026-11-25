@@ -6,6 +6,7 @@ import { backend } from "@/lib/backend";
 import { fullDateTime } from "@/lib/format";
 
 import { ProfileForm } from "./profile-form";
+import { requirePageOperator } from "@/lib/session";
 
 /**
  * Spec 031 (R4.3, R4.4): the partner's summary — who they are, how to reach
@@ -13,6 +14,7 @@ import { ProfileForm } from "./profile-form";
  * live in Configuración.
  */
 export default async function PartnerSummaryPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePageOperator("read");
   const { id } = await params;
   const partner = await backend.getPartner(id);
   if (!partner) notFound();

@@ -16,6 +16,8 @@
 import { revalidatePath } from "next/cache";
 
 import { BackendError, backend, type TenantStatus } from "@/lib/backend";
+import { toCodedFailure } from "@/lib/action-result";
+import { SEND_ONLY_ERRORS } from "@/lib/send-only";
 import { requireOperator } from "@/lib/session";
 
 export type ActionResult<T> =
@@ -30,7 +32,8 @@ function err(e: unknown): { ok: false; error: string } {
   return { ok: false, error: e instanceof Error ? e.message : String(e) };
 }
 
-export async function setTenantStatusAction(
+/** Not exported: only the two actions below reach it, each after its own guard. */
+async function updateStatus(
   tenantId: string,
   status: TenantStatus,
 ): Promise<ActionResult<{ status: TenantStatus }>> {
@@ -43,6 +46,31 @@ export async function setTenantStatusAction(
   } catch (e) {
     return err(e);
   }
+}
+
+/**
+ * Spec 079 (2.4): pausing and resuming are day-to-day operation (`operate`);
+ * archiving is deleting (constitution §IV) and has its own action. The status
+ * arrives from the browser, so it is checked here, not only by its type.
+ */
+export async function setTenantPausedAction(
+  tenantId: string,
+  status: "active" | "paused",
+): Promise<ActionResult<{ status: TenantStatus }>> {
+  await requireOperator("operate");
+  if (status !== "active" && status !== "paused") return { ok: false, error: "invalid status" };
+  // Reactivating an archived tenant undoes a delete: it asks for `delete` too.
+  if (status === "active") {
+    const current = await backend.getTenant(tenantId).catch(() => null);
+    if (!current || current.status === "archived") await requireOperator("delete");
+  }
+  return updateStatus(tenantId, status);
+}
+
+/** Spec 079 (2.4): archive a tenant — `delete`, like the hard delete below. */
+export async function archiveTenantAction(tenantId: string): Promise<ActionResult<{ status: TenantStatus }>> {
+  await requireOperator("delete");
+  return updateStatus(tenantId, "archived");
 }
 
 /**
@@ -59,6 +87,7 @@ export async function setTenantStatusAction(
 export async function deleteTenantAction(
   tenantId: string,
 ): Promise<ActionResult<{ deleted: true }>> {
+  await requireOperator("delete");
   try {
     await backend.deleteTenant(tenantId);
     revalidatePath("/tenants");
@@ -74,8 +103,9 @@ export async function updateTenantBillingAction(
   tenantId: string,
   body: import("@/lib/backend").TenantBillingUpdateInput,
 ): Promise<ActionResult<import("@/lib/backend").TenantBillingOut>> {
+  const operator = await requireOperator("money");
   try {
-    const r = await backend.updateTenantBilling(tenantId, body);
+    const r = await backend.updateTenantBilling(tenantId, body, operator.id);
     if (!r) return { ok: false, error: "empty response" };
     revalidatePath(`/tenants/${tenantId}/billing`);
     revalidatePath(`/tenants/${tenantId}`);
@@ -88,6 +118,7 @@ export async function updateTenantBillingAction(
 export async function createBillingPlanAction(
   body: import("@/lib/backend").BillingPlanCreateInput,
 ): Promise<ActionResult<import("@/lib/backend").BillingPlanOut>> {
+  await requireOperator("money");
   try {
     const r = await backend.createBillingPlan(body);
     if (!r) return { ok: false, error: "empty response" };
@@ -103,7 +134,7 @@ export async function recordTenantPaymentAction(
   tenantId: string,
   body: import("@/lib/backend").TenantPaymentInput,
 ): Promise<ActionResult<import("@/lib/backend").TenantPaymentOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const r = await backend.recordTenantPayment(tenantId, body, operator.id);
     if (!r) return { ok: false, error: "empty response" };
@@ -119,7 +150,7 @@ export async function voidTenantPaymentAction(
   tenantId: string,
   paymentId: string,
 ): Promise<ActionResult<import("@/lib/backend").TenantPaymentOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const r = await backend.voidTenantPayment(tenantId, paymentId, operator.id);
     if (!r) return { ok: false, error: "empty response" };
@@ -137,7 +168,7 @@ export async function setUnlimitedConsumptionAction(
   tenantId: string,
   unlimited: boolean,
 ): Promise<ActionResult<import("@/lib/backend").UnlimitedConsumption>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const r = await backend.setUnlimitedConsumption(tenantId, unlimited, operator.id);
     if (!r) return { ok: false, error: "empty response" };
@@ -156,5 +187,23 @@ export async function setUnlimitedConsumptionAction(
       }
     }
     return err(e);
+  }
+}
+
+/** Spec 077 (1.5): mark or unmark a client as send-only. Asked for with a
+ *  confirmation; the audit names the operator. */
+export async function setSendOnlyAction(
+  tenantId: string,
+  sendOnly: boolean,
+): Promise<ActionResult<{ send_only: boolean }>> {
+  const operator = await requireOperator("operate");
+  try {
+    const r = await backend.setSendOnly(tenantId, sendOnly, operator.id);
+    revalidatePath("/tenants");
+    revalidatePath(`/tenants/${tenantId}`, "layout");
+    return { ok: true, data: { send_only: r?.send_only ?? sendOnly } };
+  } catch (e) {
+    const failure = toCodedFailure(e, SEND_ONLY_ERRORS);
+    return { ok: false, error: failure.error };
   }
 }

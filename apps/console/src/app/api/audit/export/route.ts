@@ -10,6 +10,8 @@ const query = z.object({
   // Spec 047 (49.1): el CSV con los mismos filtros que la pantalla.
   person: z.string().max(255).optional(),
   days: z.enum(["7", "30", "90", "all"]).optional(),
+  // Spec 073 (1.6): «Solo cambios» o «Todo, con accesos».
+  view: z.enum(["changes", "all"]).optional(),
   action: z.string().max(80).optional(),
   client: z.string().max(255).optional(),
   category: z.string().max(40).optional(),

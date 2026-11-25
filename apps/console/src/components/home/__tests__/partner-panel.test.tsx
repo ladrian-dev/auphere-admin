@@ -10,7 +10,7 @@ import type { HomePanel } from "@/lib/backend/home-usage";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn(), warning: vi.fn() }) }));
-const money = vi.hoisted(() => ({ bagContextAction: vi.fn(), assignBalanceAction: vi.fn(), lowerBalanceAction: vi.fn(), requestBalanceAction: vi.fn() }));
+const money = vi.hoisted(() => ({ bagContextAction: vi.fn(), assignBalanceAction: vi.fn(), lowerBalanceAction: vi.fn(), requestBalanceAction: vi.fn(), requestBuildExtensionAction: vi.fn() }));
 vi.mock("@/app/(console)/usage/money-actions", () => money);
 
 const { PartnerPanel } = await import("../partner-panel");
@@ -32,11 +32,11 @@ function panel(over: Partial<HomePanel> = {}): HomePanel {
       period: "month",
       since: "2026-10-01T00:00:00Z",
       until: "2026-11-01T00:00:00Z",
+      // Spec 072 (3.1): solo las bolsas de sus clientes, que suman el total.
       total: EUR(1234.5),
       shares: [
         { kind: "client", external_client_ref: "flor-y-encanto", client_name: "Flor y Encanto", line: null, amount: EUR(900), approx: false },
-        { kind: "rest", external_client_ref: null, client_name: null, line: null, amount: EUR(300), approx: false },
-        { kind: "line", external_client_ref: null, client_name: null, line: "companion", amount: EUR(34.5), approx: false },
+        { kind: "rest", external_client_ref: null, client_name: null, line: null, amount: EUR(334.5), approx: false },
       ],
     },
     clients: { period: "now", serving: 7, not_archived: 9, onboarding: 1 },
@@ -72,7 +72,7 @@ describe("PartnerPanel", () => {
     const spend = container.querySelector("[data-slot=panel-spend]") as HTMLElement;
     expect(within(spend).getByText("Del 1 oct al 31 oct")).toBeTruthy();
     expect(plain(spend.textContent)).toContain("1.234,50 €");
-    expect(within(spend).getByRole("img", { name: /Flor y Encanto 900,00\s€, El resto 300,00\s€, Companion y teammates 34,50\s€/ })).toBeTruthy();
+    expect(within(spend).getByRole("img", { name: /Flor y Encanto 900,00\s€, El resto 334,50\s€$/ })).toBeTruthy();
     const clients = container.querySelector("[data-slot=panel-clients]") as HTMLElement;
     expect(within(clients).getByText("Clientes atendiendo")).toBeTruthy();
     expect(plain(clients.textContent)).toContain("7");
@@ -156,10 +156,155 @@ describe("PartnerPanel", () => {
     expect(within(region).getByRole("button", { name: "Ver menos" })).toBeVisible();
   });
 
-  it("sin nada que arreglar: «Todos tus clientes están atendiendo»", () => {
+  it("sin nada que arreglar: «Nada te necesita ahora» (spec 071, 4.4)", () => {
     show(panel({ attention: [], all_serving: true }));
-    expect(screen.getByText("Todos tus clientes están atendiendo.")).toBeTruthy();
+    expect(screen.getByText("Nada te necesita ahora.")).toBeTruthy();
     expect(screen.queryByRole("region", { name: /Necesita tu atención/ })).toBeNull();
+  });
+
+  it("spec 071: lo del partner va en la lista sin enlace a un cliente, y se ve en sus cifras", async () => {
+    const build = {
+      scope: "partner" as const,
+      severity: "warning" as const,
+      external_client_ref: null,
+      client_name: null,
+      code: "build_cap_warning" as const,
+      count: 1,
+      action: "request_build_extension" as const,
+      href: "/usage",
+      data: { pct: 84, spent: EUR(52.23), cap: EUR(62) },
+    };
+    const account = {
+      scope: "partner" as const,
+      severity: "warning" as const,
+      external_client_ref: null,
+      client_name: null,
+      code: "account_low" as const,
+      count: 1,
+      action: "buy_balance" as const,
+      href: "/billing",
+      data: { available: EUR(60), days_left: 5 },
+    };
+    const { container } = show(panel({ attention: [build, account, ...panel().attention!] }));
+    // La tarjeta del gasto lleva el tope con su barra.
+    const line = container.querySelector("[data-slot=panel-build]")!;
+    expect(plain(line.textContent)).toContain("Construcción y pruebas: 52,23 € de 62,00 € (84 %)");
+    expect(within(line as HTMLElement).getByRole("meter", { name: "Construcción y pruebas" })).toHaveAttribute("aria-valuenow", "84");
+    // «Saldo disponible» dice que está bajo, con texto.
+    expect(container.querySelector("[data-slot=panel-balance-state]")).toHaveTextContent("Saldo bajo");
+    // En la lista: sin enlace a un cliente, con su texto y su arreglo.
+    const region = screen.getByRole("region", { name: /Necesita tu atención/ });
+    const row = region.querySelector("[data-code=build_cap_warning]") as HTMLElement;
+    expect(row).toHaveAttribute("data-scope", "partner");
+    expect(within(row).queryByRole("link")).toBeNull();
+    expect(plain(row.textContent)).toContain("Construcción y pruebas");
+    // Todas las filas con «⋯», también las de la cuenta (owner, 2026-11-22): el arreglo es su primera opción.
+    expect(within(row).queryByRole("button", { name: "Pedir ampliación" })).toBeNull();
+    await userEvent.click(within(row).getByRole("button", { name: /Construcción y pruebas/ }));
+    money.requestBuildExtensionAction.mockResolvedValue({ ok: true, data: { status: "requested" } });
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Pedir ampliación" }));
+    expect(money.requestBuildExtensionAction).toHaveBeenCalledTimes(1);
+    expect(plain(region.querySelector("[data-code=account_low]")!.textContent)).toContain("Te queda saldo para unos 5 días a este ritmo.");
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("spec 072: el gasto cuadra, Construcción va siempre en su línea y la barra del saldo es lo disponible", async () => {
+    const budget = { cap: EUR(62), spent: EUR(12.4), remaining: EUR(49.6), state: "ok" as const, paid_by: "auphere" as const };
+    const long = "Clínica Dental Sonrisa Perfecta de Chamberí";
+    const p = panel({
+      spend: {
+        ...panel().spend!,
+        total: EUR(100),
+        shares: [{ kind: "client", external_client_ref: "clinica", client_name: long, line: null, amount: EUR(100), approx: false }],
+      },
+    });
+    const { container, rerender } = render(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={p} buildBudget={budget} />
+      </LocaleProvider>,
+    );
+    const spend = container.querySelector("[data-slot=panel-spend]") as HTMLElement;
+    // 3.2 y 3.3: una parte al 100 %, con su nombre entero (sin cortar).
+    expect(plain(spend.textContent)).toContain("100 %");
+    const name = within(spend).getByTitle(long);
+    expect(name.className).not.toContain("truncate");
+    // 3.4: por debajo del 80 %, neutra y con quién la paga; sin botón.
+    const line = container.querySelector("[data-slot=panel-build]") as HTMLElement;
+    expect(line).toHaveAttribute("data-tone", "calm");
+    expect(plain(line.textContent)).toContain("Construcción y pruebas: 12,40 € de 62,00 € · la paga Auphere hasta el tope");
+    expect(within(line).getByRole("meter", { name: "Construcción y pruebas" })).toHaveAttribute("aria-valuenow", "20");
+    expect(within(line).queryByRole("button")).toBeNull();
+    // 2.5: la barra de «Saldo disponible» es lo disponible (60 de 74,28).
+    const bar = container.querySelector("[data-slot=panel-balance-bar]") as HTMLElement;
+    expect(bar).toHaveAttribute("aria-valuenow", "81");
+    expect(bar.getAttribute("aria-label")?.replace(/\s/g, " ")).toBe("Disponible: 60,00 €");
+    // Desde el 80 %: la línea de la 071, en ámbar, con «Pedir ampliación» (4.4).
+    const warn = {
+      scope: "partner" as const,
+      severity: "warning" as const,
+      external_client_ref: null,
+      client_name: null,
+      code: "build_cap_warning" as const,
+      count: 1,
+      action: "request_build_extension" as const,
+      href: "/usage",
+      data: { pct: 84, spent: EUR(52.23), cap: EUR(62) },
+    };
+    rerender(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={{ ...p, attention: [warn] }} buildBudget={budget} />
+      </LocaleProvider>,
+    );
+    const hot = container.querySelector("[data-slot=panel-build]") as HTMLElement;
+    expect(hot).toHaveAttribute("data-tone", "warn");
+    expect(plain(hot.textContent)).toContain("52,23 € de 62,00 € (84 %)");
+    money.requestBuildExtensionAction.mockResolvedValue({ ok: true, data: { status: "requested" } });
+    await userEvent.click(within(hot).getByRole("button", { name: "Pedir ampliación" }));
+    expect(money.requestBuildExtensionAction).toHaveBeenCalledTimes(1);
+    expect(await axeViolations(container)).toEqual([]);
+  });
+
+  it("«Saldo disponible» lleva «Recargar saldo» para quien puede comprar (owner, 2026-11-22)", async () => {
+    const { container, rerender } = render(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={panel()} canBuy />
+      </LocaleProvider>,
+    );
+    const balance = container.querySelector("[data-slot=panel-balance]") as HTMLElement;
+    // Solo el «+»: el nombre es su etiqueta y su pista, sin texto a la vista.
+    const plus = within(balance).getByRole("button", { name: "Recargar saldo" });
+    expect(plus.textContent?.trim()).toBe("");
+    expect(plus).toHaveAttribute("title", "Recargar saldo");
+    await userEvent.click(plus);
+    expect(await screen.findByRole("dialog", { name: "Comprar saldo" })).toBeInTheDocument();
+    rerender(
+      <LocaleProvider locale="es">
+        <PartnerPanel panel={panel()} />
+      </LocaleProvider>,
+    );
+    expect(within(container.querySelector("[data-slot=panel-balance]") as HTMLElement).queryByRole("button", { name: "Recargar saldo" })).toBeNull();
+  });
+
+  it("las conversaciones son del mes, del día 1 a hoy, contra los mismos días del mes pasado (owner, 2026-11-22)", () => {
+    const days = Array.from({ length: 22 }, (_, i) => `2026-11-${String(i + 1).padStart(2, "0")}`);
+    const daily = {
+      period: "month" as const,
+      days,
+      resolved_without_person: days.map((_, i) => (i % 2 ? 2 : 1)),
+      handed_to_person: days.map(() => 0),
+      previous_total: 22,
+    };
+    const { container } = show(panel({ conversations_per_day: daily }));
+    const count = container.querySelector("[data-slot=panel-count]") as HTMLElement;
+    // 11 × 1 + 11 × 2 = 33, frente a 22 del mes pasado: +50 %.
+    expect(plain(count.textContent)).toContain("33");
+    expect(plain(count.querySelector("[data-slot=panel-period]")?.textContent)).toBe("50 % más que los mismos días del mes pasado");
+    const chart = container.querySelector("[data-slot=panel-conversations]") as HTMLElement;
+    expect(within(chart).getByText("Del 1 nov al 22 nov")).toBeTruthy();
+    expect(chart.querySelectorAll("table tbody tr")).toHaveLength(22);
+    // Sin el mes pasado con el que comparar, dice el periodo.
+    const { container: first } = show(panel({ conversations_per_day: { ...daily, previous_total: 0 } }));
+    expect(plain(first.querySelector("[data-slot=panel-count] [data-slot=panel-period]")?.textContent)).toBe("Del 1 nov al 22 nov");
   });
 
   it("si un bloque no se pudo leer, lo dice y no pinta ceros", () => {

@@ -252,6 +252,9 @@ class InboundEvent:
     # Spec 050 (D6): the message is a stop word. It is kept and reaches the
     # Inbox, marked, but no turn answers it.
     opted_out: bool = False
+    # Spec 076 (requisito 1.1): the ad or post this person came from, already
+    # filtered to the whitelist (``nexus_api.services.ad_referrals``).
+    referral: dict[str, str] | None = None
 
 
 # ── 1. Guardar ────────────────────────────────────────────────────────────────
@@ -381,6 +384,21 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
             context_message_id=event.context_message_id,
         )
         inbound_msg.origin = "customer"
+        if event.referral and event.provider_message_id:
+            # Spec 076 (requisito 1.1): the click, with the contact the server
+            # resolved for this message (garantía 8) and the message's time.
+            from nexus_worker.persistence.ad_referrals import store_referral
+
+            await store_referral(
+                session,
+                tenant_id=event.tenant_id,
+                channel_id=event.channel_id,
+                customer_id=customer.id,
+                conversation_id=conversation.id,
+                provider_message_id=event.provider_message_id,
+                referral=event.referral,
+                clicked_at=inbound_msg.created_at or datetime.now(UTC),
+            )
         if event.opted_out:
             # Spec 050 (D6): the webhook recorded the opt-out by phone; here
             # the person is known, so it is theirs (and a BSUID-only person,
@@ -639,9 +657,15 @@ class _Turn:
 async def _load_turn(ref: turns.TurnRef) -> _Turn | None:
     sm = get_sessionmaker()
     async with sm() as session, tenant_scoped_session(session, ref.tenant_id):
-        tenant_status_raw = await session.scalar(
-            sa.select(Tenant.status).where(Tenant.id == ref.tenant_id)
-        )
+        tenant_row = (
+            await session.execute(
+                sa.select(Tenant.status, Tenant.send_only).where(Tenant.id == ref.tenant_id)
+            )
+        ).first()
+        tenant_status_raw = tenant_row[0] if tenant_row is not None else None
+        # Spec 077 (R2.4): every number of a send-only client is send-only,
+        # whatever path connected it — a reply to a code waits for nobody.
+        tenant_send_only = bool(tenant_row[1]) if tenant_row is not None else False
         conversation = await session.get(Conversation, ref.conversation_id)
         if tenant_status_raw is None or conversation is None:
             return None
@@ -758,7 +782,7 @@ async def _load_turn(ref: turns.TurnRef) -> _Turn | None:
         facts = TurnFacts(
             tenant_status=TenantStatus(tenant_status_raw),
             channel_status=channel_status,
-            send_only_channel=not config_agent_enabled(channel_config),
+            send_only_channel=tenant_send_only or not config_agent_enabled(channel_config),
             has_active_agent=active_agent is not None,
             ever_had_agent=ever_had_agent,
             agent_active=conversation.agent_active,

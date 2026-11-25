@@ -3,7 +3,7 @@ import Link from "next/link";
 import { EmptyState, PageHeader, buttonVariants } from "@nexus/ui";
 import { CrumbName } from "@/components/shell/crumb-names";
 import { sectorGuidesBackend } from "@/lib/backend-sector-guides";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { DATE } from "../../../labels";
 import { GeneratedGuideView } from "../../generated-guide";
@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 export default async function GeneratedGuidePage({ params }: { params: Promise<{ tenantId: string; guideId: string }> }) {
   const { tenantId, guideId } = await params;
   const [operator, read, guides] = await Promise.all([
-    requireOperator(),
+    requirePageOperator("read"),
     load(() => sectorGuidesBackend.generated(tenantId, guideId)),
     // Only to warn early of a key already taken; the API checks it anyway.
     load(() => sectorGuidesBackend.guides()),

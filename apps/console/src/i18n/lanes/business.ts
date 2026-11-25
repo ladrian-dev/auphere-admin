@@ -255,10 +255,11 @@ export const businessMessages = {
   "clients.v2.pause.client_archived": { es: "cliente archivado", en: "client archived" },
   "clients.v2.agents.none": { es: "Ninguno", en: "None" },
   "clients.v2.agents.dot": { es: "{name}: {state}", en: "{name}: {state}" },
-  "clients.v2.bag.left": { es: "Quedan {left} de {assigned}", en: "{left} left of {assigned}" },
-  "clients.v2.bag.days": { es: "{days} días", en: "{days} days" },
-  "clients.v2.bag.noEstimate": { es: "Aún sin ritmo", en: "No pace yet" },
-  "clients.v2.bag.pct": { es: "{pct} % libre", en: "{pct}% left" },
+  // Spec 072 (2.1, 2.2): primero lo que queda, y cuánto dura a este ritmo.
+  "clients.v2.bag.left": { es: "{left} · quedan de {assigned}", en: "{left} · left of {assigned}" },
+  "clients.v2.bag.pace": { es: "Unos {days} días a este ritmo", en: "About {days} days at this pace" },
+  "clients.v2.bag.paceLess": { es: "Menos de un día a este ritmo", en: "Less than a day at this pace" },
+  "clients.v2.bag.noPace": { es: "Aún no hay gasto suficiente para calcular cuánto dura", en: "Not enough spend yet to work out how long it lasts" },
   "clients.v2.bag.unassigned": { es: "Sin saldo asignado", en: "No balance assigned" },
   "clients.v2.bag.unlimited": { es: "Sin límite (lo cubre Auphere)", en: "Unlimited (covered by Auphere)" },
   "clients.v2.menu": { es: "Acciones de {name}", en: "Actions for {name}" },
@@ -280,6 +281,14 @@ export const businessMessages = {
   },
   "clients.v2.delete.typeLabel": { es: "Escribe «{name}»", en: "Type “{name}”" },
   "clients.v2.delete.confirm": { es: "Eliminar para siempre", en: "Delete forever" },
+  // Spec 073 (2.3): la regla antes, no después de escribir el nombre.
+  "clients.v2.delete.blocked.archive_first": { es: "Primero hay que archivarlo", en: "Archive it first" },
+  "clients.v2.delete.archiveFirst.body": {
+    es: "Eliminar no se deshace, archivar sí. Archívalo primero: sus agentes quedan en pausa y, si sigues queriendo, lo eliminas desde el cliente archivado.",
+    en: "Deleting cannot be undone, archiving can. Archive it first: its agents are paused and, if you still want to, you delete it from the archived client.",
+  },
+  "clients.v2.delete.archiveFirst.confirm": { es: "Archivar ahora", en: "Archive now" },
+  "clients.v2.delete.archiveFirst.ok": { es: "Entendido", en: "Got it" },
   "clients.v2.deleted": { es: "{name} eliminado.", en: "{name} deleted." },
   "clients.v2.error.archive_first": {
     es: "Archívalo antes de eliminarlo: archivar se puede deshacer, eliminar no.",
@@ -307,6 +316,8 @@ export const businessMessages = {
   "clients.v2.tab.panel": { es: "Panel", en: "Dashboard" },
   "clients.v2.tab.business": { es: "Negocio", en: "Business" },
   "clients.v2.tab.agents": { es: "Agentes", en: "Agents" },
+  // Spec 076 (requisito 3): el informe de anuncios del cliente.
+  "clients.v2.tab.ads": { es: "Anuncios", en: "Ads" },
   // Spec 056 (requisito 3.1): la pestaña del acceso del cliente a su consola.
   "clients.v2.tab.access": { es: "Acceso", en: "Access" },
 
@@ -642,6 +653,17 @@ export const businessMessages = {
   "business.services.category": { es: "Categoría", en: "Category" },
   "business.services.category.hint": { es: "Agrupa servicios parecidos, como «Corte». Elige una o escribe otra.", en: "Groups similar services, like «Haircut». Pick one or type another." },
   "business.services.category.none": { es: "Sin categoría", en: "No category" },
+  // Spec 073 (4.1–4.3): Servicios que se leen.
+  "business.services.group": { es: "{category} · {n}", en: "{category} · {n}" },
+  "business.services.same.label": { es: "Lo mismo en todos los servicios", en: "The same for every service" },
+  "business.services.same.price": {
+    es: "Ninguno de los {n} tiene precio, así que su agente dirá que lo confirma el equipo.",
+    en: "None of the {n} has a price, so its agent will say the team confirms it.",
+  },
+  "business.services.same.price.fix": { es: "Poner precios", en: "Add prices" },
+  "business.services.same.booking": { es: "Ninguno se reserva.", en: "None can be booked." },
+  "business.services.same.agent": { es: "Todos los ofrece {agent}.", en: "{agent} offers them all." },
+  "business.services.search.none": { es: "Ningún servicio coincide con «{q}».", en: "No service matches “{q}”." },
   "business.services.error.category_too_long": { es: "La categoría admite hasta 40 caracteres.", en: "The category takes up to 40 characters." },
   "business.services.price.amount_in": { es: "Importe en {currency}", en: "Amount in {currency}" },
   "business.services.price.currency": { es: "Moneda de los precios", en: "Price currency" },

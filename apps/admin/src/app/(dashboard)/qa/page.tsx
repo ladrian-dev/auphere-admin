@@ -3,8 +3,7 @@ import Link from "next/link";
 import { EmptyState, ErrorState, PageHeader } from "@nexus/ui";
 
 import { backend } from "@/lib/backend";
-import { QA_ROLES } from "@/lib/operator-auth";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Playground QA" };
 export const dynamic = "force-dynamic";
@@ -15,15 +14,13 @@ export const dynamic = "force-dynamic";
  * want to talk to.
  */
 export default async function QaIndexPage() {
-  const operator = await requireOperator();
+  // Spec 079: only roles with `qa` reach this page; the rest get «no encontrada».
+  await requirePageOperator("qa");
   const tenants = await backend.listTenants().catch(() => null);
-  const allowed = (QA_ROLES as readonly string[]).includes(operator.role);
   return (
     <>
       <PageHeader title="Playground QA" description="Conversa con el agente de un cliente sin tocar sus canales reales." />
-      {!allowed ? (
-        <EmptyState title="Tu rol no abre el Playground" description="Lo usan los roles administrador y operador QA. Pide el cambio a quien gestiona los operadores." readonly />
-      ) : tenants === null ? (
+      {tenants === null ? (
         <ErrorState title="No se pudieron leer los clientes" description="La API no respondió." />
       ) : tenants.length === 0 ? (
         <EmptyState title="Todavía no hay clientes" description="Crea uno para poder probar su agente." readonly />

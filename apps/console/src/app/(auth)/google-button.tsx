@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { Button } from "@nexus/ui";
 
+import { GoogleMark } from "@/components/auth/google-mark";
 import { useT } from "@/i18n/client";
 import { googleStartAction } from "@/lib/auth-actions";
 
@@ -57,7 +58,9 @@ export function GoogleButton({
 
   return (
     <Button type="button" variant="outline" onClick={go} disabled={pending} className="w-full">
-      {t("auth.google")}
+      <GoogleMark className="size-5 shrink-0" />
+      {/* Spec 067 (R2.2): en el alta dice lo que hace. */}
+      {intent === "signup" ? t("signup.google") : t("auth.google")}
     </Button>
   );
 }

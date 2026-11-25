@@ -15,7 +15,7 @@ export type SearchIndex = {
  * fails comes back empty and the palette says so — the others still work.
  */
 export async function loadSearchIndexAction(): Promise<{ index: SearchIndex; partial: boolean }> {
-  await requireOperator();
+  await requireOperator("read");
   const [partners, tenants, tickets] = await Promise.allSettled([
     backend.listPartners(),
     backend.listTenants(),

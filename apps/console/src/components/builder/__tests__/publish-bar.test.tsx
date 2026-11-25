@@ -289,16 +289,13 @@ describe("la barra flotante · como el prototipo", () => {
   });
   const tests = (over: Partial<TestSummary> = {}, running = false) => ({ summary: summary(over), running, canRun: true, run: vi.fn() });
 
-  it("sin ejecutar: «Borrador completo» y «Ejecutar pruebas», que las lanza", async () => {
-    const user = userEvent.setup();
+  it("sin ejecutar: «Borrador completo» y guardar; ejecutarlas se pide en la tarjeta de pruebas (spec 073, 3b.3)", async () => {
     const t = tests({ passed: 2, not_run: 3 });
     const { container } = screenWith({ tests: t });
     const bar = screen.getByRole("region", { name: "Acciones del agente" });
     expect(within(bar).getByRole("status")).toHaveTextContent("Borrador completo");
-    const run = within(bar).getByRole("button", { name: "Ejecutar pruebas" });
-    expect(run.className).toMatch(/rounded-full/);
-    await user.click(run);
-    expect(t.run).toHaveBeenCalled();
+    expect(within(bar).queryByRole("button", { name: "Ejecutar pruebas" })).toBeNull();
+    expect(within(bar).getByRole("button", { name: /Guardar/ }).className).toMatch(/rounded-full/);
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -312,10 +309,10 @@ describe("la barra flotante · como el prototipo", () => {
     expect(t.run).not.toHaveBeenCalled();
   });
 
-  it("sin ejecutar y sin borrador no hay nada que guardar", () => {
+  it("sin ejecutar y sin borrador no hay nada que guardar, y la barra no lo repite (spec 073, 3b.3)", () => {
     screenWith({ tests: tests({ not_run: 5 }), preview: preview({ has_draft: false }) });
-    expect(screen.getByRole("status")).toHaveTextContent("Pruebas sin ejecutar");
-    expect(screen.getByRole("button", { name: "Ejecutar pruebas" })).toBeVisible();
+    expect(screen.getByRole("status")).not.toHaveTextContent("Pruebas sin ejecutar");
+    expect(screen.queryByRole("button", { name: "Ejecutar pruebas" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Guardar/ })).toBeNull();
   });
 

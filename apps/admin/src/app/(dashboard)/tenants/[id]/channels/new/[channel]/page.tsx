@@ -8,11 +8,13 @@ import { backend } from "@/lib/backend";
 
 import { TikTokConnectDialog } from "../../../_integrations/tiktok-connect-dialog";
 import { ConnectWhatsApp } from "./connect-whatsapp";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** Step 2 — connect the chosen channel with the flow it already has. */
 export default async function ConnectChannelPage({ params }: { params: Promise<{ id: string; channel: string }> }) {
+  await requirePageOperator("operate");
   const { id, channel } = await params;
   const [catalog, tenant, links] = await Promise.all([
     backend.getChannelCatalog().catch(() => []),
@@ -35,6 +37,7 @@ export default async function ConnectChannelPage({ params }: { params: Promise<{
           tenantId={id}
           businessName={tenant?.name ?? "tu negocio"}
           hasLiveLink={links.some((l) => l.state === "valid")}
+          sendOnly={tenant?.send_only === true}
         /> : null}
       {channel === "tiktok" ? (
         <div className="flex flex-col gap-3 rounded-md p-6 ring-1 ring-foreground/10">

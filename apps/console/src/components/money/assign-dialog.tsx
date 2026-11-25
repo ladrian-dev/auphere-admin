@@ -16,7 +16,9 @@ import {
   DialogTitle,
   Field,
   Input,
+  Label,
   Skeleton,
+  Switch,
   cn,
   formatMoney,
 } from "@nexus/ui";
@@ -25,6 +27,7 @@ import { assignBalanceAction, bagContextAction, lowerBalanceAction } from "@/app
 import { useT } from "@/i18n/client";
 import type { BagContext, BagOut, Money, Receipt } from "@/lib/backend/money-types";
 
+import { AmountOption } from "./amount-option";
 import {
   QUICK_AMOUNTS,
   amountInputValue,
@@ -70,14 +73,20 @@ type Direction = "up" | "down";
  * de «Pedir saldo».
  *
  * - Las cantidades rápidas (10, 20, 50 y 100 en la moneda de la bolsa) y
- *   «Otra cantidad», que admite coma decimal.
- * - El recibo, anunciado (`role=status`): el saldo actual, lo que se asigna, lo
- *   que sale de la cuenta (con la línea del BCE si las monedas son distintas),
- *   el nuevo saldo y lo que queda en la cuenta. Si no llega, «Faltan» en rojo,
- *   «Recargar mi cuenta» para quien compra y el botón desactivado. Si la
- *   cuenta se queda con menos del 20 %, un aviso ámbar que no bloquea.
- * - «Rellenar cada mes hasta…» y «Avisarme cuando le quede menos del 20 %»,
- *   marcada por defecto.
+ *   «Otra cantidad», que admite coma decimal. La elegida se marca con un
+ *   tinte (spec 072 §6.1), y el botón dice el importe: «Asignar 20,00 USD».
+ * - El recibo, anunciado (`role=status`), con una línea por dato (072 §6.3):
+ *   su saldo ahora, lo que asignas, su nuevo saldo y lo que te queda en el
+ *   tuyo. Si la cuenta va en otra moneda, lo que sale de ella y la línea del
+ *   BCE van como nota de «Asignas»: es el mismo dinero, no otra cifra. Si no
+ *   llega, «Faltan» en rojo, «Recargar mi cuenta» para quien compra, el botón
+ *   desactivado y una línea que dice por qué (072 §6.2). Si la cuenta se queda
+ *   con menos del 20 %, un aviso ámbar que no bloquea.
+ * - «Rellenar cada mes hasta 35,50 USD», un interruptor que dice su importe
+ *   (072 §6.5), y «Avisarme cuando le quede menos del 20 %», marcada por
+ *   defecto.
+ * - Mientras carga, un esqueleto con las mismas piezas: el diálogo tiene su
+ *   alto final desde el primer fotograma (072 §6.4).
  *
  * Con `change`, es «Cambiar saldo» (45.6): subir o bajar la bolsa. Bajar
  * devuelve a la cuenta, como mucho, lo que queda (43.6).
@@ -142,13 +151,7 @@ export function AssignDialog({
             </Button>
           </div>
         ) : !ctx ? (
-          <div className="grid gap-3" aria-busy="true">
-            <span role="status" className="sr-only">
-              {t("money.loading")}
-            </span>
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-24 w-full" />
-          </div>
+          <AssignSkeleton t={t} change={change} onClose={() => onOpenChange(false)} />
         ) : (
           <>
             {change ? (
@@ -194,7 +197,9 @@ function AssignForm({ refId, name, ctx, actions, onClose }: { refId: string; nam
   const [choice, setChoice] = React.useState<Choice>({ kind: "quick", value: QUICK_AMOUNTS[1] });
   const [other, setOther] = React.useState("");
   const [refillOn, setRefillOn] = React.useState(ctx.bag.refill_up_to != null);
-  const [refill, setRefill] = React.useState(ctx.bag.refill_up_to ? amountInputValue(ctx.bag.refill_up_to.amount_micros) : "");
+  // Lo que escribe la persona en «Hasta». Mientras no escriba, el relleno es
+  // el que ya tenía la bolsa o, si no tenía, su nuevo saldo.
+  const [refillTyped, setRefillTyped] = React.useState<string | null>(null);
   const [alertLow, setAlertLow] = React.useState(ctx.bag.alert_low);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<{ text: string; code: string | null } | null>(null);
@@ -213,9 +218,23 @@ function AssignForm({ refId, name, ctx, actions, onClose }: { refId: string; nam
   const preview = micros > 0 ? assignPreview({ amountMicros: micros, bag: ctx.bag.balance, available: ctx.available, eurUsd }) : null;
   const noFx = bagCurrency !== ctx.available.currency && eurUsd == null;
   const missing = preview?.missing ?? serverMissing;
+  const refill =
+    refillTyped ?? (ctx.bag.refill_up_to ? amountInputValue(ctx.bag.refill_up_to.amount_micros) : preview ? amountInputValue(preview.after.amount_micros) : "");
   const refillParsed = parseAmount(refill);
+  const refillLabel =
+    refillParsed.kind === "ok" && refillParsed.micros > 0
+      ? t("money.refill.switch", { amount: moneyText(money(refillParsed.micros, bagCurrency)) })
+      : t("money.refill.switchNoAmount");
   const refillError = refillOn && refillParsed.kind !== "ok" ? t("money.amount.invalid") : refillOn && refillParsed.kind === "ok" && refillParsed.micros <= 0 ? t("money.amount.positive") : null;
   const canSubmit = ctx.bagsActive && !noFx && micros > 0 && !amountError && !missing && !refillError && !busy;
+  // Por qué el botón está apagado, cuando no lo dice ya otra cosa: el campo
+  // con su error, el aviso de las bolsas o el del cambio (072 §6.2).
+  const why = missing
+    ? t("money.assign.why.short", { amount: moneyText(ctx.available, "down") })
+    : choice.kind === "other" && parsed.kind === "empty"
+      ? t("money.assign.why.amount")
+      : null;
+  const whyId = `${base}-why`;
 
   function pick(next: Choice) {
     setChoice(next);
@@ -261,13 +280,13 @@ function AssignForm({ refId, name, ctx, actions, onClose }: { refId: string; nam
         <legend className="mb-1 text-sm font-medium">{t("money.amount.legend")}</legend>
         <div className="flex min-w-0 flex-wrap gap-2">
           {QUICK_AMOUNTS.map((q) => (
-            <Pill key={q} name={`${base}-amount`} checked={choice.kind === "quick" && choice.value === q} onChange={() => pick({ kind: "quick", value: q })}>
+            <AmountOption key={q} name={`${base}-amount`} checked={choice.kind === "quick" && choice.value === q} onChange={() => pick({ kind: "quick", value: q })}>
               {formatMoney(q, bagCurrency)}
-            </Pill>
+            </AmountOption>
           ))}
-          <Pill name={`${base}-amount`} checked={choice.kind === "other"} onChange={() => pick({ kind: "other" })}>
+          <AmountOption name={`${base}-amount`} checked={choice.kind === "other"} onChange={() => pick({ kind: "other" })}>
             {t("money.amount.other")}
-          </Pill>
+          </AmountOption>
         </div>
       </fieldset>
       {choice.kind === "other" ? (
@@ -294,15 +313,24 @@ function AssignForm({ refId, name, ctx, actions, onClose }: { refId: string; nam
       <div role="status" aria-live="polite" aria-atomic="true" data-slot="assign-receipt" className="grid min-w-0 gap-2 rounded-md bg-muted/50 p-3 text-sm">
         <p className="font-medium">{t("money.receipt.title")}</p>
         <dl className="grid min-w-0 gap-1">
-          <Row label={t("money.receipt.before", { name })} value={moneyText(ctx.bag.balance, "down")} />
-          <Row label={t("money.receipt.assigned")} value={preview ? moneyText(preview.assigned) : "—"} />
+          <Row label={t("money.assign.receipt.now")} value={moneyText(ctx.bag.balance, "down")} />
           <Row
-            label={t("money.receipt.debit")}
-            note={preview?.eurUsd != null ? fxLine(t, preview.eurUsd, ctx.eurUsd?.date ?? null) : null}
-            value={preview ? moneyText(preview.debit) : "—"}
+            label={t("money.assign.receipt.assigned")}
+            note={
+              preview?.eurUsd != null ? (
+                <>
+                  <span className="block">{t("money.assign.receipt.debit", { amount: moneyText(preview.debit) })}</span>
+                  <span className="block">{fxLine(t, preview.eurUsd, ctx.eurUsd?.date ?? null)}</span>
+                </>
+              ) : null
+            }
+            value={preview ? moneyText(preview.assigned) : "—"}
           />
-          <Row label={t("money.receipt.after")} value={preview ? moneyText(preview.after, "down") : "—"} strong />
-          <Row label={t("money.receipt.left")} value={preview && !missing ? moneyText(preview.left, "down") : moneyText(missing ? money(0, ctx.available.currency) : ctx.available, "down")} />
+          <Row label={t("money.assign.receipt.after")} value={preview ? moneyText(preview.after, "down") : "—"} strong />
+          <Row
+            label={t("money.assign.receipt.left")}
+            value={missing ? "—" : preview ? moneyText(preview.left, "down") : moneyText(ctx.available, "down")}
+          />
         </dl>
         {noFx ? <p className="text-pretty text-destructive">{t("money.error.fx_unavailable")}</p> : null}
         {missing ? (
@@ -324,18 +352,20 @@ function AssignForm({ refId, name, ctx, actions, onClose }: { refId: string; nam
       </div>
 
       <div className="grid min-w-0 gap-2">
-        <label className="flex min-h-6 min-w-0 items-start gap-2 text-sm">
-          <input type="checkbox" className="mt-1 size-4 shrink-0 accent-primary" checked={refillOn} onChange={(e) => setRefillOn(e.target.checked)} />
-          <span className="text-pretty">{t("money.refill.check")}</span>
-        </label>
+        <div className="flex min-h-6 min-w-0 items-center gap-2" data-slot="assign-option">
+          <Switch id={`${base}-refill`} checked={refillOn} onCheckedChange={(on) => setRefillOn(on === true)} />
+          <Label htmlFor={`${base}-refill`} className="text-sm font-normal text-pretty">
+            {refillLabel}
+          </Label>
+        </div>
         {refillOn ? (
-          <Field label={t("money.refill.amount", { currency: bagCurrency === "EUR" ? "€" : "USD" })} hint={t("money.refill.hint")} error={refillError ?? undefined} className="pl-6">
+          <Field label={t("money.refill.amount", { currency: bagCurrency === "EUR" ? "€" : "USD" })} hint={t("money.refill.hint")} error={refillError ?? undefined} className="pl-12">
             {(a11y) => (
-              <Input {...a11y} inputMode="decimal" autoComplete="off" value={refill} placeholder="0,00" className="max-w-40 tabular-nums" onChange={(e) => setRefill(e.target.value)} />
+              <Input {...a11y} inputMode="decimal" autoComplete="off" value={refill} placeholder="0,00" className="max-w-40 tabular-nums" onChange={(e) => setRefillTyped(e.target.value)} />
             )}
           </Field>
         ) : null}
-        <label className="flex min-h-6 min-w-0 items-start gap-2 text-sm">
+        <label className="flex min-h-6 min-w-0 items-start gap-2 text-sm" data-slot="assign-option">
           <input type="checkbox" className="mt-1 size-4 shrink-0 accent-primary" checked={alertLow} onChange={(e) => setAlertLow(e.target.checked)} />
           <span className="text-pretty">{t("money.alertLow")}</span>
         </label>
@@ -355,15 +385,74 @@ function AssignForm({ refId, name, ctx, actions, onClose }: { refId: string; nam
         </p>
       ) : null}
 
+      {why && !canSubmit ? (
+        <p id={whyId} className="text-sm text-pretty text-muted-foreground" data-slot="assign-why">
+          {why}
+        </p>
+      ) : null}
+
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
           {t("money.cancel")}
         </Button>
-        <Button type="submit" loading={busy} disabled={!canSubmit}>
-          {t("money.assign.submit")}
+        <Button type="submit" loading={busy} disabled={!canSubmit} aria-describedby={why && !canSubmit ? whyId : undefined}>
+          {micros > 0 && !amountError ? t("money.assign.submitAmount", { amount: moneyText(money(micros, bagCurrency)) }) : t("money.assign.submit")}
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+/**
+ * Mientras carga el contexto de la bolsa: las mismas piezas que el formulario
+ * con sus mismos altos (los importes, el recibo de cuatro líneas, las dos
+ * opciones y el pie), para que el diálogo no cambie de alto al llegar
+ * (072 §6.4). La moneda aún no se sabe, así que no se inventa ninguna cifra.
+ */
+function AssignSkeleton({ t, change, onClose }: { t: T; change: boolean; onClose: () => void }) {
+  return (
+    <div className="grid min-w-0 gap-4" aria-busy="true" data-slot="assign-skeleton">
+      <span role="status" className="sr-only">
+        {t("money.loading")}
+      </span>
+      {/* «Subir» y «Devolver a tu cuenta», si es «Cambiar saldo». */}
+      {change ? <Skeleton className="h-9 w-56 max-w-full" /> : null}
+      <div className="grid min-w-0 gap-2">
+        <Skeleton className="mb-1 h-5 w-16" />
+        <div className="flex min-w-0 flex-wrap gap-2">
+          {["w-20", "w-20", "w-20", "w-24", "w-28"].map((w, i) => (
+            <Skeleton key={i} data-skeleton="pill" className={cn("h-8 rounded-full", w)} />
+          ))}
+        </div>
+      </div>
+      <div className="grid min-w-0 gap-2 rounded-md bg-muted/50 p-3">
+        <Skeleton className="h-5 w-16" />
+        <div className="grid min-w-0 gap-1">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} data-skeleton="row" className="flex min-w-0 items-center justify-between gap-3">
+              <Skeleton className="h-5 w-32 max-w-full" />
+              <Skeleton className="h-5 w-20" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="grid min-w-0 gap-2">
+        {[0, 1].map((i) => (
+          <div key={i} data-skeleton="option" className="flex min-h-6 min-w-0 items-center gap-2">
+            <Skeleton className="h-6 w-11 rounded-full" />
+            <Skeleton className="h-5 w-56 max-w-full" />
+          </div>
+        ))}
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>
+          {t("money.cancel")}
+        </Button>
+        <Button type="button" disabled>
+          {t("money.assign.submit")}
+        </Button>
+      </DialogFooter>
+    </div>
   );
 }
 
@@ -482,21 +571,7 @@ function MigrationFirst({ t }: { t: T }) {
   );
 }
 
-function Pill({ name, checked, onChange, children }: { name: string; checked: boolean; onChange: () => void; children: React.ReactNode }) {
-  return (
-    <label
-      className={cn(
-        "inline-flex h-8 cursor-pointer items-center rounded-full border px-3 text-sm font-medium tabular-nums has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-        checked ? "border-primary bg-primary text-primary-foreground" : "border-border bg-background hover:bg-muted",
-      )}
-    >
-      <input type="radio" name={name} className="sr-only" checked={checked} onChange={onChange} />
-      {children}
-    </label>
-  );
-}
-
-function Row({ label, value, note, strong }: { label: string; value: string; note?: string | null; strong?: boolean }) {
+function Row({ label, value, note, strong }: { label: string; value: string; note?: React.ReactNode; strong?: boolean }) {
   return (
     <div className="flex min-w-0 items-baseline justify-between gap-3">
       <dt className="min-w-0 text-pretty text-muted-foreground">

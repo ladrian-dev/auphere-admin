@@ -10,6 +10,7 @@ import { AgentVersions } from "./agent-versions";
 import { ApplySeedTemplateButton } from "./apply-seed";
 import { EvalsSection } from "./evals/evals-section";
 import { RuntimeCapabilities } from "./runtime-capabilities";
+import { requirePageOperator } from "@/lib/session";
 
 /**
  * Spec 037: the agent, as on the partner console's client page — its
@@ -26,6 +27,7 @@ export default async function AgentPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ agent?: string }>;
 }) {
+  await requirePageOperator("read");
   const { id } = await params;
   // Spec 030: con varios agentes, `?agent=` dice de cuál es lo que se edita;
   // sin él (o con uno que no es de este cliente), el principal. Si la lista

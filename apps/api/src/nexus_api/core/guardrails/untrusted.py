@@ -58,6 +58,9 @@ TAG_PARTNER_PLAYBOOK = "partner_playbook"
 TAG_PAGE_CONTEXT = "page_context"
 TAG_META_REJECTION = "provider_note"
 TAG_CLIENT_NAME = "client_name"
+#: Spec 076: el titular y el texto del anuncio del que viene una persona. Lo
+#: escribe quien publicó el anuncio, no el negocio ni Auphere.
+TAG_AD_REFERRAL = "ad_referral"
 
 
 def neutralise_tags(text: str, tag: str) -> str:

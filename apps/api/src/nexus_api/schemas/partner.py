@@ -300,6 +300,9 @@ class ApiKeyOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    # Spec 077: whose key it is. ``tenant_id`` set = a client's send key.
+    partner_id: uuid.UUID | None = None
+    tenant_id: uuid.UUID | None = None
     type: str
     prefix_snippet: str
     scopes: list[str]

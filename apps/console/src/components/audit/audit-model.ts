@@ -39,6 +39,40 @@ export function whenLabel(at: string, now: Date, timeZone: string, locale: strin
   return `${day}, ${time}`;
 }
 
+/**
+ * Spec 073 (1.2): el día de una fila de grupo. «Hoy», «Ayer» o «jueves 1 oct»;
+ * con el año solo si es otro.
+ */
+export function dayLabel(at: string, now: Date, timeZone: string, locale: string, words: DayWords): string {
+  const d = new Date(at);
+  const key = dayKey(d, timeZone);
+  const today = dayKey(now, timeZone);
+  if (key === today) return words.today;
+  if (key === dayKey(new Date(now.getTime() - 86_400_000), timeZone)) return words.yesterday;
+  const sameYear = key.slice(0, 4) === today.slice(0, 4);
+  // Por partes: con el año, Intl en español escribe «24 de dic de 2025».
+  const parts = new Intl.DateTimeFormat(locale, { timeZone, weekday: "long", day: "numeric", month: "short", year: "numeric" }).formatToParts(d);
+  const part = (type: Intl.DateTimeFormatPartTypes) => (parts.find((p) => p.type === type)?.value ?? "").replaceAll(".", "");
+  return [part("weekday"), part("day"), part("month"), sameYear ? "" : part("year")].filter(Boolean).join(" ");
+}
+
+/** Spec 073 (1.2): la hora sola, «09:12», en la zona de quien mira. */
+export function timeLabel(at: string, timeZone: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, { timeZone, hour: "2-digit", minute: "2-digit" }).format(new Date(at));
+}
+
+/** Spec 073 (1.2): las filas, juntas por día y en su orden. */
+export function groupByDay(items: AuditEntry[], timeZone: string): { key: string; items: AuditEntry[] }[] {
+  const out: { key: string; items: AuditEntry[] }[] = [];
+  for (const item of items) {
+    const key = dayKey(item.at, timeZone);
+    const last = out.at(-1);
+    if (last && last.key === key) last.items.push(item);
+    else out.push({ key, items: [item] });
+  }
+  return out;
+}
+
 function sameKind(a: AuditEntry, b: AuditEntry): boolean {
   return a.actor === b.actor && a.action === b.action && a.external_client_ref === b.external_client_ref;
 }
@@ -77,7 +111,9 @@ export function initials(name: string): string {
  * («Companion · ana@x.com» when the Companion acted for Ana); the team list
  * knows their names.
  */
-export function actorName(actor: string, people: Record<string, string>): string {
+export function actorName(actor: string, people: Record<string, string>, fromApi?: string | null): string {
+  // Spec 073 (1.4): la API ya sabe el nombre, también de las personas de los clientes.
+  if (fromApi) return fromApi;
   const companion = actor.match(/^Companion · (.+)$/);
   const email = companion?.[1];
   if (email) return `Companion · ${people[email] ?? email}`;

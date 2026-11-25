@@ -349,7 +349,8 @@ async def test_agent_stage_publish_rollback_with_audit(client, console_world, db
     # The audit page renders it for a human.
     audit = (await client.get("/console/audit?action=agent_config.promote", headers=h())).json()
     assert audit["items"], audit
-    assert audit["items"][0]["summary"].startswith("owner-a@example.com published agent version")
+    # Spec 073 (1.4): con su nombre, no con su correo.
+    assert audit["items"][0]["summary"].startswith("Owner A published agent version")
     assert audit["items"][0]["external_client_ref"] == a["ref"]
 
 

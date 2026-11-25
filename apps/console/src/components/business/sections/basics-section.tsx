@@ -53,6 +53,7 @@ export function BasicsSection({
   decide = (b) => decideSuggestionAction(b),
   reload = (b) => reloadSectionAction(b),
   onStateChange,
+  confirmable = false,
   onPriceCurrencyChange,
 }: {
   refId: string;
@@ -66,6 +67,8 @@ export function BasicsSection({
   decide?: Decide;
   reload?: Reload;
   onStateChange?: (state: SectionState) => void;
+  /** Spec 073 (4.5): «Es correcto» de lo leído, también aquí. */
+  confirmable?: boolean;
   /** Spec 055: la moneda cambió, y con ella los servicios y su revisión. */
   onPriceCurrencyChange?: () => void;
 }) {
@@ -205,6 +208,7 @@ export function BasicsSection({
       title={t("business.basics.title")}
       state={basics.state}
       canWrite={canWrite}
+      confirm={confirmable ? { refId, section: "basics", onConfirmed: () => setBasics((prev) => ({ ...prev, state: "complete" as const })) } : undefined}
       action={edit.editing ? null : <EditAction label={t("business.section.edit.label", { section: t("business.basics.title") })} onClick={edit.open} />}
     >
       {canWrite && edit.editing ? (
@@ -325,7 +329,9 @@ export function BasicsSection({
               : []),
             { label: label.info, value: basics.info || t("business.basics.read.no_info"), muted: !basics.info },
             { label: label.website, value: basics.website || t("business.basics.read.no_web"), muted: !basics.website },
-            { label: label.timezone, value: basics.price_currency ? `${basics.timezone} · ${basics.price_currency}` : basics.timezone },
+            // Spec 073 (4.6): cada dato con su etiqueta, no «Europe/Madrid · EUR».
+            { label: label.timezone, value: basics.timezone },
+            ...(basics.price_currency ? [{ label: label.price_currency, value: basics.price_currency }] : []),
           ]}
         />
       )}

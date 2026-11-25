@@ -5,6 +5,7 @@ import { BuilderTabs } from "../builder-tabs";
 import { builderQuality } from "../quality";
 import { CalibrationView } from "./calibration-view";
 import { RunCalibration } from "./run-calibration";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Calibración del juez" };
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function JudgeCalibrationPage({
 }: {
   searchParams: Promise<{ deployment?: string }>;
 }) {
+  await requirePageOperator("read");
   const { deployment } = await searchParams;
   const [page, deployments] = await Promise.all([
     builderQuality.judgeCalibration().catch(() => null),

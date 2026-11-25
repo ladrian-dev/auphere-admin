@@ -15,6 +15,7 @@
 import { revalidatePath } from "next/cache";
 
 import { BackendError, backend } from "@/lib/backend";
+import { requireOperator } from "@/lib/session";
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -50,6 +51,7 @@ export async function toggleConversationAgentAction(
     agent_active_version: number;
   }>
 > {
+  await requireOperator("operate");
   try {
     const r = await backend.toggleConversationAgent(
       tenantId,
@@ -84,6 +86,7 @@ export async function operatorSendMessageAction(
   conversationId: string,
   content: string,
 ): Promise<ActionResult<{ message_id: string }>> {
+  await requireOperator("operate");
   try {
     const r = await backend.operatorSendMessage(
       tenantId,

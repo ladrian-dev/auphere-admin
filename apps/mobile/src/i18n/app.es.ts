@@ -8,6 +8,12 @@ import { avisosEs } from "./avisos.es";
 import { fabricaEs } from "./fabrica.es";
 import { mejorasEs } from "./mejoras.es";
 import { reservasEs } from "./reservas.es";
+import { v13ComunEs } from "./v13-comun.es";
+import { v13InicioEs } from "./v13-inicio.es";
+import { v13BandejaEs } from "./v13-bandeja.es";
+import { v13ReservasEs } from "./v13-reservas.es";
+import { v13ConsumoEs } from "./v13-consumo.es";
+import { v13EntrarEs } from "./v13-entrar.es";
 
 export const appEs = {
   ...reservasEs,
@@ -15,6 +21,12 @@ export const appEs = {
   ...avisosEs,
   ...atenderEs,
   ...fabricaEs,
+  ...v13ComunEs,
+  ...v13InicioEs,
+  ...v13BandejaEs,
+  ...v13ReservasEs,
+  ...v13ConsumoEs,
+  ...v13EntrarEs,
   // ── tabs (R3) ────────────────────────────────────────────────────
   "app.tab.panel": "Inicio",
   "app.tab.inbox": "Bandeja",

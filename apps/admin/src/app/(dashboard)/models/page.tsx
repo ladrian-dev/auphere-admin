@@ -9,6 +9,7 @@ import { AgentDefaultCard } from "./agent-default";
 import { MultiplierDialog, NewDeploymentDialog } from "./deployment-dialogs";
 import { DeploymentsTable } from "./deployments-table";
 import { STATUS_FILTERS, formatMultiplier, problemWords } from "./labels";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Modelos" };
 export const dynamic = "force-dynamic";
@@ -26,6 +27,7 @@ export const dynamic = "force-dynamic";
  * «⋯» enables or disables it (T075).
  */
 export default async function ModelsPage({ searchParams }: { searchParams: Promise<{ status?: string }> }) {
+  await requirePageOperator("read");
   const status = (await searchParams).status;
   const valid = STATUS_FILTERS.some((f) => f.key === status) ? status : undefined;
   // Spec 065 (T078): Auphere's default for the agents, read apart: a failure stays in its card.

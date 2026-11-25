@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Button, EmptyState, ErrorState } from "@nexus/ui";
 
@@ -6,16 +7,21 @@ import { CHANNEL_NAME } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
 
 import { AssignAgentForm } from "./assign-form";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** Step 3 — assign the agent. The newest channel of this kind comes chosen. */
 export default async function AssignAgentPage({ params }: { params: Promise<{ id: string; channel: string }> }) {
+  await requirePageOperator("operate");
   const { id, channel } = await params;
-  const [channels, agents] = await Promise.all([
+  const [channels, agents, tenant] = await Promise.all([
     backend.listChannels(id).catch(() => null),
     backend.listTenantAgents(id).catch(() => null),
+    backend.getTenant(id).catch(() => null),
   ]);
+  // Spec 077 (2.2): a send-only client has no agent to assign.
+  if (tenant?.send_only) redirect(`/tenants/${id}/channels/new/${channel}/done`);
   if (!channels || !agents) {
     return <ErrorState title="No se pudieron leer los canales o los agentes" description="La API no respondió." />;
   }

@@ -10,6 +10,73 @@ altas, tickets, conectores, canales propios, Playground QA y estado de la instan
 Solo lo usan operadores; la identidad vive en la API (`/admin/auth/*`, ADR-034) y el
 panel no tiene base de datos.
 
+## Quién puede operar (specs 078 y 079)
+
+El panel llama a la API con el token de servicio, así que la API no sabe qué operador
+pide cada cosa: quien decide si se obedece es el panel, con su guarda
+(`src/lib/session.ts`). Desde la spec 079 la guarda mira también el **rol**.
+
+### Qué puede hacer cada rol
+
+Los tres roles son del equipo de Auphere; los de la consola de partners son otros. La
+matriz vive en la API (`core/operator_permissions.py`) y el panel guarda una copia
+(`src/lib/permissions.ts`); `lib/__tests__/permissions.test.ts` lee el archivo de la API
+y falla si difieren. Qué cubre cada permiso, acción por acción, está en
+[`specs/079-panel-respeta-el-rol/inventario.md`](../specs/079-panel-respeta-el-rol/inventario.md).
+
+| Permiso | `admin` | `qa_operator` | `viewer` |
+|---|---|---|---|
+| `read` · leer, también las conversaciones | sí | sí | sí |
+| `qa` · Playground, evaluaciones, calibración, certificaciones | sí | sí | no |
+| `operate` · configurar partners, clientes, agentes, canales y conectores | sí | sí | no |
+| `money` · saldo, pagos, crédito, cobro, facturas, membresías, topes | sí | no | no |
+| `credentials` · claves de API y PIN de WhatsApp | sí | no | no |
+| `impersonate` · suplantar a un partner | sí | no | no |
+| `people` · invitaciones, crear partners y vincularles clientes, acceso a la consola del cliente, teléfonos de dueño, bajas | sí | no | no |
+| `delete` · borrar, archivar o reactivar un cliente archivado, suprimir a una persona, desconectar | sí | no | no |
+| `platform` · modelos y precios, router, conectores por defecto, números de Auphere | sí | no | no |
+
+Un rol que la matriz no conoce, o una cuenta deshabilitada, no tiene ningún permiso. El
+rol se cambia con `apps/api/scripts/seed_operator.py --role`.
+
+### Cómo se declara
+
+- **Server Action**: `await requireOperator("<permiso>")` como primera sentencia, o una
+  función del mismo archivo que la reciba como primer argumento literal y empiece por
+  `requireOperator(<ese parámetro>)`. Nunca dentro de un `try`, que se traga la
+  redirección. Solo `loginAction` y `logoutAction` no la llaman.
+- **Página, layout y `generateMetadata` que lee la API** de `app/(dashboard)`:
+  `await requirePageOperator("<permiso>")`. Next no vuelve a ejecutar un layout al
+  navegar, así que la guarda del layout raíz no protege las lecturas de cada página.
+- **Ruta** (cualquier `route.ts` de `app`, no solo `app/api`):
+  `const op = await routeOperator("<permiso>"); if (op instanceof Response) return op;`.
+- `src/__tests__/server-actions-require-operator.test.ts` barre el código y falla con el
+  nombre de lo que no declare su permiso; `role-guard-checker.test.ts` prueba que el
+  comprobador muerde.
+
+### Qué pasa sin el permiso
+
+- **Una acción** no llama a la API: deja la línea `operator.permission_denied` (sin los
+  argumentos de la acción) y vuelve a la misma página con `?sin-permiso=1`, donde un
+  aviso dice que no se hizo nada. La vuelta pasa por `lib/safe-redirect.ts`.
+- **Una página** pinta «no encontrada»: no se explica qué permiso falta.
+- **Una ruta** contesta 401 sin sesión y 403 en los demás casos. Nunca redirige.
+- **Hasta la fase 1b de la spec 079** la interfaz aún no oculta los controles que el rol
+  no puede usar: se ven, y al pulsarlos sale el aviso. Y **hasta su fase 2** la API no
+  comprueba el rol por su cuenta.
+
+### Sesión y cuenta
+
+- **Una cuenta deshabilitada** (`access: "disabled"`) entra con su contraseña, pero la
+  guarda la lleva a `/sin-acceso`, que solo deja cerrar sesión. `/sin-acceso` devuelve
+  al panel solo a quien tiene algún permiso, así que un rol desconocido no rebota.
+- El middleware solo mira que exista la cookie: no protege nada por sí mismo.
+- **Después del login** solo se vuelve a una ruta del panel (`lib/safe-redirect.ts`): un
+  `?from=//otro-sitio` acaba en `/tenants`.
+- **El token de servicio** sale solo de `lib/admin-token.ts`. En producción, sin
+  `NEXUS_ADMIN_TOKEN` o con un valor `change-me`, el panel falla al llamar a la API con
+  un mensaje que nombra la variable.
+
 ## Sistema de diseño
 
 Desde la spec 031 el panel usa **`@nexus/ui`** como la consola de partners:
@@ -146,6 +213,35 @@ En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar u
 - **Playground.** El de `/qa/{cliente}/chat`, dentro de la ficha. «Probar agente» lleva aquí.
 - **Resumen.** A dos columnas. A la izquierda va lo que falta para operar, solo lo pendiente y con lo hecho plegado; con todo hecho es una línea. Debajo, las conversaciones recientes. A la derecha, los datos del cliente, la **restricción soberana** (spec 047, [abajo](#palancas-del-partner-y-del-cliente-spec-047)) y las pruebas del agente.
 - **Conversaciones.** Nombra al contacto por su nombre o número y dice quién responde. El control es un botón «Tomar control» / «Devolver», que no aparece en las conversaciones resueltas.
+
+### Cliente de solo envío (spec 077)
+
+Un cliente sin agente cuyo sistema envía plantillas por la API, como Tecfin o New
+Air. Se crea con «Solo envío por API» en Nuevo cliente, o se marca después desde
+Acciones; marcar y desmarcar piden confirmación y nombran al operador. Con la marca
+(`tenants.send_only`):
+
+- **Pestañas y cabecera.** Sin Agente, Habilidades, Playground, Canal del dueño ni
+  «Probar agente». La pestaña nueva es «Envío por API», en Conectar.
+- **Resumen.** «Puesta en marcha» con cuatro pasos y su estado real
+  (`GET /admin/tenants/{id}/send-readiness`): número conectado, plantilla de
+  autenticación aprobada, membresía activa (solo si tiene) y clave activa.
+- **Canales.** Conectar un número termina sin pasos de agente. El número queda sin
+  agente y como línea de avisos.
+- **Envío por API.** Las claves del cliente: crear (se ve completa una vez), rotar
+  con gracia y revocar. También cómo llama su sistema y los 50 últimos envíos.
+- **Plantillas.** En el diálogo de siempre y con el mismo editor que la consola
+  (spec 075, requisito 10), la categoría Autenticación pide el botón, la
+  caducidad y el aviso de seguridad en lugar del texto.
+- **Facturación.** Lo de siempre y, además, la tarjeta **Membresía**:
+  - quién la paga, el importe y el estado;
+  - el enlace de pago de Stripe con su caducidad;
+  - «Actualizar» y «Cobrar ahora»;
+  - cancelar o quitar la membresía;
+  - los cobros.
+
+Sin la marca, la ficha es la de siempre. Todo esto se explica en
+[envio-directo.md](envio-directo.md).
 
 Los logos de canales y conectores son las marcas de cada app (Simple Icons, CC0) sobre su
 color, en `components/brand/brand-marks.ts`. Lo que no tiene marca usa la imagen del

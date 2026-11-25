@@ -158,6 +158,15 @@ class Tenant(UUIDPrimaryKey, TimestampMixin, Base):
         default=False,
         server_default="false",
     )
+    # Spec 077 (migration 0242): a client with no agent that only sends through
+    # the API (Tecfin, New Air). The panel hides the agent screens, and every
+    # WhatsApp number of the client is send-only. Off by default.
+    send_only: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
 
     def __repr__(self) -> str:
         return f"<Tenant {self.slug}>"

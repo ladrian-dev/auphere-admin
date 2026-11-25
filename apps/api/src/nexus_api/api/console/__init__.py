@@ -20,6 +20,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from nexus_api.api.console import (
+    ads,
     agenda,
     agent_builder,
     agent_copilot,
@@ -37,6 +38,7 @@ from nexus_api.api.console import (
     agent_tests,
     agents,
     agents_list,
+    attention,
     audit,
     auth,
     auth_google,
@@ -123,6 +125,8 @@ router.include_router(channels.router)
 router.include_router(diagnostics.router)
 router.include_router(channel_config.router)
 router.include_router(conversations.router)
+# Spec 076 (requisito 3): el informe de anuncios del cliente.
+router.include_router(ads.router)
 router.include_router(usage.router)
 # Spec 047 (T158): Consumo por partidas, junto a lo de hoy.
 router.include_router(usage_lines.router)
@@ -181,6 +185,8 @@ router.include_router(seed_templates.router)
 router.include_router(notifications.router)
 router.include_router(onboarding.router)
 router.include_router(home.router)
+# Spec 071: «Lo que te necesita», la lista viva del partner (la misma del Panel).
+router.include_router(attention.router)
 router.include_router(workflow.router)
 router.include_router(workstation.router)
 router.include_router(workstation_partner.router)

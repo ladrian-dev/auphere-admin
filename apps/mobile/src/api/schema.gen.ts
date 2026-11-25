@@ -1887,6 +1887,18 @@ export interface components {
             /** Kind */
             kind: string;
         };
+        /** AdOriginOut */
+        AdOriginOut: {
+            /** Headline */
+            headline: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "ad" | "post";
+            /** Url */
+            url: string | null;
+        };
         /** AgentOption */
         AgentOption: {
             /**
@@ -2502,6 +2514,7 @@ export interface components {
         ConversationDetailOut: {
             /** Activity */
             activity: components["schemas"]["ActivityOut"][];
+            ad_origin?: components["schemas"]["AdOriginOut"] | null;
             /** Agent */
             agent?: {
                 [key: string]: string;
@@ -3586,6 +3599,11 @@ export interface components {
         };
         /** NotificationOut */
         NotificationOut: {
+            /**
+             * Condition
+             * @default false
+             */
+            condition: boolean;
             /**
              * Created At
              * Format: date-time

@@ -10,6 +10,7 @@ import type {
   ChannelDetail,
   MetaSocialConnectResult,
   TemplateCreated,
+  TemplateEdited,
   TemplateList,
   TestSendResult,
   WhatsAppSignupResult,
@@ -128,13 +129,68 @@ export async function listTemplatesAction(raw: unknown): Promise<ActionResult<Te
   return res;
 }
 
+const templateBase = { ref, name: z.string().regex(/^[a-z0-9_]{1,512}$/), language: z.string().min(2).max(15) };
+
+/**
+ * Spec 077 (3.4): AUTHENTICATION is Meta's fixed format — only the button,
+ * the expiry and the security notice travel, never a body. The other two
+ * categories are exactly what they were.
+ */
+const templateInput = z.discriminatedUnion("category", [
+  z.object({
+    ...templateBase,
+    category: z.enum(["MARKETING", "UTILITY"]),
+    header_text: z.string().max(60).optional(),
+    body_text: z.string().min(1).max(1024),
+    footer_text: z.string().max(60).optional(),
+    buttons: z.array(button).max(3).default([]),
+    examples: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.string().min(1).max(200)).default({}),
+  }),
+  z.object({
+    ...templateBase,
+    category: z.literal("AUTHENTICATION"),
+    otp_button_text: z.string().trim().min(1).max(25),
+    otp_expiration_minutes: z.number().int().min(1).max(90).optional(),
+    otp_security_recommendation: z.boolean(),
+  }),
+]);
+
 export async function createTemplateAction(raw: unknown): Promise<ActionResult<TemplateCreated>> {
+  const body = templateInput.parse(raw);
+  const principal = await requirePrincipal();
+  if (!can(principal.role, "channels:write")) return forbidden();
+  const { ref: r, ...tpl } = body;
+  const res = await run(() =>
+    backendFor(principal).createTemplate(
+      r,
+      tpl.category === "AUTHENTICATION"
+        ? tpl
+        : {
+            ...tpl,
+            header_text: tpl.header_text || undefined,
+            footer_text: tpl.footer_text || undefined,
+          },
+    ),
+  );
+  if (res.ok) revalidatePath(`/clients/${encodeURIComponent(r)}`, "layout");
+  return res;
+}
+
+/**
+ * Spec 075: edit one language of a template, keeping its name. The whole
+ * content is sent (Meta replaces it); `version` is the fingerprint the list
+ * gave, so a change made meanwhile is never overwritten (7.1). `category` is
+ * left out on an approved template, whose category cannot change (2.3).
+ */
+export async function editTemplateAction(raw: unknown): Promise<ActionResult<TemplateEdited>> {
   const body = z
     .object({
       ref,
       name: z.string().regex(/^[a-z0-9_]{1,512}$/),
-      language: z.string().min(2).max(15),
-      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]),
+      language: z.string().regex(/^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$/),
+      version: z.string().regex(/^[0-9a-f]{16}$/),
+      confirm: z.boolean().default(false),
+      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).optional(),
       header_text: z.string().max(60).optional(),
       body_text: z.string().min(1).max(1024),
       footer_text: z.string().max(60).optional(),
@@ -144,9 +200,9 @@ export async function createTemplateAction(raw: unknown): Promise<ActionResult<T
     .parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "channels:write")) return forbidden();
-  const { ref: r, ...tpl } = body;
+  const { ref: r, name, language, ...tpl } = body;
   const res = await run(() =>
-    backendFor(principal).createTemplate(r, {
+    backendFor(principal).editTemplate(r, name, language, {
       ...tpl,
       header_text: tpl.header_text || undefined,
       footer_text: tpl.footer_text || undefined,

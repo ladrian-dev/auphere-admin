@@ -7,6 +7,30 @@
 export const businessProtoMessages = {
   "business.section.edit.label": { es: "Editar {section}", en: "Edit {section}" },
   "business.section.mark.web": { es: "Leído de la web · revísalo", en: "Read from the web · review it" },
+  // Spec 073 (4.1, 4.5, 4.6): Negocio que se lee.
+  "business.section.toReview": { es: "{n} por revisar", en: "{n} to review" },
+  "business.section.readIn": { es: "Leído en {language}", en: "Read in {language}" },
+  "business.search.label": { es: "Buscar en Negocio", en: "Search Business" },
+  "business.search.placeholder": { es: "Buscar un servicio o una pregunta", en: "Search a service or a question" },
+  "business.search.services.one": { es: "1 servicio", en: "1 service" },
+  "business.search.services.other": { es: "{n} servicios", en: "{n} services" },
+  "business.search.faqs.one": { es: "1 pregunta", en: "1 question" },
+  "business.search.faqs.other": { es: "{n} preguntas", en: "{n} questions" },
+  "business.search.and": { es: "y", en: "and" },
+  "business.search.results": { es: "Resultados de la búsqueda", en: "Search results" },
+  "business.review.label": { es: "Revisión de lo leído", en: "Review of what was read" },
+  "business.review.progress": { es: "{reviewed} de {total} datos revisados", en: "{reviewed} of {total} facts reviewed" },
+  "business.review.markAll": { es: "Marcar todo como correcto", en: "Mark everything as correct" },
+  "business.review.markAll.body.one": {
+    es: "Lo leído en 1 sección pasa a ser tuyo y deja de salir como «Leído de la web».",
+    en: "What was read in 1 section becomes yours and stops showing as “Read from the web”.",
+  },
+  "business.review.markAll.body.other": {
+    es: "Lo leído en {n} secciones pasa a ser tuyo y deja de salir como «Leído de la web».",
+    en: "What was read in {n} sections becomes yours and stops showing as “Read from the web”.",
+  },
+  "business.review.markAll.confirm": { es: "Marcar como correcto", en: "Mark as correct" },
+  "business.review.done": { es: "Revisado: ya es tuyo.", en: "Reviewed: it is yours now." },
   "business.section.mark.missing": { es: "Falta", en: "Missing" },
   "business.section.confirm": { es: "Es correcto", en: "It’s right" },
   "business.section.confirmed": {

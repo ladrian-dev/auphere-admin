@@ -48,7 +48,7 @@ import contextlib
 import json
 import uuid
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
@@ -78,6 +78,7 @@ from nexus_api.services import whatsapp_opt_outs
 from nexus_api.services.channel_config import set_health
 from nexus_api.services.inbox_stream import publish_inbox_event
 from nexus_api.services.media_storage import MediaStorageError, get_media_storage
+from nexus_api.services.membership_gate import MEMBERSHIP_INACTIVE, blocks_sending
 from nexus_api.services.meta_social_service import PROBLEM_REASON_OF
 from nexus_api.services.meta_window import PERSON_ACTORS, decide, private_reply_allowed
 from nexus_channels.base import ChannelCapabilityError
@@ -308,6 +309,7 @@ async def run_outbound_dispatcher(
                     last_sweep = now
                     tenant_ids = await _list_active_tenants(sm)
                     await _warn_on_undrained_tenants(sm, tenant_ids)
+                    await _expire_codes_of_undrained_tenants(sm, tenant_ids)
                     await _publish_outbound_backlog(sm)
                     for tid in tenant_ids:
                         work.add(tid)
@@ -393,6 +395,49 @@ async def _warn_on_undrained_tenants(
             "nothing will ever deliver them"
         ),
     )
+
+
+async def _expire_codes_of_undrained_tenants(
+    sm: sa.orm.sessionmaker,  # type: ignore[type-arg]
+    active: list[uuid.UUID],
+) -> int:
+    """Spec 077 (R4.9, /cso 2026-11-24): the drain never visits a client that
+    is not active, so a one-time code queued before it was paused would sit
+    in its row in clear for good. Here, on the sweep, the codes of those
+    clients that waited past :data:`OTP_MAX_AGE` are failed and wiped, as the
+    drain does for an active one. A fresh code waits: the client may come back.
+
+    Finding the clients reads across tenants (as the warning above); the
+    change is made under each client's own context. Never raises: a cleanup
+    must not stop the drain. Returns how many codes it wiped.
+    """
+    otp_pending = (
+        Message.direction == MessageDirection.OUTBOUND,
+        Message.status == MessageStatus.PENDING,
+        Message.template_payload["otp"].as_boolean().is_(True),
+    )
+    wiped = 0
+    try:
+        async with sm() as session:
+            rows = await session.execute(
+                sa.select(Message.tenant_id)
+                .where(*otp_pending, Message.tenant_id.not_in(active) if active else sa.true())
+                .distinct()
+            )
+            tenant_ids = [row[0] for row in rows]
+        for tenant_id in tenant_ids:
+            async with sm() as session, tenant_scoped_session(session, tenant_id):
+                result = await session.execute(
+                    sa.select(Message).where(*otp_pending).with_for_update(skip_locked=True)
+                )
+                for msg in result.scalars():
+                    if _code_is_stale(msg):
+                        _fail_stale_code(msg, tenant_id)
+                        _redact_code(msg)
+                        wiped += 1
+    except Exception as exc:  # pragma: no cover - defensive
+        log.warning("outbound.dispatcher.code_sweep_failed", error=str(exc)[:200])
+    return wiped
 
 
 async def _publish_outbound_backlog(
@@ -481,9 +526,19 @@ async def _drain_tenant(
             ),
             retries=sum(1 for m in pending if m.attempts),
         )
+        # Spec 077 (R9.2): read once per batch. A client whose membership is
+        # not active sends no template — what was queued before is failed,
+        # never held, so a stale code does not go out when it comes back.
+        membership_blocked = await blocks_sending(session)
         for msg in pending:
-            await _send_one(session, msg, adapters, tenant_id)
+            if membership_blocked and msg.template_payload:
+                _fail_for_membership(msg, tenant_id)
+            elif _code_is_stale(msg):
+                _fail_stale_code(msg, tenant_id)
+            else:
+                await _send_one(session, msg, adapters, tenant_id)
             if msg.status in (MessageStatus.SENT, MessageStatus.FAILED):
+                _redact_code(msg)
                 settled.append((msg.conversation_id, msg.id, msg.status.value))
     # Spec 030: the Inbox paints delivery. Published after the commit and
     # without a body — the console re-reads the thread through its RLS route.
@@ -496,6 +551,74 @@ async def _drain_tenant(
             message_id=str(message_id),
             status=status,
         )
+
+
+#: Spec 077 (R4.6): what a one-time code becomes once its send ends.
+REDACTED_CODE = "•"
+
+
+def _fail_for_membership(msg: Message, tenant_id: uuid.UUID) -> None:
+    """Spec 077 (R9.2): park a template row of a client without an active
+    membership. Terminal: re-driving it is a new API call, which the API
+    refuses with 402 until the membership is active again."""
+    msg.status = MessageStatus.FAILED
+    msg.failed_at = datetime.now(UTC)
+    msg.failure_code = MEMBERSHIP_INACTIVE
+    msg.last_error = "the client's monthly membership is not active"
+    log.info(
+        "outbound.dispatcher.blocked_membership",
+        tenant_id=str(tenant_id),
+        message_id=str(msg.id),
+        template=(msg.template_payload or {}).get("name"),
+    )
+
+
+#: Spec 077: a one-time code older than this is not sent. After an outage the
+#: queue may still hold codes the person already gave up on.
+OTP_MAX_AGE = timedelta(minutes=10)
+
+
+def _code_is_stale(msg: Message, *, now: datetime | None = None) -> bool:
+    tp = msg.template_payload or {}
+    if not tp.get("otp"):
+        return False
+    try:
+        queued = datetime.fromisoformat(str(tp.get("queued_at") or ""))
+    except ValueError:
+        return False
+    return (now or datetime.now(UTC)) - queued > OTP_MAX_AGE
+
+
+def _fail_stale_code(msg: Message, tenant_id: uuid.UUID) -> None:
+    msg.status = MessageStatus.FAILED
+    msg.failed_at = datetime.now(UTC)
+    msg.failure_code = "code_expired"
+    msg.last_error = "the one-time code waited longer than its validity in the queue"
+    log.info("outbound.dispatcher.code_expired", tenant_id=str(tenant_id), message_id=str(msg.id))
+
+
+def _redact_code(msg: Message) -> None:
+    """Spec 077 (R4.6, guarantee 6): wipe a one-time code from the stored row
+    once its send ends. A retryable failure stays ``pending`` with the code; a
+    terminal one only comes back through the API, which writes a new code."""
+    tp = msg.template_payload
+    if not tp or not tp.get("otp"):
+        return
+    params = dict(tp.get("params") or {})
+    if "body" in params:
+        params["body"] = [REDACTED_CODE for _ in params["body"]]
+    if "buttons" in params:
+        params["buttons"] = [
+            {
+                **button,
+                "parameters": [
+                    {**p, "text": REDACTED_CODE} for p in (button.get("parameters") or [])
+                ],
+            }
+            for button in params["buttons"]
+        ]
+    # A new dict, so the JSONB change is flushed.
+    msg.template_payload = {**tp, "params": params}
 
 
 async def _send_one(

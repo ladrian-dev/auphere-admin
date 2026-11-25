@@ -84,14 +84,15 @@ it("spend per day with 7, 30 and 90, and the period's total as the figure", asyn
   await fireEvent.press(screen.getByRole("radio", { name: "90 días" }));
   expect(onDays).toHaveBeenCalledWith(90);
   expect(screen.getByText(/3,50/)).toBeTruthy();
-  expect(screen.getByLabelText(/Gasto por día en dólares/)).toBeTruthy();
+  // Spec 069 (R21.1): the label said «en dólares» for any currency; each amount in it says its own.
+  expect(screen.getByLabelText(/^Gasto por día: /)).toBeTruthy();
 });
 
 it("with no spend in 90 days there is no period to choose, and it says what will fill the chart (R9.2)", async () => {
   await view({ anySpend: false, spend: null });
   expect(screen.queryAllByRole("radio")).toHaveLength(0);
   expect(screen.getByText("Cuando tus agentes atiendan conversaciones, aquí verás el gasto de cada día.")).toBeTruthy();
-  expect(screen.queryByLabelText(/Gasto por día en dólares/)).toBeNull();
+  expect(screen.queryByLabelText(/^Gasto por día/)).toBeNull();
 });
 
 it("the split by agent", async () => {
@@ -135,8 +136,9 @@ describe("the answer first (R13)", () => {
     await view();
     // 8 October plus 11 whole days: Monday 19.
     expect(screen.getByText("Te alcanza hasta el lunes 19")).toBeTruthy();
-    expect(screen.getByText("Al ritmo de los últimos 7 días.")).toBeTruthy();
-    expect(screen.getByText("Para recargar, habla con quien gestiona tu negocio en Auphere.")).toBeTruthy();
+    // Spec 069 (R18.1, R18.2): the pace line says for how long, and whom to ask is «Pídeselo a {partner}».
+    expect(screen.getByText("Para unos 11 días, al ritmo de los últimos 7 días.")).toBeTruthy();
+    expect(screen.getByText("¿Necesitas más saldo? Pídeselo a Auphere.")).toBeTruthy();
   });
 
   it("says the month when it is not this one", async () => {
@@ -152,7 +154,8 @@ describe("the answer first (R13)", () => {
 
   it("with a partner, names it", async () => {
     await view({ contact: { kind: "partner", name: "Amacrux Demo" } });
-    expect(screen.getByText("Para recargar, habla con Amacrux Demo.")).toBeTruthy();
+    // Spec 069 (R18.2): «Pídeselo a {partner}», as text.
+    expect(screen.getByText("¿Necesitas más saldo? Pídeselo a Amacrux Demo.")).toBeTruthy();
   });
 
   it.each([

@@ -7,7 +7,9 @@ instead of the Meta Business Manager UI:
   Cloud API (source of truth is Meta; the local
   ``whatsapp_template_status`` mirror only tracks approval webhooks).
 - ``POST   /admin/tenants/{id}/whatsapp/templates`` — submit a new
-  template for Meta review (status starts at PENDING).
+  template for Meta review (status starts at PENDING). Since spec 075
+  (requisito 10) it takes the console's ``TemplateCreateIn`` and goes to
+  Meta the console's way (``submit_template``): one shape, one builder.
 - ``DELETE /admin/tenants/{id}/whatsapp/templates/{name}`` — delete a
   template (all languages of that name, per the Cloud API contract).
 
@@ -24,21 +26,35 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import MetaAPIError
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.api.admin.operator import operator_actor, require_operator
+from nexus_api.api.console.schemas_channels import (
+    SystemVariablesOut,
+    TemplateCreateIn,
+    TemplateEditIn,
+    TemplateEditOut,
+)
+from nexus_api.api.console.templates import (
+    NEGATIVE_STATUSES,
+    load_verdicts,
+    suggested_action_for,
+)
 from nexus_api.api.deps import scoped_session_from_path
 from nexus_api.core.security import require_admin_token
-from nexus_api.db.models import AuditLog
+from nexus_api.db.models import AuditLog, OperatorAccount
+from nexus_api.schemas.whatsapp_templates import TemplateContentIn, TemplateContentOut
+from nexus_api.services.whatsapp_template_edit import edit_template, row_extras
 from nexus_api.services.whatsapp_templates import (
     TemplateOut,
     fetch_templates,
     invalidate_template_cache,
+    submit_template,
 )
 from nexus_api.services.whatsapp_templates import (
     build_meta_client as _build_client,
@@ -56,43 +72,23 @@ log = structlog.get_logger()
 # Meta template names: lowercase alphanumeric + underscores, max 512.
 _TEMPLATE_NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
 
-_VALID_CATEGORIES = ("MARKETING", "UTILITY", "AUTHENTICATION")
+
+class AdminTemplateOut(TemplateOut):
+    """Spec 075: the same per-row edit facts the console gets (9.3)."""
+
+    edit_blocker: str | None = None
+    draft: TemplateContentOut | None = None
+    version: str | None = None
+    system_variables: SystemVariablesOut | None = None
+    #: Meta's literal reason for a negative verdict (the webhook mirror) and
+    #: the short code of what to fix: the panel shows them while editing (1.2).
+    rejection_reason: str | None = None
+    suggested_action: str = "none"
 
 
 class TemplateListOut(BaseModel):
-    templates: list[TemplateOut]
+    templates: list[AdminTemplateOut]
     waba_id: str
-
-
-class TemplateCreateIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1, max_length=512)
-    language: str = Field(default="es", min_length=2, max_length=15)
-    category: str = Field(default="UTILITY")
-    components: list[dict[str, Any]] = Field(
-        min_length=1,
-        description=(
-            'Cloud API native components — e.g. [{"type":"BODY","text":"Hola {{nombre}} ..."}]'
-        ),
-    )
-
-    @field_validator("name")
-    @classmethod
-    def _validate_name(cls, v: str) -> str:
-        if not _TEMPLATE_NAME_RE.match(v):
-            raise ValueError(
-                "name must be lowercase letters, digits and underscores (e.g. reminder_24h)"
-            )
-        return v
-
-    @field_validator("category")
-    @classmethod
-    def _validate_category(cls, v: str) -> str:
-        upper = v.upper()
-        if upper not in _VALID_CATEGORIES:
-            raise ValueError(f"category must be one of {list(_VALID_CATEGORIES)}")
-        return upper
 
 
 class TemplateCreateOut(BaseModel):
@@ -122,7 +118,21 @@ async def list_whatsapp_templates(
     # list — it is where a human goes to check whether Meta approved a
     # template. The send path takes the cached read; this one does not.
     templates, waba_id = await fetch_templates(session, use_cache=False)
-    return TemplateListOut(templates=templates, waba_id=waba_id)
+    verdicts = await load_verdicts(session, waba_id)
+    rows: list[AdminTemplateOut] = []
+    for t in templates:
+        v = verdicts.get((t.name, t.language))
+        st = (t.status or (v.status if v is not None else None) or "").upper()
+        reason = v.reason if v is not None and st in NEGATIVE_STATUSES else None
+        rows.append(
+            AdminTemplateOut(
+                **t.model_dump(),
+                **row_extras(t),
+                rejection_reason=reason or None,
+                suggested_action=suggested_action_for(st, reason),
+            )
+        )
+    return TemplateListOut(templates=rows, waba_id=waba_id)
 
 
 @router.post(
@@ -136,24 +146,8 @@ async def create_whatsapp_template(
     session: AsyncSession = Depends(scoped_session_from_path),
     actor: str = Depends(require_admin_token),
 ) -> TemplateCreateOut:
-    creds = await _require_meta_credentials(session)
-    client = _build_client()
-    try:
-        try:
-            result = await client.create_template(
-                waba_id=creds.waba_id,
-                access_token=creds.bisuat,
-                name=body.name,
-                language=body.language,
-                category=body.category,
-                components=body.components,
-            )
-        except MetaAPIError as exc:
-            raise _meta_error_to_http(exc, context="la creación de la plantilla") from exc
-    finally:
-        await client.close()
-
-    invalidate_template_cache(creds.waba_id)
+    # Spec 075 (10.5): the console's shape and the console's way to Meta (9.3).
+    result = await submit_template(session, body)
 
     audit = AuditLog(
         tenant_id=tenant_id,
@@ -230,4 +224,48 @@ async def delete_whatsapp_template(
         name=name,
         deleted=bool(result.get("success", True)),
         audit_log_id=audit.id,
+    )
+
+
+@router.put(
+    "/tenants/{tenant_id}/whatsapp/templates/{name}/{language}",
+    response_model=TemplateEditOut,
+    dependencies=[Depends(require_admin_token)],
+)
+async def edit_whatsapp_template(
+    tenant_id: uuid.UUID,
+    name: str,
+    language: str,
+    body: TemplateEditIn,
+    # Before the scoped session: both share the request's DB session, and
+    # ``require_operator`` opens (and closes) its own transaction on it.
+    operator: OperatorAccount = Depends(require_operator),
+    session: AsyncSession = Depends(scoped_session_from_path),
+) -> TemplateEditOut:
+    """Spec 075: the operator edits with the console's rules (9.1, 9.3). The
+    audit names the person behind the panel session (``X-Operator-Id``),
+    never the shared admin token (8.4)."""
+    if not _TEMPLATE_NAME_RE.match(name) or not re.match(
+        r"^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$", language
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="nombre de plantilla inválido"
+        )
+    content = TemplateContentIn(**body.model_dump(exclude={"version", "confirm"}))
+    result = await edit_template(
+        session,
+        name=name,
+        language=language,
+        body=content,
+        version=body.version,
+        confirm=body.confirm,
+        actor=operator_actor(operator),
+        audit_action="admin.template.edit",
+    )
+    return TemplateEditOut(
+        name=result.name,
+        language=result.language,
+        changed=result.changed,
+        status=result.status,
+        category=result.category,
     )

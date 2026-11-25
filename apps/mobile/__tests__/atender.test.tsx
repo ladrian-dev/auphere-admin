@@ -116,7 +116,8 @@ describe("the foot of the thread is one surface (spec 042, T049–T051, R2.1, R2
     [{ kind: "agent" }, "take-over"],
     [{ kind: "other", name: "Luis" }, "take-over"],
     [{ kind: "resolved" }, "reopen"],
-    [{ kind: "mine", blocked: null }, "send"],
+    // Spec 069 (Historia 2, micro 7): the send button only comes out with text; the empty box is the control.
+    [{ kind: "mine", blocked: null }, "composer-input"],
     [{ kind: "mine", blocked: "window_closed" }, "blocked"],
   ] as const)("renders one surface for %j, with its own control", async (mode, control) => {
     await render(foot(mode as Parameters<typeof ThreadFoot>[0]["mode"]));
@@ -151,6 +152,8 @@ describe("the foot of the thread is one surface (spec 042, T049–T051, R2.1, R2
     await rerender(foot({ kind: "mine", blocked: null }, { focusSignal: 1 }));
     expect(screen.getByTestId("thread-surface")).toBe(before);
     expect(screen.getByTestId("composer-input")).toBeTruthy();
+    // Spec 069 (micro 7): send comes out once there is text.
+    await fireEvent.changeText(screen.getByTestId("composer-input"), "Hola");
     expect(screen.getByTestId("send")).toBeTruthy();
     expect(screen.queryByTestId("take-over")).toBeNull();
   });

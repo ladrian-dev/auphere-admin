@@ -2,6 +2,7 @@ import BillingCard from "../_sections/billing-card";
 import PartnerPayments from "../_sections/partner-payments";
 import Receipts from "../_sections/receipts";
 import Wallet from "../_sections/wallet";
+import { requirePageOperator } from "@/lib/session";
 
 /** Spec 031: the partner's money — balance and ledger, the card and its charges, then receipts. */
 export default async function PartnerMoneyPage({
@@ -11,6 +12,7 @@ export default async function PartnerMoneyPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ invoice?: string }>;
 }) {
+  await requirePageOperator("read");
   // Back from «Ver factura» without an invoice to show.
   const invoiceMissing = (await searchParams).invoice === "missing";
   return (

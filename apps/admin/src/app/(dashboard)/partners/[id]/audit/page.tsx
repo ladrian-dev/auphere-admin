@@ -19,6 +19,7 @@ import {
 } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { fullDateTime } from "@/lib/format";
+import { requirePageOperator } from "@/lib/session";
 
 const AUDIT_LIMIT = 100;
 
@@ -32,6 +33,7 @@ export default async function PartnerAuditPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requirePageOperator("read");
   const { id } = await params;
   const [partner, entries, lines] = await Promise.all([
     backend.getPartner(id),

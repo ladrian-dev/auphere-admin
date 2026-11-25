@@ -9,7 +9,10 @@ import { Button, Card, EmptyState, PageHeader, SegmentedControl, StatusBadge, cn
 
 import { listNotificationsAction, markAllNotificationsReadAction, markNotificationReadAction } from "@/app/(console)/notifications/actions";
 import { BalanceButton } from "@/components/money/balance-button";
+import { attentionKey } from "@/components/attention/attention-model";
+import { AttentionRow } from "@/components/attention/attention-row";
 import { useLocale, useT } from "@/i18n/client";
+import type { PanelAttention } from "@/lib/backend/home-usage";
 import type { Notification, NotificationPage } from "@/lib/backend/onboarding";
 
 import { notificationText, severityTone } from "./render";
@@ -28,11 +31,14 @@ export function NotificationsList({
   initialFilter,
   clientNames,
   canAssign = false,
+  now = [],
 }: {
   initial: NotificationPage;
   initialFilter: Filter;
   clientNames?: Record<string, string>;
   canAssign?: boolean;
+  /** Spec 071 (3.4): «Ahora», la lista viva. `null`: no se pudo leer. */
+  now?: PanelAttention[] | null;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -123,6 +129,27 @@ export function NotificationsList({
           ) : undefined
         }
       />
+      {now === null || now.length > 0 ? (
+        <section aria-labelledby="notif-now-h" className="grid min-w-0 gap-2" data-slot="notif-now">
+          <h2 id="notif-now-h" className="text-base font-semibold">
+            {t("att.bell.now")}
+          </h2>
+          {now === null ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t("att.bell.nowError")}
+            </p>
+          ) : (
+            <Card className="py-0">
+              <ul className="divide-y divide-border px-4">
+                {now.map((row) => (
+                  <AttentionRow key={attentionKey(row)} row={row} />
+                ))}
+              </ul>
+            </Card>
+          )}
+          <h2 className="mt-4 text-base font-semibold">{t("att.bell.before")}</h2>
+        </section>
+      ) : null}
       <div className="flex min-w-0 flex-col gap-4" aria-busy={pending}>
         <SegmentedControl
           aria-label={t("proto.notif.filter")}
@@ -152,9 +179,12 @@ export function NotificationsList({
                 const Icon = SEVERITY_ICON[n.severity === "critical" ? "critical" : n.severity === "warning" ? "warning" : "info"];
                 const ref = balanceRequestRef(n);
                 return (
-                  <li key={n.id} className={cn("flex min-w-0 flex-wrap items-center gap-3 px-4 py-3", n.read && "opacity-75")}>
+                  // Leída, la fila se apaga solo en el texto del aviso (gris de tinta,
+                  // que ya cumple AA): con `opacity` en toda la fila, la etiqueta y la
+                  // fecha bajaban del 4,5:1 (axe `color-contrast`).
+                  <li key={n.id} className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-3">
                     {/* El punto de sin leer, o su hueco: así las filas no bailan al leerlas. */}
-                    {!n.read ? (
+                    {!n.read && !n.condition ? (
                       <span role="img" aria-label={t("proto.notif.unread")} className="size-2 shrink-0 rounded-full bg-primary" />
                     ) : (
                       <span aria-hidden="true" className="size-2 shrink-0" />
@@ -164,10 +194,14 @@ export function NotificationsList({
                       {t(n.severity === "critical" ? "notif.severity.critical" : n.severity === "warning" ? "notif.severity.warning" : "notif.severity.info")}
                     </StatusBadge>
                     <div className="flex min-w-0 flex-1 flex-col">
-                      <p className={cn("min-w-0 text-sm text-pretty", !n.read && "font-medium")}>{notificationText(locale, n, clientNames)}</p>
-                      <time dateTime={n.created_at} className="text-xs text-muted-foreground" title={n.created_at}>
-                        {formatRelative(n.created_at, locale)}
-                      </time>
+                      <p className={cn("min-w-0 text-sm text-pretty", n.read ? "text-muted-foreground" : "font-medium")}>{notificationText(locale, n, clientNames)}</p>
+                      <span className="text-xs text-muted-foreground">
+                        <time dateTime={n.created_at} title={n.created_at}>
+                          {formatRelative(n.created_at, locale)}
+                        </time>
+                        {/* Spec 071 (D1): lo que se arregló solo lo dice. */}
+                        {n.handled ? <span data-slot="notif-resolved">{` · ${t("att.bell.resolved")}`}</span> : null}
+                      </span>
                       {canAssign && ref ? (
                         <BalanceButton refId={ref} name={clientNames?.[ref] ?? ref} mode="assign" size="xs" className="mt-2 w-fit" />
                       ) : null}
@@ -181,7 +215,8 @@ export function NotificationsList({
                         {t("notif.openClient")}
                       </Button>
                     ) : null}
-                    {!n.read ? (
+                    {/* Spec 071 (3.3): lo de una condición no se marca a mano: se arregla. */}
+                    {!n.read && !n.condition ? (
                       <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => markRead(n.id)}>
                         {t("notif.markRead")}
                       </Button>

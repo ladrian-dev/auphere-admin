@@ -50,7 +50,7 @@ export async function stageAgentConfigAction(
   },
   agentId?: string,
 ): Promise<Result<AgentConfig>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.stageAgentConfig(tenantId, body, agentOrNothing(agentId));
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -66,7 +66,7 @@ export async function promoteAgentConfigAction(
   version: number,
   reason: string,
 ): Promise<Result<AgentConfig>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.promoteAgentConfig(tenantId, version, reason.trim());
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -81,7 +81,7 @@ export async function rollbackAgentConfigAction(
   tenantId: string,
   version: number,
 ): Promise<Result<AgentConfig>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.rollbackAgentConfig(tenantId, version);
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -101,7 +101,7 @@ export async function updateRuntimeCapabilitiesAction(
   version: number,
   body: RuntimeCapabilitiesInput,
 ): Promise<Result<AgentConfig>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.updateRuntimeCapabilities(
       tenantId,
@@ -124,7 +124,7 @@ export async function improveAgentPromptAction(
     feedback?: string | null;
   },
 ): Promise<Result<ImprovePromptOut>> {
-  await requireOperator();
+  await requireOperator("qa");
   try {
     const result = await backend.improveAgentPrompt(tenantId, body);
     // We deliberately do NOT revalidatePath here: the improver returns
@@ -145,7 +145,7 @@ export async function testAgentTurnAction(
     version?: number;
   },
 ): Promise<Result<TestTurnOut>> {
-  await requireOperator();
+  await requireOperator("qa");
   try {
     const result = await backend.testAgentTurn(tenantId, body);
     // The sandbox doesn't mutate any persistent state — no
@@ -162,7 +162,7 @@ export async function applySeedTemplateAction(
   body: { seed_template_ref: string; placeholders: Record<string, unknown> },
   agentId?: string,
 ): Promise<Result<AgentConfig>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.applyAgentConfigSeed(tenantId, body, agentOrNothing(agentId));
     revalidatePath(`/tenants/${tenantId}/agent`);
@@ -185,7 +185,7 @@ export async function applySeedTemplateAction(
 export async function getSeedMetricsAction(
   templateName: string,
 ): Promise<Result<SeedTemplateMetrics | null>> {
-  await requireOperator();
+  await requireOperator("read");
   try {
     const result = await backend.getSeedTemplateMetrics(templateName);
     return { ok: true, data: result };
@@ -197,7 +197,7 @@ export async function getSeedMetricsAction(
 export async function listPromptLibraryAction(
   opts: { vertical?: string; category?: string } = {},
 ): Promise<Result<PromptSnippet[]>> {
-  await requireOperator();
+  await requireOperator("read");
   try {
     const result = await backend.listPromptLibrary(opts);
     return { ok: true, data: result };
@@ -216,7 +216,7 @@ export async function createTenantAgentAction(
   tenantId: string,
   name: string,
 ): Promise<Result<TenantAgent>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   const clean = name.trim();
   if (!clean || clean.length > 80) return { ok: false, error: "name_invalid" };
   try {

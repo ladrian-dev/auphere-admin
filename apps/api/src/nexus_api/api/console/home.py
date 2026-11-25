@@ -82,7 +82,6 @@ from .schemas_home_usage import (
     HomeTrendOut,
     HomeUsageOut,
     IncidentClientOut,
-    PanelAttentionOut,
     PanelBalanceOut,
     PanelClientsOut,
     PanelDailyOut,
@@ -382,7 +381,9 @@ async def _panel(
     by_tenant: dict[uuid.UUID, tuple[str, str | None, TenantStatus]],
     now: datetime,
 ) -> HomePanelOut:
-    from nexus_api.services.partner_panel import Client, build_panel
+    from nexus_api.services.partner_panel import Client, Gate, build_panel
+
+    from .attention import attention_out
 
     built = await build_panel(
         session,
@@ -391,7 +392,7 @@ async def _panel(
             Client(tenant_id=tid, ref=ref, name=name, status=status)
             for tid, (ref, name, status) in by_tenant.items()
         ],
-        can_assign="usage:write" in principal.permissions,
+        gate=Gate.of(principal),
         now=now,
     )
     money_ok = "usage:read" in principal.permissions and "money" not in built.errors
@@ -434,20 +435,12 @@ async def _panel(
             days=built.days,
             resolved_without_person=built.resolved,
             handed_to_person=built.handed,
+            previous_total=built.previous_total,
         )
         if "conversations_per_day" not in built.errors
         else None,
-        attention=[
-            PanelAttentionOut(
-                external_client_ref=row.ref,
-                client_name=row.name,
-                code=row.code,  # type: ignore[arg-type]
-                count=row.count,
-                action=row.action,  # type: ignore[arg-type]
-                href=row.href,
-            )
-            for row in built.attention
-        ]
+        # Spec 071: la misma lista que ``GET /console/attention``.
+        attention=[attention_out(item) for item in built.attention]
         if "attention" not in built.errors
         else None,
         all_serving=built.all_serving,

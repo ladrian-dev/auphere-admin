@@ -12,6 +12,7 @@ import { AnomaliesView } from "../router/anomalies/anomalies-view";
 import { DAY_OPTIONS, anomalyTotals, daysLabel, parseDays, sinceFor, summaryItems } from "./anomalies";
 import { GraphVersionCallout } from "./graph-version-callout";
 import { LedgerDiffs, MetaDiffs } from "./reconciliations-view";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Estado" };
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ const CHECK_LABEL: Record<string, string> = { postgres: "Base de datos", redis: 
  * to it; it is not even read.
  */
 export default async function StatusPage({ searchParams }: { searchParams: Promise<{ days?: string | string[] }> }) {
+  await requirePageOperator("read");
   const days = parseDays((await searchParams).days);
   const routerVisible = ROUTER_PANEL_VISIBLE;
   const [instance, router, recon] = await Promise.all([

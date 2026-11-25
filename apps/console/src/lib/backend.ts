@@ -467,6 +467,10 @@ export type AuditEntry = {
   actor: string;
   /** Spec 029: who wrote it, so the row draws a face or an icon. */
   actor_kind?: "person" | "companion" | "auphere" | "api_key" | "machine" | "system";
+  /** Spec 073 (1.4): la persona por su nombre (o su correo, si no se sabe). `actor` es lo que usa el filtro. */
+  actor_name?: string | null;
+  /** Spec 073 (1.3): del equipo del partner o de un cliente. */
+  actor_scope?: "partner" | "client" | null;
   action: string;
   category?: string | null;
   /** `critical` marks what cannot be undone: deleting a client, revoking a key. */
@@ -602,6 +606,7 @@ import { agentQualityApi } from "./backend/agent-quality";
 import { agentToolsApi } from "./backend/agent-tools";
 import { builderApi } from "./backend/builder";
 import { capabilitiesApi } from "./backend/capabilities";
+import { adsApi } from "./backend/ads";
 import { channelConfigApi } from "./backend/channel-config";
 import { channelsApi } from "./backend/channels";
 import { clientAccessApi } from "./backend/client-access";
@@ -661,6 +666,7 @@ export function backendFor(principal: Principal) {
     ...agentKnowledgeApi(call),
     // Spec 047 (historias 10 y 11): la página de cada canal, su menú y el enlace del dueño por agente.
     ...channelConfigApi(call),
+    ...adsApi(call),
     // Spec 047 (historias 31 y 32): el rendimiento y las mejoras de cada agente.
     ...agentImproveApi(call),
     // Spec 047 (historia 21): los conectores de cada agente y la página de cada conexión.

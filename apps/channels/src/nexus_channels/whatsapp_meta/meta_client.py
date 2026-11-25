@@ -12,6 +12,7 @@ Endpoints exercised in Phase 1 (Embedded Signup + steady-state messaging):
 - ``GET /{waba_id}/message_templates`` — list templates.
 - ``POST /{waba_id}/message_templates`` — create a template.
 - ``DELETE /{waba_id}/message_templates`` — delete by name.
+- ``POST /{template_id}`` — edit a template's content (spec 075).
 - ``GET /{media_id}`` — resolve media id to a (short-lived) download URL.
 - ``GET <signed_url>`` — download media bytes; the URL is the one returned
   from the previous step. Auth header is required even on the CDN URL.
@@ -634,6 +635,34 @@ class MetaClient:
             json_body=body,
         )
 
+    async def edit_template(
+        self,
+        *,
+        template_id: str,
+        access_token: str,
+        components: list[dict[str, Any]],
+        category: str | None = None,
+        parameter_format: str | None = None,
+    ) -> dict[str, Any]:
+        """Spec 075: replace a template's content in place, keeping its name.
+
+        Meta only lets ``category``, ``components`` and the TTL change — name
+        and language never travel. The components are replaced as a whole, so
+        the caller sends everything the template must keep. The documented
+        answer is ``{"success": true}`` without the new status: read the
+        template again to learn it.
+        """
+        body: dict[str, Any] = {"components": components}
+        if category:
+            body["category"] = category
+        if parameter_format:
+            body["parameter_format"] = parameter_format
+        return await self._post(
+            f"/{template_id}",
+            access_token=access_token,
+            json_body=body,
+        )
+
     async def delete_template(
         self,
         *,
@@ -695,6 +724,48 @@ class MetaClient:
             access_token=admin_access_token,
             params={"input_token": input_token},
         )
+
+    # ── Conversions API for business messaging (spec 076) ──────────────────
+
+    async def token_scopes(self, *, input_token: str, app_id: str) -> set[str]:
+        """The permissions a number's token carries, read with the app token
+        (``{app_id}|{app_secret}``): ``data.scopes`` and every
+        ``data.granular_scopes[].scope``."""
+        data = await self.debug_token(
+            input_token=input_token, admin_access_token=f"{app_id}|{self._app_secret}"
+        )
+        info = data.get("data") or {}
+        scopes = {str(s) for s in info.get("scopes") or [] if s}
+        for g in info.get("granular_scopes") or []:
+            if isinstance(g, dict) and g.get("scope"):
+                scopes.add(str(g["scope"]))
+        return scopes
+
+    async def ensure_dataset(self, *, waba_id: str, access_token: str) -> str:
+        """``POST /{waba_id}/dataset``: creates the WhatsApp account's dataset, or
+        returns the one it already has. Needs ``whatsapp_business_manage_events``."""
+        data = await self._post(f"/{waba_id}/dataset", access_token=access_token)
+        dataset_id = data.get("id")
+        if not dataset_id:
+            raise MetaAPIError("dataset response without id", status_code=200, body=str(data)[:500])
+        return str(dataset_id)
+
+    async def send_conversion_event(
+        self,
+        *,
+        dataset_id: str,
+        access_token: str,
+        event: dict[str, Any],
+        partner_agent: str,
+        test_event_code: str | None = None,
+    ) -> dict[str, Any]:
+        """``POST /{dataset_id}/events`` with **one** event: Meta rejects the
+        whole batch for one bad or late event, so one per call keeps an error to
+        its own event (research D8)."""
+        body: dict[str, Any] = {"data": [event], "partner_agent": partner_agent}
+        if test_event_code:
+            body["test_event_code"] = test_event_code
+        return await self._post(f"/{dataset_id}/events", access_token=access_token, json_body=body)
 
     # ── HTTP primitives ────────────────────────────────────────────────────
 

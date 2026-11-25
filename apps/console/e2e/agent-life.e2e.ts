@@ -32,14 +32,21 @@ async function expectNoSeriousAxe(page: Page) {
   expect(blocking.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" | ")}`)).toEqual([]);
 }
 
+// El título de cada pantalla es su h1: el nombre del agente o, en sus pestañas, el del cliente.
 async function go(page: Page, path: string, heading: string) {
   const res = await page.goto(path);
   expect(res?.status(), `${path} respondió ${res?.status()}`).toBeLessThan(400);
   await page.waitForLoadState("networkidle").catch(() => undefined);
-  await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
 }
 
 const agentPage = (id: string) => `/clients/${REF}/agents/${id}`;
+/** Como el prototipo aprobado, el agente abre en Rendimiento si ya atiende: lo demás va en sus pestañas. */
+async function openTab(page: Page, name: string) {
+  const tab = page.getByRole("tab", { name });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
 const menu = async (page: Page, name: string) => {
   await page.getByRole("button", { name: `Más acciones de ${name}` }).click();
   return page.getByRole("menu");
@@ -52,12 +59,15 @@ test.describe("Spec 047 — la vida de los agentes, el copiloto y el constructor
   });
 
   test("la pestaña Agentes dice el estado de cada uno y abre la pestaña que le toca", async ({ page }) => {
-    await go(page, `/clients/${REF}/agents`, "Agentes");
+    // Spec 070: las secciones del cliente son una cápsula de enlaces; «Agentes» es la de esta página.
+    await go(page, `/clients/${REF}/agents`, "Barbería Cultor");
+    await expect(page.getByRole("navigation", { name: "Secciones del cliente" }).getByRole("link", { name: "Agentes" })).toHaveAttribute("aria-current", "page");
     const list = page.getByRole("list", { name: "Agentes del cliente" });
     const recepcion = list.getByRole("link", { name: /Recepción/ });
     await expect(recepcion.getByText("Atendiendo")).toBeVisible();
     await expect(recepcion.getByText("Por defecto")).toBeVisible();
-    await expect(list.getByRole("link", { name: /Ventas/ })).toHaveAttribute("href", `/clients/${REF}/channels`);
+    // «Listo · sin canal» abre la pestaña Canales de su propio agente (spec 047, 63.1).
+    await expect(list.getByRole("link", { name: /Ventas/ })).toHaveAttribute("href", `${agentPage(VENTAS)}?tab=channels`);
     await expect(list.getByRole("link", { name: /Ventas/ }).getByText("Listo · sin canal")).toBeVisible();
     await expectNoSeriousAxe(page);
   });
@@ -116,6 +126,8 @@ test.describe("Spec 047 — la vida de los agentes, el copiloto y el constructor
 
   test("el copiloto: «¿Por qué dijo esto?» con sus fuentes y «Arreglar» con su alcance", async ({ page, request }) => {
     await go(page, agentPage(COBROS), "Cobros");
+    // La prueba que falla sale en la tarjeta de pruebas de «Configuración», con su «¿Por qué dijo esto?».
+    await openTab(page, "Configuración");
     await page.getByRole("button", { name: "¿Por qué dijo esto en Dice el horario del domingo?" }).click();
     const panel = page.getByRole("region", { name: "Copiloto" });
     await expect(panel.getByText(/la ficha dice que el domingo está cerrado/)).toBeVisible();
@@ -164,6 +176,8 @@ test.describe("Spec 047 — la vida de los agentes, el copiloto y el constructor
   test("a 390 px nada se desborda: la pantalla del agente con el copiloto y el modal de archivar", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await go(page, agentPage(COBROS), "Cobros");
+    // La prueba que falla sale en la tarjeta de pruebas de «Configuración», con su «¿Por qué dijo esto?».
+    await openTab(page, "Configuración");
     await page.getByRole("button", { name: "¿Por qué dijo esto en Dice el horario del domingo?" }).click();
     await expect(page.getByRole("region", { name: "Copiloto" }).getByText(/la ficha dice que el domingo está cerrado/)).toBeVisible();
     await page.waitForTimeout(300);

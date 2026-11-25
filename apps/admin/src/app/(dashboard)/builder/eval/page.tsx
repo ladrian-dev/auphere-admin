@@ -1,5 +1,5 @@
 import { ErrorState, PageHeader } from "@nexus/ui";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { BuilderTabs } from "../builder-tabs";
 import { builderQuality } from "../quality";
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
  * API says (`bank_size`).
  */
 export default async function BuilderEvalPage() {
-  const [operator, page] = await Promise.all([requireOperator(), builderQuality.evalRuns().catch(() => null)]);
+  const [operator, page] = await Promise.all([requirePageOperator("read"), builderQuality.evalRuns().catch(() => null)]);
   return (
     <>
       <PageHeader

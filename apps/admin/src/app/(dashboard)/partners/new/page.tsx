@@ -1,6 +1,7 @@
 import { PageHeader } from "@nexus/ui";
 
 import { NewPartnerForm } from "./new-partner-form";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Nuevo partner" };
 
@@ -9,7 +10,8 @@ export const metadata = { title: "Nuevo partner" };
 // enlace, con el partner ya creado.
 export const maxDuration = 60;
 
-export default function NewPartnerPage() {
+export default async function NewPartnerPage() {
+  await requirePageOperator("people");
   return (
     <>
       <PageHeader

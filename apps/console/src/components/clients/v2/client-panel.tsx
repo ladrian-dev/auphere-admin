@@ -13,7 +13,8 @@ import { agentHref, clientHref } from "@/components/shell/routes-v2";
 import { useLocale, useT } from "@/i18n/client";
 import type { ClientPanel as Panel, Money as MoneyValue } from "@/lib/backend/client-records";
 
-import { agentStateText, capPct, periodLabel, roundDays, spendSegments } from "./client-v2-model";
+import { BagMeter } from "./bag-meter";
+import { agentStateText, bagBar, bagPace, capPct, periodLabel } from "./client-v2-model";
 
 /** Las series del prototipo (`--s1`…`--s4`): los tramos de la barra y los puestos de la lista. */
 const SERIES = ["bg-series-1", "bg-series-2", "bg-accent-mid", "bg-status-warning"];
@@ -101,8 +102,6 @@ function BalanceCard({ panel, money, mode, openBalance }: { panel: Panel; money?
   const unassigned = bag.state === "unassigned" || !bag.assigned;
   const pct = Math.min(100, Math.max(0, Math.round(bag.pct_spent ?? 0)));
   const avail = 100 - pct;
-  const days = roundDays(bag.days_left);
-  const segments = spendSegments(bag, panel.spend_by_agent);
   const left = unassigned ? zero : (bag.balance ?? zero);
   const spent = unassigned ? zero : (bag.spent ?? zero);
   const assigned = unassigned ? zero : bag.assigned;
@@ -122,12 +121,13 @@ function BalanceCard({ panel, money, mode, openBalance }: { panel: Panel; money?
     );
   }
 
-  const stackLabel = unassigned
-    ? t("panel.bag.byAgent")
-    : `${t("panel.bag.byAgent")}: ${[
-        ...segments.map((s) => t("panel.bag.share", { name: s.name, amount: formatMoneyText(s.spent) })),
-        t("panel.proto.legend.availablePct", { pct: avail }),
-      ].join(", ")}`;
+  // Spec 072 (2.1–2.4): la barra es lo que queda, con cuánto dura; el reparto por
+  // agente vive en su lista de ranking («Gasto por agente»), no dentro de la barra.
+  const bar = bagBar(bag);
+  const pace = bagPace(t, bag);
+  const meterLabel = [left && assigned && !unassigned ? t("clients.v2.bag.left", { left: formatMoneyText(left), assigned: formatMoneyText(assigned) }) : t("clients.v2.bag.unassigned"), pace]
+    .filter(Boolean)
+    .join(". ");
 
   return (
     <PanelCard title={t("panel.bag.title")} aside={aside} slot="panel-balance">
@@ -137,11 +137,6 @@ function BalanceCard({ panel, money, mode, openBalance }: { panel: Panel; money?
           <span data-slot="panel-left" className="text-2xl font-semibold tracking-tight tabular-nums">
             {left ? <Money value={left} /> : "—"}
           </span>
-          {!unassigned ? (
-            <span className="text-xs text-pretty text-muted-foreground">
-              {days != null && bag.days_estimable ? t("panel.bag.days", { days }) : t("panel.bag.noEstimate")}
-            </span>
-          ) : null}
         </div>
         <div className="grid min-w-0 gap-1 text-right text-ui">
           <span className="tabular-nums">
@@ -160,32 +155,11 @@ function BalanceCard({ panel, money, mode, openBalance }: { panel: Panel; money?
         </div>
       </div>
 
-      <div className="grid min-w-0 gap-3">
-        <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted" role="img" aria-label={stackLabel}>
-          {segments.map((s, i) => (
-            <span
-              key={s.agent_id}
-              title={s.name}
-              className={cn("block h-full shrink-0", SERIES[i % SERIES.length], i > 0 && "shadow-[-1px_0_0_var(--card)]")}
-              style={{ width: `${s.pct}%` }}
-            />
-          ))}
+      {bar ? (
+        <div className="grid min-w-0 gap-2">
+          <BagMeter bag={bag} bar={bar} label={meterLabel} pace={pace} size="lg" />
         </div>
-        {!unassigned ? (
-          <ul data-slot="panel-legend" aria-hidden="true" className="flex min-w-0 flex-wrap gap-x-4 gap-y-2 text-ui text-muted-foreground">
-            {segments.map((s, i) => (
-              <li key={s.agent_id} className="flex min-w-0 items-center gap-2">
-                <span className={cn("size-2 shrink-0 rounded-sm", SERIES[i % SERIES.length])} />
-                <span className="truncate">{s.name}</span>
-              </li>
-            ))}
-            <li className="flex items-center gap-2">
-              <span className="size-2 shrink-0 rounded-sm bg-muted ring-1 ring-input ring-inset" />
-              {t("panel.proto.legend.available")}
-            </li>
-          </ul>
-        ) : null}
-      </div>
+      ) : null}
 
       {unassigned ? (
         <Callout tone="danger">

@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import type { SavedReply } from "@/api/endpoints";
 import type { T } from "@/i18n/t";
+import { useMotion } from "@/motion/use-motion";
 import { concentric, TOUCH, useTheme } from "@/theme/theme";
 import { Button, IconButton } from "@/ui/button";
 import { Icon, icons } from "@/ui/icon";
 import { Text } from "@/ui/text";
 
 import type { ComposerMode } from "../model";
+import { TAKE_OVER, TAKE_OVER_SETTLED_MS } from "./choreography";
 import { FOOT_RADIUS } from "./foot-radius";
 
 /**
@@ -20,6 +23,10 @@ import { FOOT_RADIUS } from "./foot-radius";
  * instead of a box that cannot send. A saved reply lands in the box, never
  * sent on its own. Offline, nothing that writes is offered (R14.2). The send
  * button is a solid circle whose corners are concentric with the surface's.
+ *
+ * Spec 069 (micro 7, Historia 2): the send button comes out of the box when
+ * there is text and goes back when there is none — out of reach and out of
+ * the screen reader's way meanwhile. The cursor lands once the box has risen.
  */
 export function Composer({
   mode,
@@ -45,12 +52,20 @@ export function Composer({
   onGiveBack?: () => void;
 }) {
   const { colors, radius } = useTheme();
+  const motion = useMotion();
   const [draft, setDraft] = useState("");
   const input = useRef<ComponentRef<typeof TextInput>>(null);
+  const hasText = draft.trim().length > 0;
+  const shown = useSharedValue(hasText ? 1 : 0);
+  useEffect(() => {
+    // Micro 7: 240 ms, the design's ease; with «Reducir movimiento», at once.
+    shown.set(motion.reduced ? (hasText ? 1 : 0) : withTiming(hasText ? 1 : 0, { duration: TAKE_OVER.rise, easing: Easing.out(Easing.cubic) }));
+  }, [hasText, motion.reduced, shown]);
+  const sendStyle = useAnimatedStyle(() => ({ opacity: shown.get(), transform: [{ scale: shown.get() }] }));
 
   useEffect(() => {
     if (focusSignal > 0) {
-      const id = setTimeout(() => input.current?.focus(), 250);
+      const id = setTimeout(() => input.current?.focus(), TAKE_OVER_SETTLED_MS);
       return () => clearTimeout(id);
     }
   }, [focusSignal]);
@@ -66,7 +81,7 @@ export function Composer({
     );
   }
 
-  const canSend = online && draft.trim().length > 0;
+  const canSend = online && hasText;
   const send = () => {
     if (!canSend) return;
     onSend(draft.trim());
@@ -99,7 +114,7 @@ export function Composer({
               }}
               android_ripple={{ color: colors.muted }}
               hitSlop={CHIP_SLOP}
-              style={({ pressed }) => [styles.chip, { borderRadius: radius.full, borderColor: colors.border, backgroundColor: pressed ? colors.muted : colors.card }]}
+              style={({ pressed }) => [styles.chip, { borderRadius: radius.full, borderColor: colors.controlBorder, backgroundColor: pressed ? colors.muted : colors.card }]}
             >
               <Text variant="subhead" numberOfLines={1}>
                 {r.title.length > 28 ? `${r.title.slice(0, 27)}…` : r.title}
@@ -118,7 +133,7 @@ export function Composer({
         value={draft}
         onChangeText={setDraft}
         placeholder={t("inbox.composer.placeholder")}
-        placeholderTextColor={colors.subtle}
+        placeholderTextColor={colors.mutedForeground}
         accessibilityLabel={t("inbox.composer")}
         multiline
         maxLength={4096}
@@ -142,21 +157,28 @@ export function Composer({
           />
         ) : null}
         <View style={styles.spacer} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t("inbox.composer.send")}
-          accessibilityState={{ disabled: !canSend }}
-          disabled={!canSend}
-          onPress={send}
-          hitSlop={6}
-          style={({ pressed }) => [
-            styles.send,
-            { borderRadius: concentric(FOOT_RADIUS, SEND_INSET), backgroundColor: canSend ? (pressed ? colors.primaryDeep : colors.primary) : colors.muted },
-          ]}
-          testID="send"
+        <Animated.View
+          style={sendStyle}
+          pointerEvents={hasText ? "auto" : "none"}
+          importantForAccessibility={hasText ? "auto" : "no-hide-descendants"}
+          accessibilityElementsHidden={!hasText}
         >
-          <Icon name={icons.arrowUp} size={20} tone={canSend ? "primaryForeground" : "mutedForeground"} />
-        </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t("inbox.composer.send")}
+            accessibilityState={{ disabled: !canSend }}
+            disabled={!canSend}
+            onPress={send}
+            hitSlop={6}
+            style={({ pressed }) => [
+              styles.send,
+              { borderRadius: concentric(FOOT_RADIUS, SEND_INSET), backgroundColor: canSend ? (pressed ? colors.primaryDeep : colors.primary) : colors.muted },
+            ]}
+            testID="send"
+          >
+            <Icon name={icons.arrowUp} size={20} tone={canSend ? "primaryForeground" : "mutedForeground"} />
+          </Pressable>
+        </Animated.View>
       </View>
     </View>
   );

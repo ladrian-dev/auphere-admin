@@ -7,6 +7,7 @@ import { usePathname } from "next/navigation";
 import { StatusBadge, buttonVariants, formatDate, tabsListVariants } from "@nexus/ui";
 
 import { CrumbName } from "@/components/shell/crumb-names";
+import { SlidingLens } from "@/components/shell/sliding-lens";
 import { clientHref, type ClientTab } from "@/components/shell/routes-v2";
 import { ShellBackButton } from "@/components/shell/shell-back-button";
 import { useLocale, useT } from "@/i18n/client";
@@ -15,7 +16,7 @@ import type { ClientDetailV2 } from "@/lib/backend/client-records";
 
 import { ClientMenu } from "./client-menu";
 
-const TABS: readonly ClientTab[] = ["panel", "business", "agents"];
+const TABS: readonly ClientTab[] = ["panel", "business", "agents", "ads"];
 
 /** La pestaña de una ruta: `/clients/x` es el Panel; `/clients/x/business/…`, Negocio. */
 export function activeTab(pathname: string, ref: string): ClientTab | null {
@@ -23,6 +24,7 @@ export function activeTab(pathname: string, ref: string): ClientTab | null {
   if (pathname === base) return "panel";
   if (pathname.startsWith(`${base}/business`)) return "business";
   if (pathname.startsWith(`${base}/agents`)) return "agents";
+  if (pathname === `${base}/ads` || pathname.startsWith(`${base}/ads/`)) return "ads";
   if (pathname === `${base}/access` || pathname.startsWith(`${base}/access/`)) return "access";
   return null;
 }
@@ -75,28 +77,33 @@ export function ClientHeaderV2({
             </p>
           ) : null}
         </div>
-        {!active ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <StatusBadge tone={tone}>{t(`clients.v2.lifecycle.${client.lifecycle}` as MessageKey)}</StatusBadge>
-            <ClientMenu refId={ref} name={client.name} allowed={client.allowed} detail={client} />
-          </div>
-        ) : null}
+        {/* Spec 073 (2.1): el «⋯» siempre está; la insignia, solo si no está activo. */}
+        <div className="flex shrink-0 items-center gap-2">
+          {!active ? <StatusBadge tone={tone}>{t(`clients.v2.lifecycle.${client.lifecycle}` as MessageKey)}</StatusBadge> : null}
+          <ClientMenu refId={ref} name={client.name} allowed={client.allowed} deleteBlocked={client.delete_blocked ?? null} detail={client} />
+        </div>
       </div>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <nav aria-label={t("clients.v2.tabs")} className="min-w-0">
-          <ul className={tabsListVariants({ floating: true })}>
-            {tabs.map((tab) => (
-              <li key={tab} className="shrink-0">
-                <Link
-                  href={clientHref(ref, tab)}
-                  aria-current={current === tab ? "page" : undefined}
-                  className="inline-flex h-8 items-center gap-2 rounded-full px-3 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-(--tab-on) aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
-                >
-                  {t(`clients.v2.tab.${tab}` as MessageKey)}
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className={tabsListVariants({ floating: true })} data-slot="client-tabs">
+            {/* Spec 070: la lente viaja a la pestaña activa. Va hermana de la lista, como en la
+                barra inferior: dentro de un `ul` solo van `li` (axe «list»), y un `li` con
+                `role="none"` no lo es. */}
+            <SlidingLens selector='[aria-current="page"]' variant="tabs" />
+            <ul className="flex w-max items-center gap-1">
+              {tabs.map((tab) => (
+                <li key={tab} className="shrink-0">
+                  <Link
+                    href={clientHref(ref, tab)}
+                    aria-current={current === tab ? "page" : undefined}
+                    className="inline-flex h-8 items-center gap-2 rounded-full px-3 text-sm font-medium whitespace-nowrap text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring aria-[current=page]:bg-(--tab-on) aria-[current=page]:text-foreground aria-[current=page]:shadow-sm"
+                  >
+                    {t(`clients.v2.tab.${tab}` as MessageKey)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
         </nav>
         {client.allowed.includes("new_agent") ? (
           <Link href={`${clientHref(ref, "agents")}/new`} className={buttonVariants()}>

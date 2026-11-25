@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 
-import { Button, Card, CardContent, EmptyState, PageHeader, StatusBadge, formatCurrency, formatDate } from "@nexus/ui";
+import { Button, Card, CardContent, EmptyState, PageHeader, StatusBadge, formatDate } from "@nexus/ui";
 
+import { formatUnits } from "@/lib/amount";
 import { BillingEmailForm } from "@/components/billing/billing-email-form";
 import { BuyCreditForm } from "@/components/billing/buy-credit-form";
 import { CardCharges, CardSection } from "@/components/billing/card-section";
@@ -123,7 +124,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                         <td className="px-4 py-3">
                           <StatusBadge tone={state.tone}>{state.label}</StatusBadge>
                         </td>
-                        <td className="px-4 py-3 text-right tabular-nums">{formatCurrency(r.total_usd, r.currency, locale)}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{formatUnits(r.total_usd, r.currency, locale)}</td>
                         <td className="px-4 py-3 tabular-nums">{formatDate(r.due_date, locale)}</td>
                         <td className="px-4 py-3 text-right">
                           <Button nativeButton={false} variant="ghost" size="sm" render={<a href={`/api/billing/receipts/${r.invoice_id}`} download title={t("hu.billing.download.title")} />}>

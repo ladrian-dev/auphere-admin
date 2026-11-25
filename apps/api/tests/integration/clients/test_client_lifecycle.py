@@ -88,6 +88,7 @@ async def test_editing_uses_the_modal_fields_with_if_match_and_tells_the_runtime
     assert body["niche"] == "Barbería de barrio" and body["lifecycle"] == "active"
     assert first.headers["ETag"] == f'"{body["revision"]}"'
     assert set(body["allowed"]) >= {"edit", "archive", "delete"}
+    assert body["delete_blocked"] == "archive_first"  # spec 073 (2.2)
 
     pubsub = fake_redis.pubsub()
     await pubsub.subscribe(PROMOTE_CHANNEL)

@@ -126,11 +126,16 @@ export function CorrectionForm({
 
   return (
     <View style={styles.stack}>
-      <Text variant="title" accessibilityRole="header">
+      {/* Spec 069 (design §7.2): the sheet's own title style, the display family when the build carries it. */}
+      <Text variant="sheetTitle" accessibilityRole="header">
         {t("corregir.title")}
       </Text>
       {answer ? (
-        <View style={[styles.quote, { borderLeftColor: colors.positive, backgroundColor: colors.muted, borderRadius: radius.md }]} accessible>
+        // The answer being corrected, quoted (design §7.2): a quiet rule, not the brand's green.
+        <View
+          style={[styles.quote, { borderLeftColor: colors.input, backgroundColor: colors.muted, borderTopRightRadius: radius.md, borderBottomRightRadius: radius.md, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }]}
+          accessible
+        >
           <Text variant="footnote" tone="mutedForeground">
             {agent ? t("corregir.answer", { agent }) : t("corregir.answer.agent")}
           </Text>

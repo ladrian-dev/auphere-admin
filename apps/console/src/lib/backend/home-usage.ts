@@ -119,21 +119,50 @@ export type PanelSpendShare = {
   amount: PanelMoney;
   approx: boolean;
 };
-export type PanelAttentionCode = "no_balance" | "channel_problem" | "integration_reauth" | "agent_cap" | "agent_without_channel" | "low_balance" | "no_agents";
-export type PanelAttentionAction = "assign_balance" | "request_balance" | "fix_channel" | "reconnect" | "raise_cap" | "connect_channel" | "new_agent";
+/** De un cliente (spec 047) y, spec 071, del partner: tope de construcción, saldo de la cuenta y cobro fallido. */
+export type PanelAttentionClientCode = "no_balance" | "channel_problem" | "integration_reauth" | "agent_cap" | "agent_without_channel" | "low_balance" | "no_agents";
+export type PanelAttentionPartnerCode = "build_cap_exhausted" | "build_cap_warning" | "account_empty" | "account_low" | "billing_payment_failed";
+export type PanelAttentionCode = PanelAttentionClientCode | PanelAttentionPartnerCode;
+export type PanelAttentionAction =
+  | "assign_balance"
+  | "request_balance"
+  | "fix_channel"
+  | "reconnect"
+  | "raise_cap"
+  | "connect_channel"
+  | "new_agent"
+  | "request_build_extension"
+  | "buy_balance"
+  | "fix_billing";
+/**
+ * Una fila de «Lo que te necesita» (spec 071, `contracts/api.md`). La misma
+ * lista sale en el Panel, en «Ahora» de la campana y en los avisos de Consumo.
+ * `scope`, `severity` y `data` son de la 071: una API anterior no los manda.
+ */
 export type PanelAttention = {
-  external_client_ref: string;
+  scope?: "partner" | "client";
+  severity?: "critical" | "warning";
+  external_client_ref: string | null;
   client_name: string | null;
   code: PanelAttentionCode;
   count: number;
   action: PanelAttentionAction;
   href: string;
+  data?: { pct?: number; spent?: PanelMoney; cap?: PanelMoney; available?: PanelMoney; days_left?: number | null };
 };
+export type AttentionList = { items: PanelAttention[]; errors: string[] };
 export type HomePanel = {
   spend: { period: "month"; since: string; until: string; total: PanelMoney; shares: PanelSpendShare[] } | null;
   clients: { period: "now"; serving: number; not_archived: number; onboarding: number } | null;
   balance: { period: "now"; available: PanelMoney; in_bags: PanelMoney; in_bags_approx: boolean } | null;
-  conversations_per_day: { period: "7d"; days: string[]; resolved_without_person: number[]; handed_to_person: number[] } | null;
+  /** Owner, 2026-11-22: del día 1 del mes a hoy, con los mismos días del mes pasado (`previous_total`). */
+  conversations_per_day: {
+    period: "month" | "7d";
+    days: string[];
+    resolved_without_person: number[];
+    handed_to_person: number[];
+    previous_total?: number | null;
+  } | null;
   attention: PanelAttention[] | null;
   /** «Todos tus clientes están atendiendo». */
   all_serving: boolean;
@@ -225,6 +254,8 @@ export type AuditQuery = {
   person?: string;
   days?: "7" | "30" | "90" | "all";
   group?: boolean;
+  /** Spec 073 (1.6): «changes» deja fuera los accesos (entrar y salir). La API, sin él, lo da todo. */
+  view?: "changes" | "all";
 };
 
 export type AuditFilterOption = { value: string; label: string };
@@ -239,6 +270,8 @@ export const receiptDownloadPath = (invoiceId: string) => `/console/billing/rece
 export function homeUsageApi(call: Call) {
   return {
     home: () => call<Home>("/console/home"),
+    /** Spec 071: «Lo que te necesita», la misma regla del Panel, para la campana y Consumo. */
+    attention: () => call<AttentionList>("/console/attention"),
     usageV2: (p: UsageQuery = {}) => call<UsageReportV2>(`/console/usage${q(p)}`),
     getWallet: () => call<Wallet>("/console/wallet"),
     usageSpend: (p: { days?: number; client?: string } = {}) => call<UsageSpend>(`/console/usage/spend${q(p)}`),

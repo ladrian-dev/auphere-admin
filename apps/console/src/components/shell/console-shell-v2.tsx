@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, PanelLeft } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as React from "react";
@@ -14,10 +14,11 @@ import type { PartnerModule } from "@/lib/principal-access";
 import { ConsoleCommandPaletteV2 } from "./console-command-palette";
 import { NAV_COLLAPSED, NAV_COOKIE } from "./console-version";
 import { isActive, type NavItem } from "./nav";
-import { navV2 } from "./nav-v2";
+import { navV2, splitForPhone } from "./nav-v2";
 import { NotificationsBellMenu } from "./notifications-bell";
 import { ProfileMenu } from "./profile-menu";
 import { ShellBreadcrumbs } from "./shell-breadcrumbs";
+import { SlidingLens } from "./sliding-lens";
 import { ThemeSwitch } from "./theme-switch";
 
 type Props = {
@@ -35,12 +36,15 @@ type Props = {
  * Spec 047 (R47.1, R47.7, R47.11, R47.12) — el marco de la consola nueva.
  *
  * - Desde 901 px: el menú lateral, plegable a 64 px (cada entrada enseña su
- *   nombre como tooltip), como el prototipo aprobado: «Operar» y «Cuenta», cada
- *   grupo con su etiqueta, seguidos, y el menú de perfil al pie.
- * - Hasta 900 px: el menú pasa a una barra superior con las entradas en una
- *   fila que se desplaza de lado, y el menú de perfil (con el tema) se queda
- *   en la barra. El prototipo lo escondía en móvil (`01` §10); aquí no.
- * - Arriba, siempre: las migas, el buscador ⌘K y la campana, una vez cada uno.
+ *   nombre como tooltip), solo con el grupo «Operar» y su etiqueta, y el menú
+ *   de perfil al pie. Equipo, Facturación y API viven en ese menú de perfil
+ *   (Andrés, 2026-10-28).
+ * - Hasta 900 px — spec 074 (D1, owner 2026-11-22): **una sola navegación**, la
+ *   barra inferior con las secciones de «Operar» y la lente de vidrio, a mano
+ *   del pulgar, como la app móvil. Sin la fila de arriba ni el botón ☰. El menú
+ *   de perfil (con la cuenta) se queda arriba, y en él va el tema (D2).
+ * - Arriba, siempre: las migas, el buscador ⌘K, la campana y, desde 901 px, el
+ *   interruptor del tema; una vez cada uno.
  * - Cada entrada es un enlace: cada pantalla tiene su URL y el botón atrás del
  *   navegador vuelve a la anterior.
  * - Solo el contenido hace scroll; el marco mide la ventana.
@@ -49,9 +53,7 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
   const t = useT();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = React.useState(defaultCollapsed);
-  const [mobileOpen, setMobileOpen] = React.useState(true);
   const sidebarId = React.useId();
-  const mobileNavId = React.useId();
   const nav = navV2(who.role, who.modules);
 
   function toggleSidebar() {
@@ -61,6 +63,8 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
   }
 
   const account = nav.bottom.map((item) => ({ href: item.href, label: t(item.labelKey), icon: item.icon }));
+  const phone = splitForPhone(nav.top);
+  const more = phone.more.map((item) => ({ href: item.href, label: t(item.labelKey), icon: item.icon }));
 
   const entry = (item: NavItem, variant: "sidebar" | "bar") => (
     <NavEntry key={item.href} item={item} label={t(item.labelKey)} active={isActive(pathname, item)} collapsed={variant === "sidebar" && collapsed} variant={variant} />
@@ -97,7 +101,8 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
               title={t("shell.beta.hint")}
               aria-hidden={collapsed || undefined}
               className={cn(
-                "shrink-0 rounded-full bg-status-warning-bg px-2 text-xs leading-5 font-semibold text-status-warning-text ring-1 ring-status-warning-border transition-opacity duration-(--duration-state) motion-reduce:transition-none",
+                // Spec 070: neutro. El ámbar es de los avisos y esto no avisa de nada.
+                "shrink-0 rounded-full bg-muted px-2 text-xs leading-5 font-medium text-muted-foreground ring-1 ring-border transition-opacity duration-(--duration-state) motion-reduce:transition-none",
                 collapsed && "opacity-0",
               )}
             >
@@ -140,43 +145,12 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
             <ShellBreadcrumbs className="max-shell:order-last max-shell:w-full" />
             <div className="flex-1" />
             <ConsoleCommandPaletteV2 />
-            <ThemeSwitch />
+            <ThemeSwitch className="max-shell:hidden" />
             <NotificationsBellMenu initialUnread={null} />
             <div data-slot="shell-mobile-profile" className="shell:hidden">
-              <ProfileMenu user={user} role={who.role} partnerName={partnerName} account={account} variant="avatar" side="bottom" />
+              <ProfileMenu user={user} role={who.role} partnerName={partnerName} account={account} variant="avatar" side="bottom" theme more={more} />
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="shell:hidden"
-              aria-controls={mobileNavId}
-              aria-expanded={mobileOpen}
-              aria-label={t(mobileOpen ? "shell.nav.mobile.hide" : "shell.nav.mobile.show")}
-              onClick={() => setMobileOpen((o) => !o)}
-            >
-              <Menu className="size-4" aria-hidden="true" />
-            </Button>
           </header>
-
-          {/* El menú en una fila (hasta 900 px): se desplaza de lado dentro de su caja. */}
-          <nav
-            id={mobileNavId}
-            data-slot="shell-mobile-nav"
-            aria-label={t("shell.nav.label")}
-            hidden={!mobileOpen}
-            className="shrink-0 px-2 pb-2 shell:hidden"
-          >
-            <div data-scroll-x="" className="overflow-x-auto overscroll-x-contain">
-              <ul className="flex w-max gap-1">
-                {nav.top.map((item) => (
-                  <li key={item.href} className="shrink-0">
-                    {entry(item, "bar")}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </nav>
 
           {/* El contenido, el único que hace scroll. */}
           <div data-slot="shell-canvas" className="relative min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card max-shell:mx-2 max-shell:mb-2 shell:mr-4 shell:mb-4">
@@ -188,6 +162,21 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
               {children}
             </main>
           </div>
+
+          {/* Spec 074 (D1): hasta 900 px, la barra inferior es la única navegación. */}
+          <nav data-slot="shell-tabbar" aria-label={t("shell.nav.label")} className="shrink-0 px-3 pt-1 shell:hidden" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+            <div className="glass relative rounded-full p-1 ring-1 ring-foreground/10">
+              {/* La lente, hermana de la lista (dentro de un `ul` solo van `li`). */}
+              <SlidingLens selector='[aria-current="page"]' variant="tabs" />
+              <ul className="grid auto-cols-fr grid-flow-col gap-1">
+                {phone.tabbar.map((item) => (
+                  <li key={item.href} className="min-w-0">
+                    {entry(item, "bar")}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </nav>
         </div>
         {companion}
       </div>
@@ -211,9 +200,13 @@ function NavGroup({ label, collapsed, children }: { label: string; collapsed: bo
       >
         {label}
       </span>
-      <ul aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
-        {children}
-      </ul>
+      {/* Spec 070: la lente de vidrio va bajo el activo y viaja con él. */}
+      <div className="relative min-w-0">
+        <SlidingLens selector='[aria-current="page"]' variant="sidebar" />
+        <ul aria-labelledby={id} className="flex min-w-0 flex-col gap-1">
+          {children}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -237,16 +230,18 @@ function NavEntry({
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        // Como el prototipo: 15 px y tinta plena; el gris al pasar y el verde
-        // suave solo para donde estás.
-        "flex min-w-0 items-center gap-3 overflow-hidden rounded-md text-[15px] whitespace-nowrap text-sidebar-foreground transition-colors duration-(--duration-hover) hover:bg-muted",
+        // Spec 070: 14 px (la escala compacta) y tinta plena; el gris al pasar.
+        // Donde estás lo marca la lente de vidrio; el verde suave queda debajo
+        // solo hasta que la lente se coloca.
+        "flex min-w-0 items-center gap-3 overflow-hidden rounded-md text-[14px] whitespace-nowrap text-sidebar-foreground transition-colors duration-(--duration-hover) hover:bg-muted",
         active && "bg-sidebar-accent font-medium text-sidebar-accent-foreground hover:bg-sidebar-accent",
-        variant === "sidebar" ? "h-9 px-3" : "h-9 gap-2 px-3",
+        // La barra inferior: icono sobre el nombre, 48 px de alto (objetivo táctil ≥ 44).
+        variant === "sidebar" ? "h-9 px-3" : "h-12 flex-col justify-center gap-1 rounded-full px-1 text-[11px]",
       )}
     >
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <Icon className={cn("shrink-0", variant === "sidebar" ? "size-4" : "size-5")} aria-hidden="true" />
       {/* Plegado, el nombre se desvanece pero sigue siendo el nombre del enlace. */}
-      <span className={cn("min-w-0 truncate transition-opacity duration-(--duration-state) motion-reduce:transition-none", collapsed && "opacity-0")}>{label}</span>
+      <span className={cn("max-w-full min-w-0 truncate transition-opacity duration-(--duration-state) motion-reduce:transition-none", collapsed && "opacity-0")}>{label}</span>
     </Link>
   );
   if (variant === "bar") return link;

@@ -18,11 +18,12 @@ import type { Palette } from "@/theme/tokens.gen";
 import { Button } from "@/ui/button";
 import { Group, Row } from "@/ui/group";
 import { icons } from "@/ui/icon";
-import { Pill, pillOf } from "@/ui/pill";
+import { pillOf } from "@/ui/pill";
 import { EmptyState } from "@/ui/states";
 import { Text } from "@/ui/text";
 
 import { hhmm, nameOf, party, spoken } from "./format";
+import { StatePill } from "./res-pill";
 
 /**
  * Aforo · Día (spec 044, R2.7–R2.10, research D9): three figures in the 042's
@@ -241,7 +242,7 @@ function CapacityRow({
           <Text variant="footnote" tone="mutedForeground" numberOfLines={1}>
             {sub}
           </Text>
-          <Pill state={r.state} origin={r.origin} mode="capacity" late={late} />
+          <StatePill state={r.state} origin={r.origin} mode="capacity" late={late} t={t} />
         </View>
       </Pressable>
       {online && (r.actions.includes("arrived") || r.actions.includes("noshow")) ? (

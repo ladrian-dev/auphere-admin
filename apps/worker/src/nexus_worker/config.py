@@ -136,6 +136,14 @@ class WorkerSettings(BaseSettings):
     # el asesor fiscal fije la ventana.
     retention_usage_months: int = 0
     retention_tick_seconds: float = 86_400.0  # 1 day
+    # Spec 076 (requisito 1.7): el identificador del clic de un anuncio
+    # (``ctwa_clid``) se borra a los 90 días; el resto del origen se queda.
+    # <= 0 desactiva el paso, como las otras ventanas.
+    retention_ad_click_days: int = 90
+
+    # Spec 076 (research D8): cada cuánto barre el despachador de eventos de
+    # conversión. Meta pide enviarlos en menos de una hora.
+    conversion_dispatch_tick_seconds: float = 60.0
 
 
 @lru_cache

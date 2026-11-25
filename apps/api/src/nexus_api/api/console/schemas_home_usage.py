@@ -11,7 +11,7 @@ which is an operational hint, not a price.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -241,15 +241,23 @@ class PanelBalanceOut(BaseModel):
 
 
 class PanelDailyOut(BaseModel):
-    period: Literal["7d"] = "7d"
+    #: Owner, 2026-11-22: del día 1 del mes a hoy (antes, los últimos 7 días).
+    period: Literal["month", "7d"] = "month"
     days: list[date]
     resolved_without_person: list[int]
     handed_to_person: list[int]
+    #: Las conversaciones de los mismos días del mes pasado (del 1 al mismo día).
+    previous_total: int | None = None
 
 
 class PanelAttentionOut(BaseModel):
-    external_client_ref: str
-    client_name: str | None
+    """Una fila de «Lo que te necesita» (spec 047; ampliada en la 071,
+    ``contracts/api.md`` ``AttentionItem``): de un cliente o del partner."""
+
+    #: Spec 071: ``partner`` (sin cliente) o ``client``.
+    scope: Literal["partner", "client"]
+    #: Spec 071: ``critical`` para lo que para algo o ya se ha parado.
+    severity: Literal["critical", "warning"]
     code: Literal[
         "no_balance",
         "channel_problem",
@@ -258,7 +266,15 @@ class PanelAttentionOut(BaseModel):
         "agent_without_channel",
         "low_balance",
         "no_agents",
+        "build_cap_exhausted",
+        "build_cap_warning",
+        "account_empty",
+        "account_low",
+        "billing_payment_failed",
     ]
+    #: ``null`` cuando ``scope = partner``.
+    external_client_ref: str | None
+    client_name: str | None
     count: int
     action: Literal[
         "assign_balance",
@@ -268,8 +284,23 @@ class PanelAttentionOut(BaseModel):
         "raise_cap",
         "connect_channel",
         "new_agent",
+        "request_build_extension",
+        "buy_balance",
+        "fix_billing",
     ]
     href: str
+    #: Spec 071: lo justo para el texto, todo opcional: ``pct``, ``spent`` y ``cap``
+    #: (partida); ``available`` (cuenta y bolsa); ``days_left`` (``account_low``,
+    #: ``low_balance``; ``null`` sin datos para estimarlo).
+    data: dict[str, Any] = Field(default_factory=dict)
+
+
+class AttentionListOut(BaseModel):
+    """``GET /console/attention`` (spec 071): la lista, de peor a mejor, y qué parte
+    no se pudo leer (``partner``, ``clients``)."""
+
+    items: list[PanelAttentionOut]
+    errors: list[str] = Field(default_factory=list)
 
 
 class HomePanelOut(BaseModel):

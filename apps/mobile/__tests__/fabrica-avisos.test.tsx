@@ -80,7 +80,8 @@ describe("the Bandeja says who takes it and why it waits (50.7)", () => {
     await render(<ConversationRow c={conv({})} now={new Date("2026-10-28T12:00:00Z")} t={t} locale="es" agentName={null} onPress={jest.fn()} />);
     expect(screen.getByText("Agente en pausa")).toBeTruthy();
     expect(screen.getByText("La atiende Recepción")).toBeTruthy();
-    expect(screen.getByRole("button").props.accessibilityLabel).toMatch(/Necesita humano\. Agente en pausa\. La atiende Recepción\./);
+    // Spec 069 (R9.1): the row says its state in the design's words («Espera a una persona»), then the same reason and agent.
+    expect(screen.getByRole("button").props.accessibilityLabel).toMatch(/Espera a una persona\. Agente en pausa\. La atiende Recepción\./);
   });
 
   it("a person who took it is not said to be the agent's", async () => {

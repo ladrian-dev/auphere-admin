@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { useForm, useWatch } from "react-hook-form";
@@ -9,6 +9,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import {
   Button,
+  Callout,
+  Checkbox,
   Form,
   FormControl,
   FormDescription,
@@ -17,6 +19,8 @@ import {
   FormLabel,
   FormMessage,
   Input,
+  Label,
+  NativeSelect,
   Select,
   SelectContent,
   SelectItem,
@@ -27,8 +31,14 @@ import {
   BusinessHoursPicker,
   type BusinessHoursValue,
 } from "@/components/forms/business-hours-picker";
+import type { MembershipPayer } from "@/lib/backend";
 
-import { checkSlugAction, createTenantAction } from "./actions";
+import { checkSlugAction, createTenantAction, finishSendOnlySetupAction } from "./actions";
+import { DIRECT, sendOnlyPlan } from "./send-only-plan";
+
+/** Spec 077: «Con agente» is today's path; «Solo envío por API» has no agent. */
+type ClientKind = "agent" | "send";
+export type PartnerOption = { id: string; name: string };
 
 // Mirror of the backend Pydantic shape (apps/api/.../schemas/tenant.py
 // TenantCreateIn). Keep these in sync — the slug regex and phone regex
@@ -85,6 +95,29 @@ const PLAN_OPTIONS: { value: FormValues["plan"]; label: string }[] = [
   { value: "internal", label: "Internal (canary)" },
 ];
 
+type SendErrors = { partner?: string; amount?: string; email?: string; payer?: string };
+
+/** Fields only «Con agente» shows: a send-only client is created with their defaults. */
+const AGENT_FIELDS = [
+  "plan",
+  "market",
+  "timezone",
+  "owner_email",
+  "owner_phone",
+  "cost_alert_threshold_usd_per_day",
+] as const;
+type AgentField = (typeof AGENT_FIELDS)[number];
+
+/** Where focus goes for each send-only error, in the order they read on screen. */
+const SEND_ERROR_TARGET: [keyof SendErrors, string][] = [
+  ["partner", "#send-partner"],
+  ["payer", 'input[name="send-payer"]:checked'],
+  ["amount", "#send-amount"],
+  ["email", "#send-email"],
+];
+
+const PARTNERS_UNREAD = "No se pudieron leer los partners: recarga la página antes de crear el cliente.";
+
 type SlugStatus =
   | { kind: "idle" }
   | { kind: "checking" }
@@ -126,8 +159,52 @@ function Section({
   );
 }
 
-export function NewTenantWizard() {
+export function NewTenantWizard({
+  partners = [],
+  partnersError = false,
+}: {
+  partners?: PartnerOption[];
+  /** The partner list could not be read: a send-only client is not created blind. */
+  partnersError?: boolean;
+}) {
   const router = useRouter();
+  // Spec 077 (T024): the kind of client, and what a send-only one still needs.
+  const [kind, setKind] = useState<ClientKind>("agent");
+  const [partner, setPartner] = useState<string>(DIRECT);
+  const [requireMembership, setRequireMembership] = useState(false);
+  const [payer, setPayer] = useState<MembershipPayer>("stripe");
+  const [amount, setAmount] = useState("40,00");
+  const [billingEmail, setBillingEmail] = useState("");
+  // `focus`: the send checks are what stopped the submit, so their first
+  // invalid field takes focus once the error is on screen (a screen reader
+  // reads them together). When a field above failed too, the form focuses that.
+  const [sendCheck, setSendCheck] = useState<{ errors: SendErrors; focus: boolean }>({
+    errors: {},
+    focus: false,
+  });
+  const sendErrors = sendCheck.errors;
+  const setSendErrors = (errors: SendErrors, focus = false) => setSendCheck({ errors, focus });
+  useEffect(() => {
+    if (!sendCheck.focus) return;
+    const target = SEND_ERROR_TARGET.find(([key]) => sendCheck.errors[key])?.[1];
+    if (target) document.querySelector<HTMLElement>(target)?.focus();
+  }, [sendCheck]);
+  // An edited field drops its own error, like the form's other fields.
+  function clearSendError(key: keyof SendErrors) {
+    setSendCheck((prev) => {
+      if (!prev.errors[key]) return prev;
+      const errors = { ...prev.errors };
+      delete errors[key];
+      return { errors, focus: false };
+    });
+  }
+  // «Con agente» fields typed before switching to «Solo envío»: kept here
+  // while hidden (so they never block the submit) and put back on return.
+  const agentDraft = useRef<{ values: Partial<FormValues>; hours: BusinessHoursValue | null } | null>(null);
+  const isSend = kind === "send";
+  const hasPartner = partner !== DIRECT;
+  // Once «Recargar» brings the list, the error about not having it goes too.
+  const partnerError = partnersError ? sendErrors.partner : undefined;
   const [submitting, setSubmitting] = useState(false);
   const [, startTransition] = useTransition();
   const [slugStatus, setSlugStatus] = useState<SlugStatus>({ kind: "idle" });
@@ -166,11 +243,35 @@ export function NewTenantWizard() {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [slugValue]);
 
+  // Spec 077: what a send-only client saves next is checked before it exists.
+  function checkSendOnly() {
+    const plan = isSend
+      ? sendOnlyPlan({ partner, requireMembership, payer, amount, email: billingEmail })
+      : null;
+    // Without the partner list, «Auphere (directo)» may only be the one option left.
+    const errors: SendErrors = {
+      ...(isSend && partnersError ? { partner: PARTNERS_UNREAD } : {}),
+      ...(plan && !plan.ok ? plan.errors : {}),
+    };
+    return { plan, errors };
+  }
+
+  // A field above failed: the send errors show in the same round, not after.
+  function onInvalid() {
+    setSendErrors(checkSendOnly().errors);
+  }
+
   async function onSubmit(values: FormValues) {
     if (slugStatus.kind === "taken") {
       form.setError("slug", { message: "Ese slug ya existe" });
       return;
     }
+    const { plan, errors } = checkSendOnly();
+    if (Object.keys(errors).length > 0) {
+      setSendErrors(errors, true);
+      return;
+    }
+    setSendErrors({});
     setSubmitting(true);
     try {
       const result = await createTenantAction({
@@ -184,10 +285,40 @@ export function NewTenantWizard() {
         business_hours: businessHours,
         cost_alert_threshold_usd_per_day:
           values.cost_alert_threshold_usd_per_day,
+        // Only a send-only client sends the flag: «Con agente» stays as today.
+        ...(isSend ? { send_only: true } : {}),
       });
       if (result.kind === "error") {
         toast.error("No se pudo crear el tenant", {
           description: result.message,
+        });
+        return;
+      }
+      if (plan?.ok) {
+        // The client exists now: whatever fails next is said and finished
+        // from its page, never by creating it again (the slug is taken).
+        let notSaved: string[];
+        try {
+          ({ notSaved } = await finishSendOnlySetupAction(result.tenantId, plan.followUp));
+        } catch {
+          notSaved = ["el partner ni la membresía (la API no respondió)"];
+        }
+        if (notSaved.length > 0) {
+          // Stays until closed: it names what the operator still has to do,
+          // on the page where it is done.
+          toast.warning(`Cliente ${values.name} creado, pero sin guardar ${notSaved.join(" ni ")}`, {
+            description: "Complétalo aquí, en su Facturación.",
+            duration: Infinity,
+          });
+        } else {
+          toast.success(`Cliente ${values.name} creado`, {
+            description: "Su Resumen dice qué falta para que su API envíe.",
+          });
+        }
+        const next =
+          notSaved.length > 0 ? `/tenants/${result.tenantId}/billing` : `/tenants/${result.tenantId}`;
+        startTransition(() => {
+          router.replace(next);
         });
         return;
       }
@@ -216,10 +347,57 @@ export function NewTenantWizard() {
   return (
     <Form {...form}>
       <form
-        onSubmit={form.handleSubmit(onSubmit)}
+        onSubmit={form.handleSubmit(onSubmit, onInvalid)}
         className="flex flex-col gap-6"
         noValidate
       >
+        <Section
+          title="Tipo de cliente"
+          description="«Con agente» sigue como hoy."
+        >
+          <fieldset className="col-span-12 grid gap-3 sm:grid-cols-2">
+            <legend className="sr-only">Tipo de cliente</legend>
+            <ChoiceCard
+              name="client-kind"
+              value="agent"
+              checked={kind === "agent"}
+              onSelect={() => {
+                if (kind === "agent") return;
+                setKind("agent");
+                setSendErrors({});
+                const draft = agentDraft.current;
+                if (draft) {
+                  for (const [f, v] of Object.entries(draft.values)) {
+                    form.setValue(f as AgentField, v as never);
+                  }
+                  setBusinessHours(draft.hours);
+                }
+              }}
+              title="Con agente"
+              help="Un agente de IA atiende sus conversaciones."
+            />
+            <ChoiceCard
+              name="client-kind"
+              value="send"
+              checked={kind === "send"}
+              onSelect={() => {
+                if (kind === "send") return;
+                setKind("send");
+                agentDraft.current = {
+                  values: Object.fromEntries(AGENT_FIELDS.map((f) => [f, form.getValues(f)])),
+                  hours: businessHours,
+                };
+                for (const f of AGENT_FIELDS) {
+                  form.resetField(f);
+                }
+                setBusinessHours(null);
+              }}
+              title="Solo envío por API"
+              help="Su sistema envía plantillas, como códigos. Sin agente."
+            />
+          </fieldset>
+        </Section>
+
         <Section title="Identidad">
           <FormField
             control={form.control}
@@ -273,6 +451,165 @@ export function NewTenantWizard() {
           />
         </Section>
 
+        {isSend ? (
+          <>
+            <Section
+              title="Partner"
+              description="Como hoy: con partner, va a su recibo; sin él, es cliente directo."
+            >
+              {partnersError ? (
+                <Callout
+                  tone="warning"
+                  className="col-span-12"
+                  action={
+                    <Button type="button" variant="outline" size="sm" onClick={() => router.refresh()}>
+                      Recargar
+                    </Button>
+                  }
+                >
+                  No se pudieron leer los partners; recarga antes de elegir.
+                </Callout>
+              ) : null}
+              <div className="col-span-12 grid gap-2 md:col-span-6">
+                <Label htmlFor="send-partner">Partner</Label>
+                {/* Native: the closed select shows the partner's name, never its id. */}
+                <NativeSelect
+                  id="send-partner"
+                  wrapperClassName="w-full"
+                  aria-invalid={partnerError ? true : undefined}
+                  aria-describedby={partnerError ? "send-partner-error" : undefined}
+                  value={partner}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setPartner(next);
+                    clearSendError("partner");
+                    clearSendError("payer");
+                    // The partner's balance does not exist without a partner.
+                    if (next === DIRECT) setPayer("stripe");
+                  }}
+                >
+                  <option value={DIRECT}>Auphere (directo)</option>
+                  {partners.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+                {partnerError ? (
+                  <p id="send-partner-error" role="alert" className="text-sm text-destructive">
+                    {partnerError}
+                  </p>
+                ) : null}
+              </div>
+            </Section>
+
+            <Section
+              title="Membresía"
+              description="Opcional. Sin membresía activa, su API no envía."
+            >
+              <div className="col-span-12 flex flex-col gap-4">
+                <label htmlFor="send-require" className="flex min-h-6 items-center gap-2 text-sm font-medium">
+                  <Checkbox
+                    id="send-require"
+                    checked={requireMembership}
+                    onCheckedChange={(v) => setRequireMembership(v === true)}
+                  />
+                  Exigir una membresía mensual
+                </label>
+                {requireMembership ? (
+                  <>
+                    <fieldset
+                      className="grid gap-3 sm:grid-cols-2"
+                      aria-describedby={sendErrors.payer ? "send-payer-error" : undefined}
+                    >
+                      <legend className="mb-2 text-sm font-medium">Quién la paga</legend>
+                      <ChoiceCard
+                        name="send-payer"
+                        value="stripe"
+                        checked={payer === "stripe"}
+                        onSelect={() => {
+                          setPayer("stripe");
+                          clearSendError("payer");
+                        }}
+                        title="El cliente, con tarjeta"
+                        help="Paga por un enlace de Stripe y se renueva cada mes."
+                      />
+                      {hasPartner ? (
+                        <ChoiceCard
+                          name="send-payer"
+                          value="partner_wallet"
+                          checked={payer === "partner_wallet"}
+                          onSelect={() => {
+                            setPayer("partner_wallet");
+                            clearSendError("payer");
+                          }}
+                          title="Del saldo del partner"
+                          help="Se descuenta cada mes. Sin saldo, se corta."
+                        />
+                      ) : null}
+                    </fieldset>
+                    {sendErrors.payer ? (
+                      <p id="send-payer-error" role="alert" className="text-sm text-destructive">
+                        {sendErrors.payer}
+                      </p>
+                    ) : null}
+                    <div className="grid gap-4 sm:grid-cols-[12rem_minmax(0,1fr)]">
+                      <div className="grid gap-2">
+                        <Label htmlFor="send-amount">Importe mensual (USD)</Label>
+                        <Input
+                          id="send-amount"
+                          inputMode="decimal"
+                          value={amount}
+                          onChange={(e) => {
+                            setAmount(e.target.value);
+                            clearSendError("amount");
+                          }}
+                          aria-invalid={sendErrors.amount ? true : undefined}
+                          aria-describedby={sendErrors.amount ? "send-amount-error" : undefined}
+                          className="font-mono tabular-nums"
+                        />
+                        {sendErrors.amount ? (
+                          <p id="send-amount-error" role="alert" className="text-sm text-destructive">
+                            {sendErrors.amount}
+                          </p>
+                        ) : null}
+                      </div>
+                      {payer === "stripe" ? (
+                        <div className="grid min-w-0 gap-2">
+                          <Label htmlFor="send-email">Correo de facturación</Label>
+                          <Input
+                            id="send-email"
+                            type="email"
+                            autoComplete="off"
+                            placeholder="facturacion@empresa.com"
+                            value={billingEmail}
+                            onChange={(e) => {
+                              setBillingEmail(e.target.value);
+                              clearSendError("email");
+                            }}
+                            aria-invalid={sendErrors.email ? true : undefined}
+                            aria-describedby={sendErrors.email ? "send-email-error" : undefined}
+                          />
+                          {sendErrors.email ? (
+                            <p id="send-email-error" role="alert" className="text-sm text-destructive">
+                              {sendErrors.email}
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                    <p className="text-sm text-pretty text-muted-foreground">
+                      {payer === "partner_wallet"
+                        ? "Al crear el cliente se cobra el primer mes del saldo del partner. Lo de Meta lo paga el cliente aparte, en su cuenta."
+                        : "El enlace de pago se crea desde su Facturación. Lo de Meta lo paga el cliente aparte, en su cuenta."}
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            </Section>
+          </>
+        ) : (
+          <>
         <Section
           title="Plan y localización"
           description="El plan determina el tier de costo. Mercado y zona horaria se usan para reportes y para el agente."
@@ -444,6 +781,8 @@ export function NewTenantWizard() {
             />
           </div>
         </Section>
+          </>
+        )}
 
         <div className="flex items-center justify-end gap-3 pt-2">
           <Button
@@ -458,10 +797,44 @@ export function NewTenantWizard() {
             type="submit"
             disabled={submitting || slugStatus.kind === "taken"}
           >
-            {submitting ? "Creando…" : "Crear tenant"}
+            {submitting ? "Creando…" : isSend ? "Crear cliente" : "Crear tenant"}
           </Button>
         </div>
       </form>
     </Form>
+  );
+}
+
+/** A radio drawn as a card: native, so arrows move between the options. */
+function ChoiceCard({
+  name,
+  value,
+  checked,
+  onSelect,
+  title,
+  help,
+}: {
+  name: string;
+  value: string;
+  checked: boolean;
+  onSelect: () => void;
+  title: string;
+  help: string;
+}) {
+  return (
+    <label className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-input p-3 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring motion-reduce:transition-none">
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={onSelect}
+        className="mt-1 size-4 shrink-0 accent-primary"
+      />
+      <span className="grid min-w-0 gap-1">
+        <span className="font-medium">{title}</span>
+        <span className="text-xs text-pretty text-muted-foreground">{help}</span>
+      </span>
+    </label>
   );
 }

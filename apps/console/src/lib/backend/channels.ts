@@ -128,6 +128,37 @@ export type TemplateRow = {
   rejection_reason: string | null;
   suggested_action: SuggestedAction;
   last_event_at: string | null;
+  /** Spec 075 (R3): why it cannot be edited here, or `null`. The API decides, never the screen. */
+  edit_blocker?: TemplateBlocker | (string & {}) | null;
+  /** Spec 075: the content already split by the API, what the editor starts from. */
+  draft?: TemplateContentOut | null;
+  /** Spec 075 (7.1): the fingerprint of the content, sent back on save. */
+  version?: string | null;
+  /** Spec 075 (4.1): a template Auphere sends by its name, and the variables it may carry. */
+  system_variables?: { mode: "exact" | "subset_keep"; variables: string[] } | null;
+};
+
+/** Spec 075 (R4): why a template cannot be edited from the console. */
+export const TEMPLATE_BLOCKERS = [
+  "status",
+  "authentication",
+  "media_header",
+  "header_variable",
+  "unsupported_button",
+  "url_variable",
+  "too_many_buttons",
+  "unsupported_component",
+] as const;
+export type TemplateBlocker = (typeof TEMPLATE_BLOCKERS)[number];
+
+/** Spec 075: `TemplateContentOut` — a template's content as the editor reads it. */
+export type TemplateContentOut = {
+  category: string | null;
+  header_text: string | null;
+  body_text: string;
+  footer_text: string | null;
+  buttons: Array<{ type: string; label: string; url?: string | null; phone_number?: string | null }>;
+  examples: Record<string, string>;
 };
 
 export type TemplateList = { items: TemplateRow[]; approved: number; rejected: number; pending: number };
@@ -138,13 +169,33 @@ export type TemplateCreateBody = {
   language: string;
   category: "MARKETING" | "UTILITY" | "AUTHENTICATION";
   header_text?: string;
-  body_text: string;
+  /** Required except with AUTHENTICATION, whose body Meta fixes (spec 077). */
+  body_text?: string;
   footer_text?: string;
   buttons?: TemplateButton[];
   /** Example per body variable, as Meta requires to review it. */
   examples?: Record<string, string>;
+  /** Spec 077: only with AUTHENTICATION — the copy-code button, ≤ 25 characters. */
+  otp_button_text?: string;
+  /** Spec 077: only with AUTHENTICATION — 1 to 90; absent, no expiry line. */
+  otp_expiration_minutes?: number;
+  /** Spec 077: only with AUTHENTICATION — «Por tu seguridad, no lo compartas.» */
+  otp_security_recommendation?: boolean;
 };
 export type TemplateCreated = { id: string | null; name: string; status: string | null; category: string | null };
+/** Spec 075: `TemplateEditIn` — the name and the language go in the path, never in the body. */
+export type TemplateEditBody = {
+  version: string;
+  confirm: boolean;
+  category?: "MARKETING" | "UTILITY" | "AUTHENTICATION";
+  header_text?: string;
+  body_text: string;
+  footer_text?: string;
+  buttons?: TemplateButton[];
+  examples?: Record<string, string>;
+};
+/** `changed: false` — nothing changed, so Meta was not called (3.4). */
+export type TemplateEdited = { name: string; language: string; changed: boolean; status: string | null; category: string | null };
 
 export const DIAGNOSTIC_KEYS = [
   "credentials",
@@ -211,6 +262,9 @@ export function channelsApi(call: Call) {
       call<TemplateCreated>(`${base(ref)}/whatsapp/templates`, { method: "POST", body }),
     deleteTemplate: (ref: string, name: string) =>
       call<{ name: string; deleted: boolean }>(`${base(ref)}/whatsapp/templates/${enc(name)}`, { method: "DELETE" }),
+    /** Spec 075: replace one language of a template, by name and language. */
+    editTemplate: (ref: string, name: string, language: string, body: TemplateEditBody) =>
+      call<TemplateEdited>(`${base(ref)}/whatsapp/templates/${enc(name)}/${enc(language)}`, { method: "PUT", body }),
     /** Spec 049: the code from Facebook Login for Business → the channel. */
     metaSocialConnect: (ref: string, kind: MetaSocialKind, code: string) =>
       call<MetaSocialConnectResult>(`${base(ref)}/${kind}/connect`, { method: "POST", body: { code } }),

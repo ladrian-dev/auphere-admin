@@ -51,3 +51,32 @@ export function categoriesOf(items: readonly { category?: string | null; archive
   for (const item of items) if (item.category && !item.archived && !seen.has(item.category.toLocaleLowerCase(locale))) seen.set(item.category.toLocaleLowerCase(locale), item.category);
   return [...seen.values()].sort((a, b) => a.localeCompare(b, locale, { sensitivity: "base" }));
 }
+
+/**
+ * Spec 073 (4.3): las columnas que no dicen nada porque son iguales en todos. Sin
+ * precio en ninguno, sin reserva en ninguno o el mismo agente para todos: la
+ * tabla las quita y una línea lo dice una vez. Con un solo servicio no se resume.
+ */
+export function unusedColumns(items: readonly { price: { kind: string; amount_minor?: number }; bookable: boolean; used_by: { id: string; name: string }[] }[]): {
+  price: boolean;
+  booking: boolean;
+  /** El agente (o los agentes) que los ofrece a todos; `null` si no es el mismo. */
+  agent: string | null;
+} {
+  if (items.length < 2) return { price: false, booking: false, agent: null };
+  const price = items.every((s) => s.price.kind === "none");
+  const booking = items.every((s) => !s.bookable);
+  const key = (s: (typeof items)[number]) => s.used_by.map((a) => a.id).sort().join(",");
+  const first = items[0]!;
+  const same = first.used_by.length > 0 && items.every((s) => key(s) === key(first));
+  return { price, booking, agent: same ? first.used_by.map((a) => a.name).join(", ") : null };
+}
+
+/** Spec 073 (4.2): con más de 12 servicios, los grupos empiezan plegados salvo el primero. */
+export const FOLD_AFTER = 12;
+
+export function openGroupsByDefault(groups: readonly { category: string | null; items: readonly unknown[] }[]): Set<string | null> {
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  if (total <= FOLD_AFTER) return new Set(groups.map((g) => g.category));
+  return new Set(groups.slice(0, 1).map((g) => g.category));
+}

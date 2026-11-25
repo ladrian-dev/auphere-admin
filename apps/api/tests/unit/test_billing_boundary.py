@@ -66,6 +66,11 @@ async def test_stripe_is_imported_only_inside_the_billing_package() -> None:
     )
 
 
+#: Everything that takes money from a partner. Spec 077 added the fixed
+#: monthly charge; the billing package may call neither.
+_SUBTRACTIONS = frozenset({"debit_wallet", "charge_fixed_fee"})
+
+
 def _uses_debit(path: Path) -> bool:
     """Busca el SÍMBOLO, no el texto.
 
@@ -77,10 +82,10 @@ def _uses_debit(path: Path) -> bool:
     tree = ast.parse(path.read_text(), filename=str(path))
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            if any(alias.name == "debit_wallet" for alias in node.names):
+            if any(alias.name in _SUBTRACTIONS for alias in node.names):
                 return True
-        elif (isinstance(node, ast.Name) and node.id == "debit_wallet") or (
-            isinstance(node, ast.Attribute) and node.attr == "debit_wallet"
+        elif (isinstance(node, ast.Name) and node.id in _SUBTRACTIONS) or (
+            isinstance(node, ast.Attribute) and node.attr in _SUBTRACTIONS
         ):
             return True
     return False

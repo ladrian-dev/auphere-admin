@@ -1,47 +1,79 @@
+"""Google Play assets for Auphere Customers 1.3.0 (spec 069).
+
+    uv run --with pillow python apps/mobile/store/play_assets.py <repo root> <raw captures folder>
+
+The raw captures are the emulator's own screenshots (Pixel 9, 1080 × 2424), taken
+with the example business, in Spanish, with the Santiago time zone and the
+status bar in demo mode (see store/README.md). This script only drops the alpha
+channel and checks the size Play accepts; it does not crop or retouch.
+
+Play's rules (Play Console Help, «Add preview assets to showcase your app»):
+2 to 8 phone screenshots, JPEG or 24-bit PNG without alpha, each side between
+320 and 3840 px, the long side at most 2.3 times the short one; the feature
+graphic is 1024 × 500 and the icon 512 × 512, 32-bit PNG.
+"""
+
 import sys
 from pathlib import Path
+
 from PIL import Image, ImageDraw, ImageFont
 
 root = Path(sys.argv[1])
-out = root / "apps/mobile/store/play"
-caps = root / "specs/044-la-app-con-reservas/evidence/capturas"
-BG = (3, 34, 33)        # brandGround #032221
-GREEN = (44, 194, 149)  # primary #2CC295
-SOFT = (170, 203, 196)  # accentSoft #AACBC4
+raw = Path(sys.argv[2])
+mobile = root / "apps/mobile"
+out = mobile / "store/play"
 
-icon = Image.open(root / "apps/mobile/assets/images/icon.png").convert("RGBA")
-icon.resize((512, 512), Image.LANCZOS).save(out / "icon-512.png")
+# Tokens (packages/ui/src/styles/tokens.css, light): brandGround, highlight, accentSoft.
+BG = (3, 34, 33)
+INK = (241, 247, 246)
+SOFT = (170, 203, 196)
+FONTS = mobile / "assets/fonts/helvena"
 
-fg = Image.new("RGB", (1024, 500), BG)
-mark = Image.open(root / "apps/mobile/assets/images/android-icon-foreground.png").convert("RGBA")
-bbox = mark.getbbox(); mark = mark.crop(bbox)
-h = 200; mark = mark.resize((int(mark.width * h / mark.height), h), Image.LANCZOS)
-fg.paste(mark, (80, (500 - h) // 2), mark)
-font = "/System/Library/Fonts/SFNS.ttf"
-title = ImageFont.truetype(font, 54); title.set_variation_by_name("Bold") if hasattr(title, "set_variation_by_name") else None
-sub = ImageFont.truetype(font, 28)
-d = ImageDraw.Draw(fg)
-x = 80 + mark.width + 48
-d.text((x, 180), "Auphere Customers", font=title, fill=(241, 247, 246))
-d.text((x, 258), "Tus clientes, tus reservas y tu", font=sub, fill=SOFT)
-d.text((x, 296), "consumo, estés donde estés.", font=sub, fill=SOFT)
-fg.save(out / "feature-1024x500.png")
+# Icon: the same image the app installs with.
+icon = Image.open(mobile / "assets/images/icon.png").convert("RGBA")
+icon.resize((512, 512), Image.Resampling.LANCZOS).save(out / "icon-512.png")
 
-shots = [
-    ("ios26-13-api043-inicio-servicios-claro.png", "1-inicio"),
-    ("ios26-13-api043-reservas-servicios-dia-claro.png", "2-reservas-dia"),
-    ("ios26-13-reserva-hoja-completa-claro.png", "3-reserva"),
-    ("ios26-13-api043-reservas-aforo-dia-claro.png", "4-aforo"),
-    ("ios26-13-reserva-nueva-aforo-claro.png", "5-nueva-reserva"),
-    ("ios26-13-bandeja-esperan-arriba-claro.png", "6-bandeja"),
-    ("ios26-13-conversacion-espera-desde-claro.png", "7-conversacion"),
+# Feature graphic, one per listing language. Helvena, like the app (069 R1.4);
+# never SF Pro, whose licence only covers mock-ups of Apple software.
+TAGLINE = {
+    "es": ("Las conversaciones y las reservas", "de tu negocio, en el teléfono."),
+    "en": ("Your business's conversations", "and bookings, on your phone."),
+}
+mark = Image.open(mobile / "assets/images/android-icon-foreground.png").convert("RGBA")
+mark = mark.crop(mark.getbbox())
+h = 200
+mark = mark.resize((int(mark.width * h / mark.height), h), Image.Resampling.LANCZOS)
+title = ImageFont.truetype(str(FONTS / "Helvena-Semibold.ttf"), 54)
+sub = ImageFont.truetype(str(FONTS / "Helvena-Regular.ttf"), 28)
+for lang, (line1, line2) in TAGLINE.items():
+    fg = Image.new("RGB", (1024, 500), BG)
+    fg.paste(mark, (80, (500 - h) // 2), mark)
+    d = ImageDraw.Draw(fg)
+    x = 80 + mark.width + 48
+    d.text((x, 180), "Auphere Customers", font=title, fill=INK)
+    d.text((x, 258), line1, font=sub, fill=SOFT)
+    d.text((x, 296), line2, font=sub, fill=SOFT)
+    name = "feature-1024x500.png" if lang == "es" else f"feature-1024x500-{lang}.png"
+    fg.save(out / name)
+    print(name, fg.size)
+
+# Phone screenshots, in the order the listing shows them (the same as the App Store's).
+SHOTS = [
+    "01-inicio",
+    "02-bandeja",
+    "03-conversacion-espera",
+    "04-conversacion-respondes",
+    "05-reservas",
+    "06-consumo",
+    "07-avisos",
 ]
-SHEETS = {"3-reserva", "5-nueva-reserva"}  # a sheet starts at the top: keep it, cut the bottom
-for src, name in shots:
-    im = Image.open(caps / src).convert("RGB")
+for old in out.glob("phone-*.png"):
+    old.unlink()
+for i, name in enumerate(SHOTS, start=1):
+    im = Image.open(raw / f"{name}.png").convert("RGB")
     w, hh = im.size
-    top = 0 if name in SHEETS else 315  # status bar and the dev client's tools button
-    im = im.crop((0, top, w, top + round(w * 16 / 9)))  # 9:16, as Play asks
-    im.save(out / f"phone-{name}.png")
-    print(name, im.size)
-print("icon", Image.open(out / "icon-512.png").size, "feature", fg.size)
+    assert 320 <= min(w, hh) and max(w, hh) <= 3840, (name, im.size)
+    assert max(w, hh) / min(w, hh) <= 2.3, (name, im.size)
+    im.save(out / f"phone-{i}-{name[3:]}.png", optimize=True)
+    print(f"phone-{i}-{name[3:]}.png", im.size)
+print("icon", Image.open(out / "icon-512.png").size)

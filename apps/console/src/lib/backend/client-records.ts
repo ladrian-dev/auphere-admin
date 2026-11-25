@@ -58,6 +58,8 @@ export type ClientRowV2 = {
   agents_summary: AgentsSummary | null;
   bag: Bag | null;
   allowed: ClientAction[];
+  /** Spec 073 (2.2): por qué «Eliminar» aún no se puede; `null` o ausente, se puede (o no se ofrece). */
+  delete_blocked?: "archive_first" | null;
 };
 export type ClientFilter = "all" | "attention" | "active" | "archived";
 export type ClientCounts = Record<ClientFilter, number>;
@@ -78,6 +80,8 @@ export type ClientDetailV2 = {
   lifecycle: Lifecycle;
   revision: number | null;
   allowed: ClientAction[];
+  /** Spec 073 (2.2): por qué «Eliminar» aún no se puede; `null` o ausente, se puede (o no se ofrece). */
+  delete_blocked?: "archive_first" | null;
 };
 
 export type ClientEditBody = {
@@ -133,6 +137,8 @@ export type ClientPanel = {
   missing: { section: MissingSection; action: `add_${MissingSection}` } | null;
   read: ClientRead;
   allowed: ClientAction[];
+  /** Spec 073 (2.2): por qué «Eliminar» aún no se puede; `null` o ausente, se puede (o no se ofrece). */
+  delete_blocked?: "archive_first" | null;
 };
 
 // ── la ficha ────────────────────────────────────────────────────────────────

@@ -1,84 +1,41 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
 import {
   Button,
-  Callout,
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
-  Label,
-  NativeSelect,
-  Textarea,
-  cn,
-} from "@nexus/ui";
-
-import { createTemplateAction } from "@/app/(console)/clients/[ref]/channels/actions";
-import { useT } from "@/i18n/client";
-import type { MessageKey } from "@/i18n/messages";
-
-import {
-  LANGUAGES,
-  LIMITS,
-  SUGGESTED_VARIABLES,
-  bodyIssues,
-  buttonIssue,
-  finalTemplateName,
-  insertVariable,
-  missingPieces,
-  previewParts,
-  templateVariables,
-  toTemplateName,
-  type BodyIssue,
+  TemplateEditor,
+  TemplatePreview as SharedTemplatePreview,
+  draftFromContent,
+  templateEditFailure,
   type ButtonDraft,
   type TemplateDraft,
-} from "./template-rules";
+  type TemplateEditFailure,
+  type TemplateEditorOutcome,
+  type TemplateSubmission,
+} from "@nexus/ui";
 
-type Category = "UTILITY" | "MARKETING";
-// Authentication is not offered: Meta only takes it with its fixed one-time
-// code format, so free text and buttons are always rejected (QA 2026-10-30).
-const CATEGORIES: Category[] = ["UTILITY", "MARKETING"];
+import { createTemplateAction, editTemplateAction } from "@/app/(console)/clients/[ref]/channels/actions";
+import { useT } from "@/i18n/client";
+import type { MessageKey } from "@/i18n/messages";
+import { TEMPLATE_BLOCKERS, type TemplateEdited, type TemplateRow } from "@/lib/backend/channels";
 
-function issueText(t: ReturnType<typeof useT>, issue: BodyIssue): string {
-  switch (issue.code) {
-    case "bad_variable":
-      return t("tpl.issue.bad_variable", { text: issue.text });
-    case "positional_gap":
-      return t("tpl.issue.positional_gap", { n: issue.missing });
-    default:
-      return t(`tpl.issue.${issue.code}` as MessageKey);
-  }
-}
-
-/** A character counter that turns amber near the limit. */
-function Counter({ value, max }: { value: string; max: number }) {
-  const t = useT();
-  const near = value.length > max * 0.9;
-  return (
-    // No aria-live: a screen reader would read it on every keystroke.
-    <span className={cn("text-xs tabular-nums", near ? "text-status-warning-text" : "text-muted-foreground")}>
-      {t("tpl.compose.counter", { n: value.length, max })}
-    </span>
-  );
-}
+import { useTemplateEditorLabels } from "./template-editor-labels";
 
 /**
  * The WhatsApp template composer (spec 025 follow-up, 2026-10-01).
  *
- * One screen, two columns: what to write on the left, and on the right the
- * message as the customer will see it, updated on every keystroke with the
- * examples in place of the variables. Every rule Meta enforces is said in
- * words under the field it concerns, before sending; and next to the send
- * button the composer says what is still missing instead of just greying
- * it out.
+ * Spec 075 (R9): the editor itself lives in `@nexus/ui` as `TemplateEditor`,
+ * shared with the operator panel. This is the console's shell around it: the
+ * dialog, the words in the partner's language, the Server Action and what
+ * happens after Meta answers.
  */
 export function TemplateComposer({
   refId,
@@ -97,388 +54,219 @@ export function TemplateComposer({
 }) {
   const t = useT();
   const router = useRouter();
-  const [pending, startTransition] = React.useTransition();
-  const [category, setCategory] = React.useState<Category>(initial?.category ?? "UTILITY");
-  const [name, setName] = React.useState(initial?.name ?? "");
-  const [language, setLanguage] = React.useState(initial?.language ?? "es");
-  const [header, setHeader] = React.useState(initial?.header ?? "");
-  const [body, setBody] = React.useState(initial?.body ?? "");
-  const [footer, setFooter] = React.useState(initial?.footer ?? "");
-  const [buttons, setButtons] = React.useState<ButtonDraft[]>(initial?.buttons ?? []);
-  const [examples, setExamples] = React.useState<Record<string, string>>(initial?.examples ?? {});
-  const [customVar, setCustomVar] = React.useState("");
+  const labels = useTemplateEditorLabels("create");
+  const [busy, setBusy] = React.useState(false);
   const [serverError, setServerError] = React.useState<string | null>(null);
-  const [touched, setTouched] = React.useState(false);
-  const bodyRef = React.useRef<HTMLTextAreaElement>(null);
-  const formRef = React.useRef<HTMLFormElement>(null);
+  // A new editor after a template is created: the next one starts empty.
+  const [generation, setGeneration] = React.useState(0);
 
-  const variables = templateVariables(body);
-  const issues = bodyIssues(body);
-  const missing = missingPieces({ name, body, examples, buttons });
-  const ready = missing.length === 0;
-
-  function reset() {
-    setCategory("UTILITY");
-    setName("");
-    setLanguage("es");
-    setHeader("");
-    setBody("");
-    setFooter("");
-    setButtons([]);
-    setExamples({});
-    setCustomVar("");
+  async function create(draft: TemplateSubmission): Promise<TemplateEditorOutcome> {
     setServerError(null);
-    setTouched(false);
-  }
-
-  function addVariable(raw: string) {
-    const varName = toTemplateName(raw).replace(/_+$/, "");
-    if (!varName) return;
-    const el = bodyRef.current;
-    const cursor = el ? el.selectionStart : body.length;
-    const next = insertVariable(body, cursor, varName);
-    setBody(next.text.slice(0, LIMITS.body));
-    setCustomVar("");
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(next.cursor, next.cursor);
-    });
-  }
-
-  function updateButton(i: number, patch: Partial<ButtonDraft>) {
-    setButtons((prev) => prev.map((b, j) => (j === i ? { ...b, ...patch } : b)));
-  }
-
-  function submit() {
-    setTouched(true);
-    if (!ready) {
-      // Say where: the fields mark themselves invalid once touched; focus the first.
-      requestAnimationFrame(() => {
-        formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-      });
-      return;
-    }
-    setServerError(null);
-    startTransition(async () => {
-      const res = await createTemplateAction({
-        ref: refId,
-        name: finalTemplateName(name),
-        language,
-        category,
-        header_text: header.trim() || undefined,
-        body_text: body.trim(),
-        footer_text: footer.trim() || undefined,
-        buttons: buttons.map((b) => ({
-          type: b.type,
-          label: b.label.trim(),
-          url: b.type === "URL" ? b.url?.trim() : undefined,
-          phone_number: b.type === "PHONE_NUMBER" ? b.phone_number?.replace(/[\s-]/g, "") : undefined,
-        })),
-        examples: Object.fromEntries(variables.map((v) => [v, (examples[v] ?? "").trim()])),
-      });
-      if (!res.ok) return void setServerError(res.message);
+    setBusy(true);
+    try {
+      const res = await createTemplateAction({ ref: refId, ...draft });
+      if (!res.ok) {
+        setServerError(res.message);
+        return { kind: "failed" };
+      }
       toast.success(t("tpl.created"));
-      reset();
+      setGeneration((g) => g + 1);
       onOpenChange(false);
       router.refresh();
       onCreated?.();
-    });
+      return { kind: "done" };
+    } catch {
+      // The action itself failed (network, a refused input): say it instead of staying silent.
+      setServerError(t("tpl.edit.failed"));
+      return { kind: "failed" };
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !pending && onOpenChange(o)}>
+    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>{t("tpl.new")}</DialogTitle>
           <DialogDescription>{t("tpl.compose.intro")}</DialogDescription>
         </DialogHeader>
+        <TemplateEditor
+          key={generation}
+          mode="create"
+          initial={initial}
+          labels={labels}
+          pending={busy}
+          serverError={serverError}
+          onSubmit={create}
+          onCancel={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-        <form
-          ref={formRef}
-          noValidate
-          className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
-          <div className="flex min-w-0 flex-col gap-6">
-            {/* 1 · What it is for */}
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-sm font-medium">{t("tpl.compose.purpose")}</legend>
-              {/* Native radios, as in the connect dialog and the audience: arrows work. */}
-              <div className="grid gap-2 sm:grid-cols-2">
-                {CATEGORIES.map((c) => (
-                  <label
-                    key={c}
-                    className="flex min-w-0 cursor-pointer items-start gap-3 rounded-md border border-input p-3 text-sm transition-colors has-[:checked]:border-primary has-[:checked]:ring-1 has-[:checked]:ring-primary has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring motion-reduce:transition-none"
-                  >
-                    <input
-                      type="radio"
-                      name="tpl-category"
-                      value={c}
-                      checked={category === c}
-                      onChange={() => setCategory(c)}
-                      className="mt-1 size-4 shrink-0 accent-primary"
-                    />
-                    <span className="grid min-w-0 gap-1">
-                      <span className="font-medium">{t(`tpl.category.${c}` as MessageKey)}</span>
-                      <span className="text-xs text-muted-foreground">{t(`tpl.category.${c}.help` as MessageKey)}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+/** The sentence for a failed edit (spec 075): Meta's own words when it gave them, ours otherwise. */
+function editFailureText(t: ReturnType<typeof useT>, failure: TemplateEditFailure): string {
+  switch (failure.kind) {
+    case "template_changed":
+      return t("tpl.edit.changed");
+    case "template_not_found":
+      return t("tpl.edit.not_found");
+    case "not_editable":
+      return blockerText(t, failure.blocker);
+    case "category_locked":
+      return t("tpl.edit.category_locked");
+    case "missing_examples":
+      return t("tpl.edit.missing_examples", { list: failure.variables.map((v) => `{{${v}}}`).join(", ") });
+    case "system_variables":
+      return [
+        failure.missing.length ? t("tpl.system.missing", { list: failure.missing.map((v) => `{{${v}}}`).join(", ") }) : null,
+        failure.extra.length ? t("tpl.system.extra", { list: failure.extra.map((v) => `{{${v}}}`).join(", ") }) : null,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    case "meta_rejected":
+      // The edit limit of an approved template has no code we have seen (research R2, C2):
+      // Meta's own sentence says it, as it says any other refusal.
+      return failure.userMessage ? t("tpl.edit.meta_rejected.with", { message: failure.userMessage }) : t("tpl.edit.meta_rejected");
+    case "whatsapp_not_connected":
+      return t("tpl.notConnected");
+    case "forbidden":
+      return t("ch.forbidden.write");
+    default:
+      return t("tpl.edit.failed");
+  }
+}
 
-            {/* 2 · Name and language */}
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="tpl-name">{t("tpl.compose.name")}</Label>
-                <Input
-                  id="tpl-name"
-                  value={name}
-                  maxLength={LIMITS.name}
-                  autoComplete="off"
-                  placeholder={t("tpl.compose.name.eg")}
-                  onChange={(e) => setName(toTemplateName(e.target.value))}
-                  aria-invalid={touched && !finalTemplateName(name) ? true : undefined}
-                  className="font-mono"
-                />
-                <p className="text-xs text-muted-foreground">{t("tpl.compose.name.help")}</p>
-              </div>
-              <div className="flex flex-col gap-1">
-                <Label htmlFor="tpl-lang">{t("tpl.form.language")}</Label>
-                <NativeSelect id="tpl-lang" wrapperClassName="w-full" value={language} onChange={(e) => setLanguage(e.target.value)}>
-                  {LANGUAGES.map((l) => (
-                    <option key={l.code} value={l.code}>
-                      {l.label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </div>
-            </div>
+/** Spec 075 (3.2): why a template cannot be edited here, in one sentence. */
+export function blockerText(t: ReturnType<typeof useT>, blocker: string | null | undefined): string {
+  const key = `tpl.blocker.${blocker ?? "unknown"}`;
+  return (TEMPLATE_BLOCKERS as readonly string[]).includes(blocker ?? "") ? t(key as MessageKey) : t("tpl.blocker.unknown");
+}
 
-            {/* 3 · The message */}
-            <fieldset className="flex flex-col gap-3">
-              <legend className="mb-1 text-sm font-medium">{t("tpl.compose.message")}</legend>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <Label htmlFor="tpl-header">{t("tpl.form.header")}</Label>
-                  <Counter value={header} max={LIMITS.header} />
-                </div>
-                <Input id="tpl-header" value={header} maxLength={LIMITS.header} onChange={(e) => setHeader(e.target.value)} />
-              </div>
+/**
+ * Spec 075: edit one language of a template, keeping its name. The editor
+ * starts from what the API split (`row.draft`) and saves with the fingerprint
+ * the list gave (`row.version`): if the template changed meanwhile, the API
+ * refuses and this offers to reload instead of overwriting (7.1).
+ */
+export function TemplateEditDialog({
+  refId,
+  row,
+  open,
+  onClose,
+  onSaved,
+  onReload,
+  reloading = false,
+  reloadFailures = 0,
+}: {
+  refId: string;
+  /** The template as it was when the editor opened. Remount with a key to start from another. */
+  row: TemplateRow;
+  open: boolean;
+  onClose: () => void;
+  onSaved: (result: TemplateEdited) => void;
+  /** Ask for the list again; the caller reopens the editor with the fresh template. */
+  onReload: () => void;
+  /** The list is on its way back after «Recargar». */
+  reloading?: boolean;
+  /** Goes up each time «Recargar» did not bring the list back: the editor says so. */
+  reloadFailures?: number;
+}) {
+  const t = useT();
+  const labels = useTemplateEditorLabels("edit");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<{ text: string; reload: boolean } | null>(null);
+  // A failed reload is said where the partner is looking, not in the list behind the dialog.
+  const [seenFailures, setSeenFailures] = React.useState(reloadFailures);
+  if (reloadFailures !== seenFailures) {
+    setSeenFailures(reloadFailures);
+    setError({ text: t("tpl.edit.reload_failed"), reload: true });
+  }
+  const locked = (row.status ?? "").toUpperCase() === "APPROVED";
+  const initial = React.useMemo(() => (row.draft ? draftFromContent(row.name, row.language, row.draft) : null), [row]);
 
-              <div className="flex flex-col gap-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <Label htmlFor="tpl-body">{t("tpl.form.body")}</Label>
-                  <Counter value={body} max={LIMITS.body} />
-                </div>
-                <Textarea
-                  id="tpl-body"
-                  ref={bodyRef}
-                  value={body}
-                  maxLength={LIMITS.body}
-                  rows={7}
-                  placeholder={t("tpl.compose.body.eg")}
-                  onChange={(e) => setBody(e.target.value)}
-                  aria-invalid={(touched && !body.trim()) || issues.length > 0 ? true : undefined}
-                  aria-describedby="tpl-body-help"
-                />
-                <p id="tpl-body-help" className="text-xs text-muted-foreground">
-                  {t("tpl.form.body.help")}
-                </p>
-                <div className="flex flex-wrap items-center gap-2" aria-label={t("tpl.compose.insert")}>
-                  <span className="text-xs text-muted-foreground">{t("tpl.compose.insert")}</span>
-                  {SUGGESTED_VARIABLES.map((v) => (
-                    <Button key={v} type="button" variant="outline" size="sm" onClick={() => addVariable(v)}>
-                      {`{{${v}}}`}
-                    </Button>
-                  ))}
-                  <div className="flex items-center gap-1">
-                    <Input
-                      aria-label={t("tpl.compose.variable.other")}
-                      placeholder={t("tpl.compose.variable.other")}
-                      value={customVar}
-                      maxLength={40}
-                      className="h-8 w-36 font-mono text-xs"
-                      onChange={(e) => setCustomVar(toTemplateName(e.target.value))}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          addVariable(customVar);
-                        }
-                      }}
-                    />
-                    <Button type="button" variant="ghost" size="sm" disabled={!customVar} onClick={() => addVariable(customVar)}>
-                      <Plus aria-hidden="true" />
-                      {t("tpl.compose.variable.add")}
-                    </Button>
-                  </div>
-                </div>
-                {issues.length > 0 ? (
-                  <ul className="flex flex-col gap-1" role="alert">
-                    {issues.map((issue) => (
-                      <li key={`${issue.code}-${"text" in issue ? issue.text : ""}`} className="text-xs text-destructive">
-                        {issueText(t, issue)}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
+  async function save(draft: TemplateSubmission, { confirm }: { confirm: boolean }): Promise<TemplateEditorOutcome> {
+    // The editor does not offer Authentication when editing (1.4, 3.2): nothing to send.
+    if (draft.category === "AUTHENTICATION") return { kind: "failed" };
+    setError(null);
+    setBusy(true);
+    try {
+      // The name and the language are the template's, in the path: never in the body.
+      const res = await editTemplateAction({
+        ref: refId,
+        name: row.name,
+        language: row.language,
+        version: row.version,
+        confirm,
+        ...(locked ? {} : { category: draft.category }),
+        header_text: draft.header_text,
+        body_text: draft.body_text,
+        footer_text: draft.footer_text,
+        buttons: draft.buttons,
+        examples: draft.examples,
+      });
+      if (res.ok) {
+        onSaved(res.data);
+        return { kind: "done" };
+      }
+      const failure = templateEditFailure(res.code, res.info, res.status);
+      if (failure.kind === "confirmation_required") return failure;
+      setError({
+        text: editFailureText(t, failure),
+        reload: failure.kind === "template_changed" || failure.kind === "not_editable" || failure.kind === "template_not_found",
+      });
+      return failure.kind === "system_variables" ? failure : { kind: "failed" };
+    } catch {
+      // The action itself failed (network, a refused input): what was written stays.
+      setError({ text: t("tpl.edit.failed"), reload: false });
+      return { kind: "failed" };
+    } finally {
+      setBusy(false);
+    }
+  }
 
-              {variables.length > 0 ? (
-                <div className="flex flex-col gap-2 rounded-md bg-muted/50 p-3" data-slot="template-examples">
-                  <p className="text-sm font-medium">{t("tpl.form.examples")}</p>
-                  <p className="text-xs text-muted-foreground">{t("tpl.form.examples.help")}</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {variables.map((v) => (
-                      <div key={v} className="flex flex-col gap-1">
-                        <Label htmlFor={`tpl-ex-${v}`} className="font-mono text-xs">
-                          {t("tpl.form.example", { name: v })}
-                        </Label>
-                        <Input
-                          id={`tpl-ex-${v}`}
-                          value={examples[v] ?? ""}
-                          maxLength={LIMITS.example}
-                          aria-invalid={touched && !(examples[v] ?? "").trim() ? true : undefined}
-                          onChange={(e) => setExamples((prev) => ({ ...prev, [v]: e.target.value }))}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex flex-col gap-1">
-                <div className="flex items-baseline justify-between gap-2">
-                  <Label htmlFor="tpl-footer">{t("tpl.form.footer")}</Label>
-                  <Counter value={footer} max={LIMITS.footer} />
-                </div>
-                <Input id="tpl-footer" value={footer} maxLength={LIMITS.footer} onChange={(e) => setFooter(e.target.value)} />
-              </div>
-            </fieldset>
-
-            {/* 4 · Buttons */}
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-sm font-medium">{t("tpl.compose.buttons")}</legend>
-              <p className="text-xs text-muted-foreground">{t("tpl.compose.buttons.help")}</p>
-              {buttons.map((b, i) => {
-                const problem = touched || b.label ? buttonIssue(b) : null;
-                return (
-                  <div key={i} className="flex flex-col gap-1 rounded-md border border-border p-2">
-                    <div className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto]">
-                      <NativeSelect
-                        aria-label={t("tpl.compose.button.type", { n: i + 1 })}
-                        value={b.type}
-                        onChange={(e) => updateButton(i, { type: e.target.value as ButtonDraft["type"] })}
-                      >
-                        {(["QUICK_REPLY", "URL", "PHONE_NUMBER"] as const).map((k) => (
-                          <option key={k} value={k}>
-                            {t(`tpl.form.button.${k}` as MessageKey)}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                      <Input
-                        aria-label={t("tpl.compose.button.label", { n: i + 1 })}
-                        placeholder={t("tpl.form.button.label")}
-                        value={b.label}
-                        maxLength={LIMITS.button}
-                        onChange={(e) => updateButton(i, { label: e.target.value })}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t("tpl.compose.button.remove", { n: i + 1 })}
-                        onClick={() => setButtons((prev) => prev.filter((_, j) => j !== i))}
-                      >
-                        <Trash2 aria-hidden="true" />
-                      </Button>
-                    </div>
-                    {b.type === "URL" ? (
-                      <Input
-                        aria-label={t("tpl.compose.button.url", { n: i + 1 })}
-                        placeholder="https://"
-                        inputMode="url"
-                        value={b.url ?? ""}
-                        onChange={(e) => updateButton(i, { url: e.target.value })}
-                      />
-                    ) : null}
-                    {b.type === "PHONE_NUMBER" ? (
-                      <Input
-                        aria-label={t("tpl.compose.button.phone", { n: i + 1 })}
-                        placeholder="+56 9 1234 5678"
-                        inputMode="tel"
-                        value={b.phone_number ?? ""}
-                        onChange={(e) => updateButton(i, { phone_number: e.target.value })}
-                      />
-                    ) : null}
-                    {problem ? (
-                      <p className="text-xs text-destructive" role="alert">
-                        {t(`tpl.button.${problem}` as MessageKey)}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              })}
-              {buttons.length < LIMITS.buttons ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="self-start"
-                  onClick={() => setButtons((prev) => [...prev, { type: "QUICK_REPLY", label: "" }])}
-                >
-                  <Plus aria-hidden="true" />
-                  {t("tpl.form.button.add")}
-                </Button>
-              ) : null}
-            </fieldset>
+  return (
+    <Dialog open={open} onOpenChange={(o) => !busy && !o && onClose()}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>{t("tpl.edit.title")}</DialogTitle>
+          <DialogDescription>{t("tpl.edit.intro")}</DialogDescription>
+        </DialogHeader>
+        {row.rejection_reason ? (
+          // 1.2 · What Meta said and what to fix, in sight while editing.
+          <div className="grid min-w-0 gap-1 rounded-md border border-status-danger-border p-3 text-sm" data-slot="rejection">
+            <p className="font-medium">{t("tpl.col.reason")}</p>
+            <p className="break-words font-mono text-xs">{row.rejection_reason}</p>
+            <p className="text-pretty text-muted-foreground">{t(`tpl.action.${row.suggested_action}` as MessageKey)}</p>
           </div>
-
-          {/* Preview */}
-          <aside className="flex min-w-0 flex-col gap-2 lg:sticky lg:top-0 lg:self-start" aria-label={t("tpl.compose.preview")}>
-            <p className="text-sm font-medium">{t("tpl.compose.preview")}</p>
-            <TemplatePreview header={header} body={body} footer={footer} buttons={buttons} examples={examples} />
-          </aside>
-
-          <div className="flex flex-col gap-3 lg:col-span-2">
-            {serverError ? (
-              <Callout tone="danger" title={t("tpl.compose.error")}>
-                {serverError}
-              </Callout>
-            ) : null}
-            <DialogFooter className="flex-wrap items-center gap-3 sm:justify-between">
-              <p className="text-xs text-muted-foreground" aria-live="polite">
-                {ready
-                  ? t("tpl.compose.ready")
-                  : t("tpl.compose.missing", { list: missing.map((m) => t(`tpl.missing.${m}` as MessageKey)).join(", ") })}
-              </p>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>
-                  {t("common.cancel")}
-                </Button>
-                <Button type="submit" loading={pending} disabled={pending}>
-                  {t("tpl.form.submit")}
-                </Button>
-              </div>
-            </DialogFooter>
-          </div>
-        </form>
+        ) : null}
+        <TemplateEditor
+          mode="edit"
+          initial={initial}
+          categoryLocked={locked}
+          systemVariables={row.system_variables ?? null}
+          labels={labels}
+          pending={busy}
+          serverError={error?.text}
+          serverErrorAction={
+            error?.reload ? (
+              <Button type="button" variant="outline" size="sm" onClick={onReload} loading={reloading}>
+                {t("tpl.edit.reload")}
+              </Button>
+            ) : undefined
+          }
+          onSubmit={save}
+          onCancel={onClose}
+        />
       </DialogContent>
     </Dialog>
   );
 }
 
 /** The message as WhatsApp shows it, with the examples in place of the variables. */
-export function TemplatePreview({
-  header,
-  body,
-  footer,
-  buttons,
-  examples,
-}: {
+export function TemplatePreview(props: {
   header: string;
   body: string;
   footer: string;
@@ -486,41 +274,5 @@ export function TemplatePreview({
   examples: Record<string, string>;
 }) {
   const t = useT();
-  const empty = !header.trim() && !body.trim() && !footer.trim();
-  return (
-    <div className="rounded-md bg-muted p-3" data-slot="template-preview">
-      {empty ? (
-        <p className="py-8 text-center text-xs text-muted-foreground">{t("tpl.compose.preview.empty")}</p>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <div className="max-w-full rounded-md bg-background px-3 py-2 text-sm shadow-sm ring-1 ring-foreground/5">
-            {header.trim() ? <p className="mb-1 font-semibold break-words">{header}</p> : null}
-            <p className="whitespace-pre-wrap break-words">
-              {previewParts(body, examples).map((part, i) =>
-                part.kind === "text" ? (
-                  <React.Fragment key={i}>{part.value}</React.Fragment>
-                ) : part.value ? (
-                  <span key={i} className="rounded-sm bg-primary/10 px-1">
-                    {part.value}
-                  </span>
-                ) : (
-                  <span key={i} className="rounded-sm bg-status-warning/15 px-1 font-mono text-xs">
-                    {`{{${part.name}}}`}
-                  </span>
-                ),
-              )}
-            </p>
-            {footer.trim() ? <p className="mt-1 text-xs text-muted-foreground break-words">{footer}</p> : null}
-          </div>
-          {buttons
-            .filter((b) => b.label.trim())
-            .map((b, i) => (
-              <div key={i} className="rounded-md bg-background px-3 py-2 text-center text-sm font-medium text-primary shadow-sm ring-1 ring-foreground/5">
-                {b.label}
-              </div>
-            ))}
-        </div>
-      )}
-    </div>
-  );
+  return <SharedTemplatePreview {...props} emptyLabel={t("tpl.compose.preview.empty")} />;
 }

@@ -289,7 +289,11 @@ async def evaluate_alerts(redis: Redis, *, now: float | None = None) -> list[Ale
     with contextlib.suppress(Exception):
         input_tok = int(await redis.get(f"nexus:alert:llmtok:input:{hour_window}") or 0)
         cache_tok = int(await redis.get(f"nexus:alert:llmtok:cache_read:{hour_window}") or 0)
-        total = input_tok + cache_tok
+        # ``input`` is ``prompt_tokens``, which already includes the cached
+        # tokens (``llm._call_cost_micros`` relies on the same): adding them
+        # again counted the cache twice and paged at a 43 % real read rate
+        # (bug ``cache-ratio-cuenta-la-cache-dos-veces``).
+        total = input_tok
         if total >= CACHE_RATIO_MIN_TOKENS:
             ratio = cache_tok / total
             if ratio < CACHE_RATIO_THRESHOLD:

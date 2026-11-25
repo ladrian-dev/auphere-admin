@@ -7,9 +7,10 @@ import { backend, type ConversationOut } from "@/lib/backend";
 import { leversBackend } from "@/lib/backend-levers";
 import { fullDateTime, relativeTime } from "@/lib/format";
 import { qaApi, type QAThread } from "@/lib/qa-api";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { readinessChecks } from "./readiness";
+import { SendOnlyOverview } from "./send-only-overview";
 import { SovereignCard } from "./sovereign-card";
 
 const CONVERSATION_TONE = { open: "info", escalated: "danger", closed: "muted" } as const;
@@ -23,7 +24,7 @@ const CONVERSATION_LABEL = { open: "Abierta", escalated: "Escalada", closed: "Re
  */
 export default async function TenantOverview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const operator = await requireOperator();
+  const operator = await requirePageOperator("read");
   const [tenant, health, conversations, connectors, threads, sovereign] = await Promise.all([
     backend.getTenant(id),
     backend.getTenantHealth(id).catch(() => null),
@@ -35,6 +36,8 @@ export default async function TenantOverview({ params }: { params: Promise<{ id:
   ]);
   if (!tenant) return null;
   const partner = tenant.partner_id ? await backend.getPartner(tenant.partner_id).catch(() => null) : null;
+  // Spec 077 (1.4): a send-only client's Resumen is its «Puesta en marcha».
+  if (tenant.send_only) return <SendOnlyOverview tenant={tenant} partnerName={partner?.name ?? null} />;
 
   const base = `/tenants/${id}`;
   const broken = connectors?.filter((c) => c.status === "needs_reauth" || c.status === "error") ?? [];

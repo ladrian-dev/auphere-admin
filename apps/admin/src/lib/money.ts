@@ -42,6 +42,8 @@ export const LEDGER_KIND_LABEL: Record<string, string> = {
   credit_manual: "Pago del partner fuera de Stripe",
   credit_reversal: "Pago anulado (se descuenta)",
   absorbed: "Consumo que asume Auphere (no descuenta)",
+  // Spec 077: a fixed monthly charge, not conversation consumption.
+  fixed_fee: "Cargo mensual fijo (membresía)",
 };
 
 /** Kinds that add money; the rest subtract it. */

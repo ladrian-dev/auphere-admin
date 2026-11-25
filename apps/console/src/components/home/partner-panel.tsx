@@ -4,18 +4,19 @@ import { ArrowDown, ArrowRight, ArrowUp, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
 
-import { BlockChart, Button, Card, CardContent, formatNumber } from "@nexus/ui";
+import { BlockChart, Button, Card, CardContent, cn, formatNumber } from "@nexus/ui";
 
-import { reasonText } from "@/components/clients/v2/client-v2-model";
-import { BalanceDialogs } from "@/components/money/balance-button";
-import { RowActions } from "@/components/row-actions";
+import { attentionKey, isPartnerRow } from "@/components/attention/attention-model";
+import { AttentionRow } from "@/components/attention/attention-row";
+import { BuyDialog } from "@/app/(console)/usage/buy-dialog";
+import { BuildExtensionButton } from "@/components/attention/build-extension-button";
 import { moneyText } from "@/components/money/money-model";
-import { clientHref } from "@/components/shell/routes-v2";
 import { useLocale, useT } from "@/i18n/client";
 import type { HomePanel, PanelAttention } from "@/lib/backend/home-usage";
+import type { BuildBudget } from "@/lib/backend/money-types";
 
 import { trendDelta } from "./home-model";
-import { attentionFix, conversationColumns, conversationTotal, failed, monthPeriod, shareLabel } from "./panel-model";
+import { conversationColumns, conversationTotal, daysPeriod, failed, monthPeriod, shareLabel } from "./panel-model";
 
 /** Los colores de las partes del gasto: las series de las gráficas y, después, tonos del mismo sistema. */
 const SERIES = ["bg-series-1", "bg-series-2", "bg-accent-mid", "bg-muted-foreground/50", "bg-muted-foreground/25"];
@@ -29,12 +30,27 @@ const SERIES = ["bg-series-1", "bg-series-2", "bg-accent-mid", "bg-muted-foregro
  * su atención, con su arreglo en el sitio cuando se puede. Cada bloque dice su
  * periodo. Sin cuerpos de mensaje: solo cifras y nombres.
  */
-export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?: { current: number; previous: number | null } | null }) {
+export function PartnerPanel({
+  panel,
+  trend = null,
+  buildBudget = null,
+  canBuy = false,
+}: {
+  panel: HomePanel;
+  trend?: { current: number; previous: number | null } | null;
+  /** Spec 072 (3.4): el tope de construcción, para su línea aunque vaya por debajo del 80 %. */
+  buildBudget?: BuildBudget | null;
+  /** Quien puede comprar saldo (`billing:manage`) lo recarga desde «Saldo disponible» (owner, 2026-11-22). */
+  canBuy?: boolean;
+}) {
   const t = useT();
   const locale = useLocale();
   const n = (v: number) => formatNumber(v, locale);
   const { spend, clients, balance, conversations_per_day: daily, attention } = panel;
-  const flagged = new Set((attention ?? []).map((row) => row.external_client_ref)).size;
+  const flagged = new Set((attention ?? []).filter((row) => !isPartnerRow(row)).map((row) => row.external_client_ref)).size;
+  // Spec 071 (4.2, 4.3): la cuenta y el tope de construcción se ven en sus cifras, no solo en la lista.
+  const account = (attention ?? []).find((row) => row.code === "account_empty" || row.code === "account_low") ?? null;
+  const build = (attention ?? []).find((row) => row.code === "build_cap_exhausted" || row.code === "build_cap_warning") ?? null;
 
   return (
     <div className="grid min-w-0 gap-6" data-slot="partner-panel">
@@ -76,7 +92,9 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
                     {spend.shares.map((s, i) => (
                       <li key={`${s.kind}-${s.external_client_ref ?? s.line ?? i}`} className="flex min-w-0 items-center gap-2">
                         <span className={`size-2 shrink-0 rounded-sm ${SERIES[i % SERIES.length]}`} />
-                        <span className="min-w-0 flex-1 truncate">{shareLabel(t, s)}</span>
+                        <span className="min-w-0 flex-1 text-pretty break-words" title={shareLabel(t, s)}>
+                          {shareLabel(t, s)}
+                        </span>
                         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{`${n(Math.round(sharePct(s.amount.amount_micros, spend.total.amount_micros)))} %`}</span>
                         <span className="shrink-0 font-medium tabular-nums">
                           {s.approx ? `${t("money.approxPrefix")} ` : ""}
@@ -89,6 +107,7 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
               ) : (
                 <p className="text-sm text-muted-foreground">{t("panel.v2.spend.none")}</p>
               )}
+              <BuildLine row={build} budget={buildBudget} />
             </CardContent>
           </Card>
         ) : null}
@@ -102,7 +121,11 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
                   <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{n(conversationTotal(daily))}</p>
                   <Sparkline values={daily.resolved_without_person.map((v, i) => v + (daily.handed_to_person[i] ?? 0))} />
                 </div>
-                <TrendLine trend={trend} />
+                <TrendLine
+                  trend={daily.previous_total !== undefined ? { current: conversationTotal(daily), previous: daily.previous_total } : trend}
+                  period={daily.period === "month" ? daysPeriod(t, daily.days) : t("panel.v2.period.7d")}
+                  month={daily.period === "month"}
+                />
               </CardContent>
             </Card>
           ) : null}
@@ -122,17 +145,39 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
           {balance ? (
             <Card>
               <CardContent className="grid min-w-0 content-start gap-2" data-slot="panel-balance">
-                <h2 className="text-xs text-muted-foreground">{t("money.figure.available")}</h2>
+                {/* El «+» de recargar, arriba a la derecha (owner, 2026-11-22): la cifra se queda sola. */}
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <h2 className="text-xs text-muted-foreground">{t("money.figure.available")}</h2>
+                  {canBuy ? <BuyDialog accountCurrency={balance.available.currency} variant="outline" iconOnly label={t("panel.v2.balance.topUp")} /> : null}
+                </div>
                 <p className="text-[28px] leading-tight font-semibold tracking-tight tabular-nums">{moneyText(balance.available, "down")}</p>
-                <div className="h-2 w-full overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                {/* Spec 072 (2.5): la barra es lo disponible, como dice la cifra de encima. */}
+                <div
+                  className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                  role="meter"
+                  aria-label={t("panel.v2.balance.meter", { amount: moneyText(balance.available, "down") })}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(sharePct(balance.available.amount_micros, balance.in_bags.amount_micros + balance.available.amount_micros))}
+                  data-slot="panel-balance-bar"
+                >
                   <span
                     className="block h-full rounded-full bg-primary"
-                    style={{ width: `${sharePct(balance.in_bags.amount_micros, balance.in_bags.amount_micros + balance.available.amount_micros)}%` }}
+                    style={{ width: `${sharePct(balance.available.amount_micros, balance.in_bags.amount_micros + balance.available.amount_micros)}%` }}
                   />
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {t("panel.v2.balance.assigned", { amount: `${balance.in_bags_approx ? `${t("money.approxPrefix")} ` : ""}${moneyText(balance.in_bags, "down")}` })}
                 </p>
+                {account ? (
+                  <p
+                    className={`flex items-center gap-2 text-sm font-medium ${account.code === "account_empty" ? "text-status-danger-text" : "text-status-warning-text"}`}
+                    data-slot="panel-balance-state"
+                  >
+                    <span aria-hidden="true" className={`size-2 rounded-full ${account.code === "account_empty" ? "bg-status-danger" : "bg-status-warning"}`} />
+                    {t(account.code === "account_empty" ? "att.panel.balance.empty" : "att.panel.balance.low")}
+                  </p>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
@@ -141,7 +186,7 @@ export function PartnerPanel({ panel, trend = null }: { panel: HomePanel; trend?
         {daily ? (
           <Card>
             <CardContent className="relative grid min-w-0 gap-3 overflow-x-clip" data-slot="panel-conversations">
-              <BlockTitle title={t("panel.v2.conversations.title")} period={t("panel.v2.period.7d")} />
+              <BlockTitle title={t("panel.v2.conversations.title")} period={daily.period === "month" ? daysPeriod(t, daily.days) : t("panel.v2.period.7d")} />
               <BlockChart
                 title={t("panel.v2.conversations.title")}
                 series={[
@@ -228,7 +273,8 @@ function Attention({
     return (
       <div className="flex items-center gap-3 rounded-md bg-card px-4 py-3 ring-1 ring-foreground/10" role="status" data-slot="panel-all-serving">
         <CheckCircle2 aria-hidden="true" className="size-5 shrink-0 text-status-positive" />
-        <p className="text-sm">{allServing ? t("panel.v2.allServing") : t("panel.v2.attention.none")}</p>
+        {/* Spec 071 (4.4): la lista ya no es solo de clientes. */}
+        <p className="text-sm">{allServing ? t("att.none") : t("panel.v2.attention.none")}</p>
       </div>
     );
   }
@@ -243,7 +289,7 @@ function Attention({
       </div>
       <ul className="divide-y divide-border px-4">
         {(all ? rows : rows.slice(0, SHOWN)).map((row) => (
-          <AttentionRow key={`${row.external_client_ref}-${row.code}`} row={row} />
+          <AttentionRow key={attentionKey(row)} row={row} />
         ))}
       </ul>
       {rows.length > SHOWN ? (
@@ -258,47 +304,17 @@ function Attention({
 const SHOWN = 4;
 
 /**
- * Una fila de «Necesita tu atención». Sin botones sueltos (Andrés,
- * 2026-10-28): el arreglo que pide la fila es la primera opción del «⋯», y el
- * saldo se asigna o se pide aquí mismo, sin salir del Panel.
+ * «↑ 28 % más que los mismos días del mes pasado» en verde, o «↓ … menos …» en
+ * ámbar (prototipo). Owner, 2026-11-22: el mes; sin con qué comparar, el periodo.
  */
-function AttentionRow({ row }: { row: PanelAttention }) {
-  const t = useT();
-  const [dialog, setDialog] = React.useState<"assign" | "request" | null>(null);
-  const name = row.client_name ?? row.external_client_ref;
-  const fix = attentionFix(row);
-  const first =
-    fix.kind === "link"
-      ? { label: t(fix.label), href: fix.href, primary: true }
-      : { label: t(fix.kind === "assign" ? "money.assign.cta" : "money.request.cta"), onSelect: () => setDialog(fix.kind), primary: true };
-  return (
-    <li className="flex min-w-0 items-center gap-x-4 gap-y-2 py-3" data-code={row.code}>
-      <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${row.code === "no_balance" || row.code === "channel_problem" ? "bg-status-danger" : "bg-status-warning"}`} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Link href={clientHref(row.external_client_ref)} className="truncate text-sm font-medium hover:underline">
-          {name}
-        </Link>
-        <span className="text-sm text-pretty text-muted-foreground">{reasonText(t, row.code, row.count, null)}</span>
-      </div>
-      <RowActions
-        menu
-        ariaLabel={t("panel.v2.attention.more", { name })}
-        actions={[first, { label: t("panel.v2.attention.open"), href: clientHref(row.external_client_ref) }]}
-      />
-      {fix.kind === "link" ? null : <BalanceDialogs refId={row.external_client_ref} name={name} open={dialog} onClose={() => setDialog(null)} />}
-    </li>
-  );
-}
-
-/** «↑ 28 % más que los 7 días anteriores» en verde, o «↓ … menos …» en ámbar (prototipo). */
-function TrendLine({ trend }: { trend: { current: number; previous: number | null } | null }) {
+function TrendLine({ trend, period, month }: { trend: { current: number; previous: number | null } | null; period: string; month: boolean }) {
   const t = useT();
   const locale = useLocale();
   const delta = trend ? trendDelta(trend.current, trend.previous) : null;
   if (!delta || delta.kind === "none") {
     return (
       <p className="text-xs text-muted-foreground" data-slot="panel-period">
-        {t("panel.v2.period.7d")}
+        {period}
       </p>
     );
   }
@@ -309,7 +325,46 @@ function TrendLine({ trend }: { trend: { current: number; previous: number | nul
       data-slot="panel-period"
     >
       {delta.kind === "up" ? <ArrowUp aria-hidden="true" className="size-3 shrink-0" /> : delta.kind === "down" ? <ArrowDown aria-hidden="true" className="size-3 shrink-0" /> : null}
-      {t(`hu.home.kpi.delta.${delta.kind}`, { pct })}
+      {t(month ? `panel.v2.delta.${delta.kind}` : `hu.home.kpi.delta.${delta.kind}`, { pct })}
     </p>
+  );
+}
+
+/**
+ * «Construcción y pruebas» bajo las partes del gasto — spec 072 (3.4). Siempre
+ * que se pueda leer el tope: neutra por debajo del 80 % («la paga Auphere hasta
+ * el tope»); desde el 80 %, la línea de la 071 en ámbar (rojo al 100 %) con
+ * «Pedir ampliación».
+ */
+function BuildLine({ row, budget }: { row: PanelAttention | null; budget: BuildBudget | null }) {
+  const t = useT();
+  const flagged = row?.data?.spent && row.data.cap && row.data.pct != null ? row : null;
+  const spent = flagged?.data?.spent ?? budget?.spent ?? null;
+  const cap = flagged?.data?.cap ?? budget?.cap ?? null;
+  if (!spent || !cap) return null;
+  const pct = flagged?.data?.pct ?? (cap.amount_micros > 0 ? Math.round((spent.amount_micros / cap.amount_micros) * 100) : 0);
+  const tone = !flagged ? "calm" : flagged.code === "build_cap_exhausted" ? "danger" : "warn";
+  return (
+    <div className="mt-1 grid gap-2 border-t border-border pt-3" data-slot="panel-build" data-code={flagged?.code ?? "build_cap_ok"} data-tone={tone}>
+      <p className={cn("text-sm", tone === "danger" ? "text-status-danger-text" : tone === "warn" ? "text-status-warning-text" : "text-muted-foreground")}>
+        {tone === "calm"
+          ? t("att.panel.buildCalm", { spent: moneyText(spent), cap: moneyText(cap) })
+          : t("att.panel.build", { spent: moneyText(spent), cap: moneyText(cap), pct })}
+      </p>
+      <div
+        className="h-2 w-full overflow-hidden rounded-full bg-muted"
+        role="meter"
+        aria-label={t("att.title.build")}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.min(100, pct)}
+      >
+        <span
+          className={cn("block h-full rounded-full", tone === "danger" ? "bg-status-danger" : tone === "warn" ? "bg-status-warning" : "bg-muted-foreground/40")}
+          style={{ width: `${Math.min(100, pct)}%` }}
+        />
+      </div>
+      {tone !== "calm" ? <BuildExtensionButton /> : null}
+    </div>
   );
 }

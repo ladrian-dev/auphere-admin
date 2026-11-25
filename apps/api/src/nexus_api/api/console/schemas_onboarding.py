@@ -57,6 +57,10 @@ class NotificationOut(BaseModel):
     #: Spec 056 (8.1): un «espera a una persona» cuya conversación ya no espera.
     #: Sigue en la lista y no cuenta como pendiente (``read`` también es cierto).
     handled: bool = False
+    #: Spec 071: the notice states a condition (spec §2.1): it is counted by «Ahora»,
+    #: resolves itself and is not marked as read by hand. Always ``false`` on the old
+    #: console and on the client's bell.
+    condition: bool = False
     created_at: datetime
     #: Spec 047 (49.5): el enlace a su arreglo.
     href: str | None = None

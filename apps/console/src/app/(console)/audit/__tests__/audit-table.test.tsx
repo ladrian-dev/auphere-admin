@@ -34,10 +34,10 @@ function entry(over: Partial<AuditEntry> = {}): AuditEntry {
   };
 }
 
-const table = (items: AuditEntry[]) =>
+const table = (items: AuditEntry[], me?: string) =>
   render(
     <LocaleProvider locale="es">
-      <AuditTable first={{ items, next_cursor: null }} query={{}} people={{ "ana@ladrian.studio": "Ana" }} categories={{ money: "Dinero" }} />
+      <AuditTable first={{ items, next_cursor: null }} query={{}} people={{ "ana@ladrian.studio": "Ana" }} categories={{ money: "Dinero" }} me={me} />
     </LocaleProvider>,
   );
 
@@ -62,9 +62,10 @@ describe("AuditTable · lo que gana con la spec 047", () => {
   });
 
   it("las cabeceras van en tipo normal, no en mayúsculas", () => {
-    table([entry()]);
+    const { container } = table([entry()]);
     for (const th of screen.getAllByRole("columnheader")) expect(th.className).not.toMatch(/\buppercase\b/);
-    expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Fecha", "Persona", "Qué pasó", "Cliente", "Categoría", "Acciones"]);
+    const head = within(container.querySelector("thead")!);
+    expect(head.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Hora", "Persona", "Qué pasó", "Cliente", "Categoría", "Acciones"]);
   });
 
   it("una sola agrupación: la de la API, en una fila hija (no «2 más como esta1 más como esta»)", () => {
@@ -128,5 +129,53 @@ describe("AuditTable · lo que gana con la spec 047", () => {
     const href = item.getAttribute("href") ?? "";
     expect(href).toContain("person=ana%40ladrian.studio");
     expect(href).not.toContain("actor=");
+  });
+});
+
+describe("AuditTable · una página que se lee (spec 073)", () => {
+  it("cabe sin desplazarse de lado: tabla fija, «Qué pasó» sin ancho mínimo y lo largo cortado con su texto (1.1)", () => {
+    const { container } = table([entry()]);
+    expect(container.querySelector("table")?.className).toMatch(/(^|\s)xl:table-fixed(\s|$)/);
+    expect(container.innerHTML).not.toMatch(/min-w-80/);
+    expect(screen.getByRole("link", { name: "Flor y Encanto" })).toHaveAttribute("title", "Flor y Encanto");
+  });
+
+  it("los días son filas de grupo y cada fila lleva solo la hora (1.2)", () => {
+    table([entry(), entry({ id: "00000000-0000-4000-8000-000000000009", at: "2026-10-26T09:00:00Z" })]);
+    const groups = document.querySelectorAll("th[scope=colgroup]");
+    expect(groups).toHaveLength(2);
+    expect(groups[0]!.textContent).toMatch(/27 oct/);
+    expect(groups[1]!.textContent).toMatch(/26 oct/);
+    for (const time of document.querySelectorAll("tbody time")) expect(time.textContent).toMatch(/^\d{2}:\d{2}$/);
+  });
+
+  it("cada persona dice qué es: tú, del equipo, de un cliente o Auphere (1.3)", () => {
+    table(
+      [
+        entry({ actor_name: "Ana", actor_scope: "partner" }),
+        entry({ id: "00000000-0000-4000-8000-000000000004", actor: "luis@ladrian.studio", actor_name: "Luis", actor_scope: "partner", summary: "Luis asignó saldo" }),
+        entry({ id: "00000000-0000-4000-8000-000000000005", actor: "lucia@flor.example", actor_name: "Lucía", actor_scope: "client", summary: "Lucía cambió el horario" }),
+        entry({ id: "00000000-0000-4000-8000-000000000006", actor: "Auphere", actor_kind: "auphere", actor_name: "Auphere", actor_scope: null, summary: "Auphere renovó el conector" }),
+      ],
+      "ana@ladrian.studio",
+    );
+    const roles = [...document.querySelectorAll("[data-slot=audit-role]")].map((r) => r.textContent);
+    expect(roles).toEqual(["tú · partner", "partner", "cliente · Flor y Encanto", "plataforma"]);
+    // La frase no repite a la persona: su nombre ya va en su columna.
+    expect(screen.getByText("cambió el horario")).toBeVisible();
+  });
+
+  it("entre 768 y 1279 px, el cliente y la categoría van bajo la frase, no en su columna (revisión de staging)", () => {
+    const { container } = table([entry()]);
+    const heads = [...container.querySelectorAll("thead th")];
+    for (const name of ["Cliente", "Categoría"]) {
+      const th = heads.find((h) => h.textContent === name)!;
+      expect(th.className).toMatch(/(^|\s)hidden(\s|$)/);
+      expect(th.className).toMatch(/xl:table-cell/);
+      expect(th.className).not.toMatch(/(^|\s)md:table-cell/);
+    }
+    const folded = container.querySelector("tbody [data-slot=audit-folded]")!;
+    expect(folded.className).toMatch(/xl:hidden/);
+    expect(folded.textContent).toBe("Flor y Encanto · Dinero");
   });
 });

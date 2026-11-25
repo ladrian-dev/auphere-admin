@@ -8,6 +8,10 @@ export const partnerViewsMessages = {
   "panel.v2.partial": { es: "Alguno de los bloques no se pudo leer. Lo demás está al día.", en: "Some blocks could not be read. The rest is up to date." },
   "panel.v2.period.now": { es: "Ahora", en: "Now" },
   "panel.v2.period.7d": { es: "Últimos 7 días", en: "Last 7 days" },
+  // Owner, 2026-11-22: las conversaciones del Panel, del mes contra los mismos días del mes pasado.
+  "panel.v2.delta.up": { es: "{pct} % más que los mismos días del mes pasado", en: "{pct} % more than the same days last month" },
+  "panel.v2.delta.down": { es: "{pct} % menos que los mismos días del mes pasado", en: "{pct} % less than the same days last month" },
+  "panel.v2.delta.same": { es: "Igual que los mismos días del mes pasado", en: "Same as the same days last month" },
   "panel.v2.period.month": { es: "Del {from} al {to}", en: "From {from} to {to}" },
   "panel.v2.allServing": { es: "Todos tus clientes están atendiendo.", en: "All your clients are answering." },
   "panel.v2.attention.none": { es: "Nada que arreglar ahora mismo.", en: "Nothing to fix right now." },
@@ -43,6 +47,12 @@ export const partnerViewsMessages = {
   "panel.v2.conversations.empty": { es: "Sin conversaciones en estos 7 días.", en: "No conversations in these 7 days." },
 
   // ── Auditoría (49.1) ──
+  // Spec 073 (1.3): qué es quien lo hizo.
+  "audit.v2.role.me": { es: "tú · partner", en: "you · partner" },
+  "audit.v2.role.partner": { es: "partner", en: "partner" },
+  "audit.v2.role.client": { es: "cliente · {client}", en: "client · {client}" },
+  "audit.v2.role.client.none": { es: "cliente", en: "client" },
+  "audit.v2.role.auphere": { es: "plataforma", en: "platform" },
   "audit.v2.origin.lite_web": { es: "Desde la web", en: "From the web" },
   "audit.v2.origin.app": { es: "Desde la app", en: "From the app" },
   "audit.v2.origin.admin": { es: "Auphere", en: "Auphere" },

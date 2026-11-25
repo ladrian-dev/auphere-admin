@@ -17,6 +17,7 @@ import { backend } from "@/lib/backend";
 import { longDate, relativeTime } from "@/lib/format";
 
 import { OwnerInvitationPanel } from "./owner-invitation-panel";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ const ROLE: Record<string, string> = {
  * its term is expired even if nobody opened its link (R3.9).
  */
 export default async function PartnerTeamPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePageOperator("read");
   const { id } = await params;
   const partner = await backend.getPartner(id);
   if (!partner) notFound();

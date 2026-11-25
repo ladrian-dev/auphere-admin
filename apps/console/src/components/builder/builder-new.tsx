@@ -6,6 +6,7 @@ import * as React from "react";
 
 import { Button, Callout, Field, Input, Label, StatusBadge, Switch, Tabs, TabsContent, TabsList, TabsTrigger, Textarea, cn, formatNumber } from "@nexus/ui";
 
+import { SlidingLens } from "@/components/shell/sliding-lens";
 import { answerDraftJobAction, draftJobAction, startDraftJobAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
 import { ReservasFields } from "@/components/clients/access/reservas-fields";
 import { agentHref } from "@/components/shell/routes-v2";
@@ -435,6 +436,8 @@ export function BuilderNew({
       <Tabs value="build" className="min-w-0 flex-col gap-6">
         {/* Canales y Conectores son del agente: llegan cuando exista. Sin números (el owner, 2026-10-28). */}
         <TabsList floating aria-label={t("builder.screen.sections")}>
+          {/* Spec 070: la lente viaja a la pestaña activa. */}
+          <SlidingLens selector="[data-active]" variant="tabs" />
           <TabsTrigger value="build">{t("builder.screen.tab.build")}</TabsTrigger>
           <TabsTrigger value="channels" disabled>
             {t("builder.screen.channels")}

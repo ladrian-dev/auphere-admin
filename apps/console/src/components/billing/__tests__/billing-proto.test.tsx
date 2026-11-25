@@ -58,7 +58,7 @@ describe("Facturación · como el prototipo", () => {
     expect(within(modes).getByRole("radio", { name: /Pospago/ })).toBeDisabled();
     expect(within(card).getByLabelText("Cuando el saldo baje de")).toHaveValue(10);
     expect(within(card).getByLabelText("Recargar")).toHaveValue(20);
-    expect(card.textContent?.replace(/ /g, " ")).toContain("La recarga mínima es de 5,00 US$.");
+    expect(card.textContent?.replace(/ /g, " ")).toContain("La recarga mínima es de 5,00 USD.");
     expect(card.textContent).not.toContain("(US$)");
     expect(await axeViolations(container)).toEqual([]);
   });

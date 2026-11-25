@@ -8,6 +8,7 @@ import { formatCents } from "@/lib/format";
 import { PERIODS, formatPct, formatUsd, parsePeriod, periodQuery } from "./period";
 import { SpendChart } from "./spend-chart";
 import { UsageTables } from "./usage-tables";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Consumo" };
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export const dynamic = "force-dynamic";
  * never one (spec 033 R7.2).
  */
 export default async function UsagePage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+  await requirePageOperator("read");
   const period = parsePeriod((await searchParams).period);
   const data = await backend.getUsageOverview(periodQuery(period)).catch(() => null);
 

@@ -1,24 +1,20 @@
-"""Alta de un cliente directo: tenant + canal WhatsApp + API key de envío.
+"""Alta a mano de un cliente directo: tenant + canal WhatsApp + API key de envío.
 
-Herramienta operacional hasta que el panel tenga la UI para emitirlo. Crea
-un tenant en modo solo-canal (sin agente), su canal de WhatsApp y una API
-key ligada al tenant con scope ``messages_send``. Imprime la key en claro
-UNA vez — no se puede volver a leer (solo se guarda el hash).
+**Ya no es el camino de alta (spec 077).** El alta de un cliente de solo envío se
+hace desde el panel: Clientes → Nuevo cliente → «Solo envío por API», y luego
+el enlace para conectar su número, la plantilla y la clave desde su ficha (ver
+``docs/envio-directo.md``). Este script se conserva solo como referencia de lo
+que se hizo con New Air.
 
-El canal se crea con un ``provider_identifier`` placeholder; la conexión
-real de la WABA se hace después vía Embedded Signup en el panel, que
-sobrescribe ese valor con el número verificado por Meta.
+Ojo si se usa: crea el canal con un ``provider_identifier`` de relleno, y al
+conectar el número real por Embedded Signup se crea **otra** fila (no sobrescribe
+esta), así que quedan dos números activos y la API pide ``channel_id`` o un papel
+hasta que se retire el de relleno. Imprime la key en claro UNA vez.
 
-Uso (lee NEXUS_DATABASE_URL del entorno):
+Uso (lee NEXUS_DATABASE_URL del entorno; en AWS, con ``aws ecs run-task`` como
+``scripts/ops/dlq.sh``):
 
-    python scripts/seed_tenant_direct.py \
-        --name "New Air Climatización" --slug newair
-
-En producción, con las credenciales inyectadas por Railway:
-
-    railway run --service nexus-api \
-        python /app/apps/api/scripts/seed_tenant_direct.py \
-        --name "New Air Climatización" --slug newair
+    python scripts/seed_tenant_direct.py --name "New Air Climatización" --slug newair
 """
 
 from __future__ import annotations

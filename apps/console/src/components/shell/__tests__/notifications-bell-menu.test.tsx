@@ -9,11 +9,16 @@ import type { Notification } from "@/lib/backend/onboarding";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 const actions = vi.hoisted(() => ({
-  unreadCountAction: vi.fn(),
   listNotificationsAction: vi.fn(),
   markAllNotificationsReadAction: vi.fn(),
+  attentionAction: vi.fn(),
 }));
 vi.mock("@/app/(console)/notifications/actions", () => actions);
+vi.mock("@/app/(console)/usage/money-actions", () => ({ requestBuildExtensionAction: vi.fn() }));
+
+// The count is a background read (`GET /api/notifications/count`), not a server action (spec 074).
+const count = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
+vi.stubGlobal("fetch", count);
 
 const { NotificationsBellMenu } = await import("../notifications-bell");
 
@@ -60,15 +65,24 @@ async function openBell() {
 
 describe("NotificationsBellMenu", () => {
   beforeEach(() => {
-    actions.unreadCountAction.mockReset().mockResolvedValue(ok({ unread: 3 }));
+    count.mockReset().mockResolvedValue(new Response(JSON.stringify({ unread: 3 }), { status: 200 }));
     actions.listNotificationsAction.mockReset();
     actions.markAllNotificationsReadAction.mockReset();
+    actions.attentionAction.mockReset().mockResolvedValue(ok({ items: [], errors: [] }));
   });
 
   it("el botón dice cuántas hay sin leer", async () => {
     actions.listNotificationsAction.mockResolvedValue(ok({ items: [], next_cursor: null, unread: 0 }));
     render(<Bell />);
     expect(await screen.findByRole("button", { name: "Notificaciones — 3 sin leer" })).toBeInTheDocument();
+    expect(count).toHaveBeenCalledWith("/api/notifications/count", expect.objectContaining({ cache: "no-store" }));
+  });
+
+  it("si la cuenta falla, la campana se queda como estaba", async () => {
+    count.mockResolvedValue(new Response(JSON.stringify({ detail: "Count failed" }), { status: 502 }));
+    render(<Bell />);
+    await waitFor(() => expect(count).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Notificaciones" })).toBeInTheDocument();
   });
 
   it("ideal: los 5 últimos, «Marcar todo como leído» y «Ver todas»", async () => {
@@ -156,6 +170,49 @@ describe("NotificationsBellMenu", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(trigger).toHaveFocus();
+  });
+
+  it("spec 071: «Ahora» con lo que te necesita, que suma al número, y «Anteriores» con lo resuelto", async () => {
+    // 1 informativo sin leer + 1 cosa de «Ahora»: la ruta ya los suma (su propia prueba).
+    count.mockResolvedValue(new Response(JSON.stringify({ unread: 2 }), { status: 200 }));
+    actions.attentionAction.mockResolvedValue(
+      ok({
+        items: [
+          {
+            scope: "partner",
+            severity: "warning",
+            external_client_ref: null,
+            client_name: null,
+            code: "build_cap_warning",
+            count: 1,
+            action: "request_build_extension",
+            href: "/usage",
+            data: { pct: 84, spent: { amount_micros: 5_223_000, currency: "USD" }, cap: { amount_micros: 6_200_000, currency: "USD" } },
+          },
+        ],
+        errors: [],
+      }),
+    );
+    actions.listNotificationsAction.mockResolvedValue(
+      ok({
+        items: [
+          notif(1, { kind: "client.wallet.empty", severity: "critical", condition: true, handled: true, external_client_ref: "flor" }),
+          notif(2),
+        ],
+        next_cursor: null,
+        unread: 1,
+      }),
+    );
+    const { panel, trigger } = await openBell();
+    // 1 informativo sin leer + 1 cosa de «Ahora».
+    await waitFor(() => expect(trigger).toHaveAccessibleName("Notificaciones — 2 sin leer"));
+    const now = await within(panel).findByRole("region", { name: "Ahora" });
+    expect(within(now).getByText("Construcción y pruebas")).toBeInTheDocument();
+    expect(within(now).getByRole("button", { name: "Pedir ampliación" })).toBeInTheDocument();
+    expect(within(panel).getByRole("heading", { name: "Anteriores" })).toBeInTheDocument();
+    expect(panel.querySelector("[data-slot=bell-resolved]")).toHaveTextContent("Resuelto");
+    // «Marcar todo» solo por el informativo.
+    expect(within(panel).getByRole("button", { name: "Marcar todo como leído" })).toBeInTheDocument();
   });
 
   it("pasa axe abierta", async () => {

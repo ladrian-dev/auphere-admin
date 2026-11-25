@@ -55,10 +55,10 @@ const DETAIL: ClientDetailV2 = {
   allowed: ["edit", "assign_balance", "new_agent", "archive", "delete"],
 };
 
-function menu(actions: Record<string, unknown>, allowed = DETAIL.allowed) {
+function menu(actions: Record<string, unknown>, allowed = DETAIL.allowed, deleteBlocked: "archive_first" | null = null) {
   return render(
     <LocaleProvider locale="es">
-      <ClientMenu refId="barberia-cultor" name="Barbería Cultor" allowed={allowed} detail={DETAIL} actions={actions} />
+      <ClientMenu refId="barberia-cultor" name="Barbería Cultor" allowed={allowed} deleteBlocked={deleteBlocked} detail={DETAIL} actions={actions} />
     </LocaleProvider>,
   );
 }
@@ -97,6 +97,27 @@ describe("ClientMenu", () => {
     await waitFor(() => expect(remove).toHaveBeenCalledWith({ ref: "barberia-cultor", confirm_name: "Barbería Cultor" }));
     expect(await screen.findByText(/aparece en una factura o tiene pagos anotados/)).toBeTruthy();
     expect(nav.push).not.toHaveBeenCalled();
+  });
+
+  it("activo, «Eliminar…» dice antes que hay que archivarlo y ofrece «Archivar ahora», sin pedir el nombre (spec 073, 2.3)", async () => {
+    const user = userEvent.setup();
+    const archive = vi.fn(async () => ok(lifecycle));
+    const remove = vi.fn();
+    menu({ archive, remove }, DETAIL.allowed, "archive_first");
+    await user.click(screen.getByRole("button", { name: "Acciones de Barbería Cultor" }));
+    const item = await screen.findByRole("menuitem", { name: /Eliminar…/ });
+    expect(item).toHaveTextContent("Primero hay que archivarlo");
+    await user.click(item);
+    const dialog = await screen.findByRole("dialog", { name: "Eliminar Barbería Cultor" });
+    expect(dialog).toHaveTextContent("Eliminar no se deshace, archivar sí.");
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(await axeViolations()).toEqual([]);
+    await user.click(screen.getByRole("button", { name: "Archivar ahora" }));
+    await waitFor(() => expect(archive).toHaveBeenCalledWith({ ref: "barberia-cultor" }));
+    expect(remove).not.toHaveBeenCalled();
+    // Archivar desde aquí es el mismo archivar del menú: con «Deshacer».
+    expect(toast.success).toHaveBeenCalledWith("Barbería Cultor archivado. Sus agentes quedan en pausa.", expect.objectContaining({ action: expect.anything() }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("editar abre el modal del alta con lo de hoy y guarda con la revisión leída", async () => {

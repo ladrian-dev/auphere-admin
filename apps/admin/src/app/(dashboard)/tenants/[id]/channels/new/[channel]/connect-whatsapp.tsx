@@ -15,13 +15,17 @@ export function ConnectWhatsApp({
   tenantId,
   businessName,
   hasLiveLink = false,
+  sendOnly = false,
 }: {
   tenantId: string;
   businessName: string;
   hasLiveLink?: boolean;
+  /** Spec 077 (2.2): no agent to assign — connecting the number finishes. */
+  sendOnly?: boolean;
 }) {
   const router = useRouter();
-  const next = () => router.push(`/tenants/${tenantId}/channels/new/whatsapp/agent`);
+  const next = () =>
+    router.push(`/tenants/${tenantId}/channels/new/whatsapp/${sendOnly ? "done" : "agent"}`);
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {/* Spec 040: the usual path — the owner does it on their own device. */}

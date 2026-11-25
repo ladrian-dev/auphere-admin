@@ -60,9 +60,26 @@ export function useReportState(state: SectionState, report?: (state: SectionStat
  * leída de la web, con el globo; pendiente, un anillo; opcional, el anillo al
  * 50 %. El nombre del estado va para los lectores de pantalla.
  */
-export function SectionStateMark({ state }: { state: SectionState }) {
+/**
+ * Spec 073 (4.6): el idioma en que se leyó cada sección, si no era el de la consola
+ * («Leído en inglés»). La página lo calcula de la procedencia; el marco lo enseña.
+ */
+export const ReadLanguages = React.createContext<Readonly<Record<string, string>>>({});
+
+export function SectionStateMark({ state, count }: { state: SectionState; count?: number }) {
   const t = useT();
   const label = t(`business.section.state.${state}` as MessageKey);
+  // Spec 073 (4.5): leída, el índice dice cuántos datos quedan por revisar, no un globo.
+  if (state === "read_pending" && count) {
+    return (
+      <span className="inline-flex shrink-0" data-state={state} title={t("business.section.toReview", { n: count })}>
+        <span aria-hidden="true" className="grid h-4 min-w-4 place-items-center rounded-full bg-status-info-bg px-1 text-[11px] font-semibold text-status-info-text tabular-nums">
+          {count}
+        </span>
+        <span className="sr-only">{`${label} · ${t("business.section.toReview", { n: count })}`}</span>
+      </span>
+    );
+  }
   return (
     <span className="inline-flex shrink-0" data-state={state} title={state === "read_pending" ? t("business.section.mark.web") : undefined}>
       <span
@@ -125,6 +142,7 @@ export function SectionFrame({
 }) {
   const t = useT();
   const Heading = nested ? "h3" : "h2";
+  const readIn = React.useContext(ReadLanguages)[id];
   return (
     <section
       id={id}
@@ -149,6 +167,7 @@ export function SectionFrame({
           ) : state === "pending" ? (
             <StatusBadge tone="muted">{t("business.section.mark.missing")}</StatusBadge>
           ) : null}
+          {readIn ? <StatusBadge tone="muted">{t("business.section.readIn", { language: readIn })}</StatusBadge> : null}
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {state === "read_pending" && canWrite && confirm ? <ConfirmButton {...confirm} /> : null}

@@ -35,12 +35,12 @@
     {
       "type": "stat",
       "title": "LLM cache read ratio (1h)",
-      "description": "cache_read / (input + cache_read). < 0.3 sostenido = invalidador silencioso de caché en el prefijo del prompt — es la diferencia entre $0,013 y $0,03 por turno.",
+      "description": "cache_read / input (input = prompt_tokens, que ya incluye la caché). < 0.3 sostenido = invalidador silencioso de caché en el prefijo del prompt — es la diferencia entre $0,013 y $0,03 por turno.",
       "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "percentunit", "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "green", "value": 0.6 } ] } } },
       "targets": [
         {
-          "expr": "sum(increase(llm_tokens_total{type=\"cache_read\"}[1h])) / (sum(increase(llm_tokens_total{type=\"input\"}[1h])) + sum(increase(llm_tokens_total{type=\"cache_read\"}[1h])))",
+          "expr": "sum(increase(llm_tokens_total{type=\"cache_read\"}[1h])) / sum(increase(llm_tokens_total{type=\"input\"}[1h]))",
           "legendFormat": "cache read ratio"
         }
       ]

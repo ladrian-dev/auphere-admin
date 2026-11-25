@@ -87,7 +87,14 @@ def _audit(
             actor=actor,
             action=action,
             target=f"client_phone:{phone.id}",
-            after_json={"machine": phone.display_name, "platform": phone.platform, **after},
+            # Spec 073 (1.5): lo que hace la persona del cliente desde su teléfono
+            # se hizo desde la app, no desde la web.
+            after_json={
+                "machine": phone.display_name,
+                "platform": phone.platform,
+                **({"origin": "app"} if actor.startswith("client:") else {}),
+                **after,
+            },
         )
     )
 

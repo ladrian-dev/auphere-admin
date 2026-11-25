@@ -421,6 +421,27 @@ existen con el módulo.
   y Messenger el identificador no es un teléfono y sale tal cual. Agruparlo
   pediría libphonenumber: queda fuera.
 
+### De qué anuncio vino (spec 076, requisito 2)
+
+`GET /console/lite/inbox/conversations/{id}` trae `ad_origin: {kind, headline,
+url} | null`:
+
+- es el último clic del contacto de la conversación en su número
+  (`services/ad_referrals.last_click`, ver `docs/canales.md` §6);
+- `kind` vale `ad` o `post`;
+- nunca lleva el identificador del clic.
+
+**En pantalla:**
+- La cabecera del hilo (`components/inbox/ad-origin.tsx`) pone «Desde un
+  anuncio: <titular>» bajo «Atiende: …». Es un enlace que se abre en otra
+  pestaña (`rel="noopener noreferrer"`).
+- Sin titular dice «Desde un anuncio» o «Desde una publicación».
+- La ficha del contacto añade la fila «Llegó por».
+- Sin origen no se pinta nada.
+
+La consola de partners no tiene Bandeja con conversaciones: el partner ve los
+anuncios en el informe de la pestaña Anuncios del cliente (`docs/console.md`).
+
 ## Varios agentes por cliente
 
 Spec 030, iteración 3 (R14). Un cliente puede tener varios agentes; cada número

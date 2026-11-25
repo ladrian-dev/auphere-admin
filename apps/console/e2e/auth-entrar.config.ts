@@ -52,6 +52,8 @@ export default defineConfig({
         NEXUS_BACKEND_URL: `http://127.0.0.1:${API_PORT}`,
         NEXUS_CONSOLE_ORIGIN: `http://localhost:${WEB_PORT}`,
         NEXUS_CONSOLE_JWT_PRIVATE_KEY: signingKey,
+        // Spec 067: el alta, que en staging está encendida.
+        NEXUS_SIGNUP_ENABLED: "true",
       },
       reuseExistingServer: false,
       stdout: "ignore",

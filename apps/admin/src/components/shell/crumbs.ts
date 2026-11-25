@@ -50,6 +50,8 @@ const CHILD: Record<string, Record<string, string>> = {
     channels: "Canales",
     connectors: "Conectores",
     backchannel: "Canal del dueño",
+    // Spec 077: a send-only client's keys and sends.
+    api: "Envío por API",
     access: "Acceso",
     isolation: "Aislamiento",
     billing: "Facturación",

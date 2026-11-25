@@ -1,7 +1,17 @@
 import type { Call } from "../backend";
 
 import { ifMatch } from "./agent-draft";
-import type { AgentChannels, ChannelChange, ChannelConfigIn, ChannelPage, InstagramComments, OwnerLink, OwnerLinkMode } from "./channel-config-types";
+import type {
+  AdMeasurement,
+  AdMeasurementIn,
+  AgentChannels,
+  ChannelChange,
+  ChannelConfigIn,
+  ChannelPage,
+  InstagramComments,
+  OwnerLink,
+  OwnerLinkMode,
+} from "./channel-config-types";
 
 /**
  * Carril de la página de cada canal, de su menú ⋯ y del enlace del dueño por
@@ -15,7 +25,9 @@ import type { AgentChannels, ChannelChange, ChannelConfigIn, ChannelPage, Instag
  * `too_many_recipients` (422), `agent_not_published` (con `fix: publish_agent`),
  * `bag_empty` (con `fix: assign_balance`), `audience_admin_only_template` y
  * `undo_window_closed` (409); en el enlace del dueño, `link_pending_exists`
- * (con `link_id`) y `whatsapp_login_unavailable` (409).
+ * (con `link_id`) y `whatsapp_login_unavailable` (409); en los resultados de
+ * anuncios (spec 076), `confirm_required` (422), `reauthorize` (409) y
+ * `meta_unavailable` (502).
  *
  * Desconectar sigue en `channels.ts` (`disconnectChannel`).
  */
@@ -39,6 +51,8 @@ export function channelConfigApi(call: Call) {
     resumeChannel: (ref: string, channelId: string) => call<ChannelPage>(`${channel(ref, channelId)}/resume`, { method: "POST" }),
     setInstagramComments: (ref: string, channelId: string, body: InstagramComments) =>
       call<ChannelPage>(`${channel(ref, channelId)}/comments`, { method: "PUT", body }),
+    setAdMeasurement: (ref: string, channelId: string, body: AdMeasurementIn) =>
+      call<AdMeasurement>(`${channel(ref, channelId)}/ad-measurement`, { method: "PUT", body }),
 
     listAgentChannels: (ref: string, agentId: string) => call<AgentChannels>(`${agent(ref, agentId)}/channels`),
     createOwnerLink: (ref: string, agentId: string, body: { mode: OwnerLinkMode; replace?: boolean }) =>

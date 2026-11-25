@@ -7,6 +7,7 @@ import { backend } from "@/lib/backend";
 import { canSend } from "./labels";
 import { CreateNumberDialog } from "./number-dialogs";
 import { NumbersTable } from "./numbers-table";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Números de Auphere" };
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ type SearchParams = { include_inactive?: string };
  * principal one on the next send.
  */
 export default async function AuphereNumbersPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  await requirePageOperator("read");
   const { include_inactive } = await searchParams;
   const showInactive = include_inactive === "true";
   const numbers = await backend.listAuphereChannels(showInactive).catch(() => null);

@@ -29,6 +29,8 @@ ClientAction = Literal[
     "restore",
     "delete",
 ]
+#: Spec 073 (2.2): por qué «Eliminar» aún no se puede (``None``: se puede o no se ofrece).
+DeleteBlocked = Literal["archive_first"]
 AgentVisible = Literal["archived", "paused", "draft", "serving", "testing", "ready_no_channel"]
 Tone = Literal["positive", "info", "warn", "danger", "muted"]
 PauseReason = Literal["manual", "no_balance", "agent_cap", "client_paused", "client_archived"]
@@ -110,6 +112,7 @@ class ClientListRowOut(ClientSummaryOut):
     agents_summary: AgentsSummaryOut | None = None
     bag: BagOut | None = None
     allowed: list[ClientAction] = Field(default_factory=list)
+    delete_blocked: DeleteBlocked | None = None
 
 
 class ClientCountsOut(BaseModel):
@@ -142,6 +145,7 @@ class ClientDetailOut(ClientOut):
     lifecycle: Lifecycle = "active"
     revision: int | None = None
     allowed: list[ClientAction] = Field(default_factory=list)
+    delete_blocked: DeleteBlocked | None = None
 
 
 class ClientEditIn(BaseModel):
@@ -234,6 +238,7 @@ class ClientPanelOut(BaseModel):
     missing: MissingOut | None = None
     read: ClientReadOut
     allowed: list[ClientAction]
+    delete_blocked: DeleteBlocked | None = None
 
 
 __all__ = [

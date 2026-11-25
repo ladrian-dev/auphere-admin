@@ -42,7 +42,7 @@ describe("la tarjeta de pruebas, sin modelo", () => {
     const notice = screen.getByRole("alert");
     expect(notice).toHaveTextContent("Sin probar porque el modelo no respondió: 1. Esto no dice nada del agente. Vuelve a ejecutarlas en un rato.");
     expect(within(container).queryByRole("button", { name: /Arreglar/ })).toBeNull();
-    expect(within(container).getByRole("button", { name: "Ejecutar todas" })).toBeVisible();
+    expect(within(container).getByRole("button", { name: "Ejecutar la prueba" })).toBeVisible();
     expect(await axeViolations(container)).toEqual([]);
   });
 
@@ -107,5 +107,22 @@ describe("quién paga, en la tarjeta (68.7)", () => {
     box({ suite: onTheBag({ total: 8, not_applicable: 0, passed: 6, failed: 2, stale: 0 }), pending: true });
     expect(screen.getByRole("button", { name: "Repetir las que no pasan" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Repetir todas" })).toBeDisabled();
+  });
+});
+
+describe("sin ejecutar, una sola vez y con lo que cuestan (spec 073, 3b.3)", () => {
+  const stale = suite({ summary: { ...suite().summary, total: 8, not_applicable: 0, passed: 0, failed: 0, flaky: 0, unknown: 0, not_run: 0, stale: 8, model_failed: 0 } });
+
+  it("dice cuántas, las ejecuta todas y avisa de lo que costarían", () => {
+    box({ suite: stale, cost: { charge: { amount_micros: 40_000, currency: "USD" }, unknown: false } });
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("Pruebas · 8 sin ejecutar");
+    expect(screen.getByRole("button", { name: "Ejecutar las 8 pruebas" })).toBeVisible();
+    expect(screen.getByText("Costarían unos 0,40 USD.")).toBeVisible();
+  });
+
+  it("sin precio no inventa una cifra", () => {
+    box({ suite: stale, cost: { charge: null, unknown: true } });
+    expect(screen.getByText("No se puede calcular el coste.")).toBeVisible();
+    expect(screen.queryByText(/Costarían/)).toBeNull();
   });
 });

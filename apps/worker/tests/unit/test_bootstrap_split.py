@@ -33,6 +33,9 @@ ALL_EXPECTED = {
     # Spec 031: los avisos al teléfono. En los tres sitios: ``_spawn``,
     # ``EGRESS_TASK_NAMES`` y aquí.
     "push-dispatcher",
+    # Spec 076: los eventos de conversión a Meta. En ``_spawn``,
+    # ``EGRESS_TASK_NAMES`` y aquí.
+    "conversion-events-dispatcher",
     "operator-alerter",
     "grade-consumer",
     "platform-watcher",
@@ -42,6 +45,8 @@ ALL_EXPECTED = {
     "partner-receipt-cron",
     # Spec 041: recarga automática y cobro del pospago el día 1.
     "partner-charges-cron",
+    # Spec 077: la membresía de los clientes.
+    "service-memberships-cron",
     "wallet-renewal-cron",
     # Spec 005: la caducidad del crédito comprado tras una baja.
     "expire-credit-cron",
@@ -93,6 +98,9 @@ ALL_EXPECTED = {
     # se piden solas a Meta cada 15 min. En ``SCHEDULER_TASK_NAMES``, ``_spawn``
     # y aquí.
     "reservation-templates-cron",
+    # Spec 076 (requisito 1.7): el clic del anuncio pierde su identificador a los
+    # 90 días. En ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
+    "ad-referral-retention-cron",
     # Spec 064 (requisito 5): el cierre por inactividad de la Bandeja, cada 5 min.
     # En ``SCHEDULER_TASK_NAMES``, ``_spawn`` y aquí.
     "inbox-autoclose-cron",
@@ -105,6 +113,8 @@ ALL_EXPECTED = {
     "bag-refill-cron",
     "bag-alerts-cron",
     "ledger-reconciliation-cron",
+    # Spec 071 (2.3): cada hora, los avisos de condición que ya no pasan se resuelven.
+    "attention-resolve-cron",
     # Spec 047, 51.7 (enmienda del 2026-11-10): las sugerencias semanales ya no
     # arrancan. Ver ``test_the_weekly_suggestions_do_not_start``.
 }

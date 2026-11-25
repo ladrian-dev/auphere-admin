@@ -424,8 +424,9 @@ Servicios o Aforo; lo elige el admin y el teléfono no lo cambia). Contrato:
 
 - **Un adaptador** (`src/api/reservas.ts`) entre el contrato y el modelo de las
   pantallas ([data-model.md](../specs/044-la-app-con-reservas/data-model.md)).
-  Las rutas aún no están en `openapi.json` y van por `authedFetch` (la misma
-  credencial y la misma renovación). Cada acción manda la `version` de la reserva
+  Las rutas van por `authedFetch` (la misma credencial y la misma renovación),
+  y en un build de desarrollo con `EXPO_PUBLIC_DEMO=1` las sirve el negocio de
+  ejemplo (`src/api/demo/`, spec 069). Cada acción manda la `version` de la reserva
   en `If-Match`; un 412 `stale` se dice en una frase y se relee.
 - **La hora es la del negocio** (D3): fechas y horas de pared de su zona
   (`settings.timezone`); «ahora» es el reloj del teléfono en esa zona.
@@ -440,7 +441,19 @@ Servicios o Aforo; lo elige el admin y el teléfono no lo cambia). Contrato:
   reserva» (Aforo, Día, hoy), en vidrio en iOS 26 (`src/ui/fab.tsx`).
 - **El aviso breve** (`src/ui/toast.tsx`, D7): una frase para lo que no queda a
   la vista, anunciada al lector de pantalla, con «Deshacer» tras «Llegó» o «No
-  vino». Cancelar pide confirmación porque avisa al cliente por WhatsApp.
+  vino». Desde la 069, cancelar pregunta si se avisa al cliente y si se ofrece el
+  hueco a la lista de espera (`cancel-preview`). Cancelar y «Quitar» de la lista
+  esperan 6 s antes de enviarse: la API no tiene inverso, y «Deshacer» los
+  descarta (si la app pasa a segundo plano, se envían al momento).
+- **Lo que añade la 069** (Requisitos 13 a 17):
+  - mover una reserva (solo huecos libres) y pedir confirmación;
+  - teléfono obligatorio al reservar y al apuntar en la lista (salvo la llegada en persona, 064 R3);
+  - la antelación mínima del agente, que también filtra las horas de la app, y los recordatorios en los ajustes;
+  - ofertas de la lista en curso con «Parar»;
+  - los estados reales del calendario de Google de cada profesional;
+  - precios en la moneda del negocio, con sus decimales;
+  - tocar un hueco libre de la cuadrícula abre «Nueva reserva» a esa hora.
+  - Nueva ruta: `src/app/(app)/reservas/apuntar.tsx`.
 - **Inicio** cuenta las reservas de hoy sin confirmar y «Hoy en Reservas» con
   la misma lectura que la pestaña (D4), no con `/summary`.
 - **Datos de ejemplo** (D2): un build de desarrollo con
@@ -610,6 +623,45 @@ Contrato: [`specs/047-la-fabrica-de-agentes/contracts/lite-app-api.md`](../specs
   (Jest y RNTL con `fireEvent` asíncrono, caché real de React Query) y el flujo
   de Maestro `e2e/agentes-negocio.yaml` (pausar y reanudar, cambiar el horario
   y deshacerlo).
+
+## Versión 1.3.0 (spec 069, el diseño nuevo)
+
+`version` 1.3.0 y `runtimeVersion` que la sigue: el diseño aprobado por el owner trae pantallas nuevas y tres módulos nativos (`react-native-svg`, `@shopify/react-native-skia` y `lucide-react-native`; licencias en [`licenses/app-movil-069.md`](licenses/app-movil-069.md)). Entra solo por las tiendas: nada llega por aire a la 1.2.0.
+
+- **Aspecto:**
+  - iconos Lucide (cromo nativo con símbolos del sistema);
+  - títulos y cifras en Helvena, incrustada en todos los builds desde que se confirmó su licencia (2026-11-21); `APP_HELVENA=0` en un build local deja la del sistema, para medir. Pesos hasta 600;
+  - color por función con los roles propios de la app del generador (`controlBorder`, la tinta al 50 %, para el borde de chips, horas, huecos, bloques y el segmento elegido: 3:1 o más, R3.5);
+  - radios del diseño;
+  - las microinteracciones de `motion/micro.tsx`.
+
+  Android sigue en Material 3, sin vidrio imitado.
+- **Funciones:** las de la spec 069, que vienen del diseño y de lo que la web ya tenía:
+  - Bandeja multicanal, búsqueda y deslizar con «Deshacer»;
+  - Inicio con cuatro tarjetas;
+  - Reservas con mover, pedir confirmación, cancelar con oferta y teléfono obligatorio;
+  - Ajustes con canales, privacidad y soporte.
+
+  No se quita nada de la 1.2.0.
+- **Quién responde, en la cabecera y en Contacto:** la misma regla que el pie (`composerMode`). Con la ventana cerrada para todos, o con la del agente vencida y hora de cierre, dice «{agente} ya no puede responder», con un punto gris. Nunca dice «Atiende {agente}» cuando no puede (R11.5). La lista no conoce la ventana y no lo dice.
+- **«Deshacer» con lector de pantalla:** dura 20 s con VoiceOver o TalkBack activos, o lo que pida el «tiempo para actuar» de Android, y se anuncia junto con «Deshacer» (`undoMs()`, WCAG 2.2.1). Las cancelaciones de Reservas, que se envían al acabar ese plazo, esperan lo mismo.
+- **Revisada contra las guías:**
+  - nada se compra ni se pide dentro de la app: no hay «Recargar saldo» (3.1.3(f));
+  - ningún permiso nuevo del sistema (5.1.1);
+  - Ajustes enlaza la política de privacidad, como pide Play.
+- **Datos de ejemplo:** `EXPO_PUBLIC_DEMO=1` en un build de desarrollo sirve toda la app con un negocio ficticio (`src/api/demo/`), para revisarla sin servidor. Ningún perfil de `eas.json` lo activa.
+  - Su Reservas va con la hora real del negocio (Santiago), la misma que lee la app (`createDemo(…, { clock: "business" })`).
+  - El ejemplo de Reservas de la 044 (`EXPO_PUBLIC_RESERVAS_DEMO`) sigue con su media mañana fija.
+  - Solo se llega a él por el `require` con `__DEV__ && DEMO` de `client.ts` y `sse.ts`. Una regla de `eslint.config.js` rechaza cualquier import estático de `src/api/demo`.
+- **Objetivos táctiles:** `slopFor(alto)` (`theme/theme.ts`) lleva un control pequeño al mínimo de su plataforma: 44 pt en iOS y 48 dp en Android. Lo usan los huecos y bloques de la cuadrícula y «Corregir».
+- **Categorías de avisos de iOS, una a una:**
+  - `ensureCategories` las registra en cola, nunca a la vez.
+  - En el SDK 58, Expo convierte la respuesta fuera del hilo de JS (expo/expo#52462, sin arreglo publicado a 2026-11-21).
+  - Con las cinco a la vez, la app se caía al arrancar en el simulador de iOS 26.0, con un build local de Xcode 26.0.1: 5 de 5. En cola, 0 de 6.
+  - Sigue cayéndose si JS está ocupado cuando llega la respuesta, como al recargar el bundle en pleno arranque.
+  - Con el build de EAS (Xcode 27.1), en el mismo simulador, no se cae: 0 de 21 arranques, también con el código anterior. Es del build local con un Xcode por debajo del mínimo (069, T061).
+- **Lo que falta para enviarla:** es la spec 070 (fichas, capturas, cuenta de revisión, configuración de producción). Antes, las medidas de rendimiento y las puertas de la 069 (R22.5: T056, T057, T058 y T061).
+- **La hoja de una reserva:** cada botón toma el ancho de sus palabras en una línea; van juntos si caben y, si no, uno por línea. Con mitades iguales, «Pedir confirmación» se partía dentro de la palabra junto a la campana (069, T052).
 
 ## Versión 1.2.0
 

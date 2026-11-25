@@ -137,6 +137,8 @@ export const membershipMessages = {
     en: "Card charging is not available right now. Try again in a while.",
   },
   "membership.credit.buy": { es: "Comprar", en: "Buy" },
+  // Spec 072 §6.1: con un importe elegido, el botón dice cuánto compra.
+  "membership.credit.buyAmount": { es: "Comprar {amount}", en: "Buy {amount}" },
   // Se dice qué compra ese dinero ANTES de pagarlo: «50 $» no significa nada
   // por sí solo, y la relación con lo que consume un turno es justo lo que el
   // partner no tiene por qué saber de memoria.

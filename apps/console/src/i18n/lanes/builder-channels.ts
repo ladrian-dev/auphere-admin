@@ -357,6 +357,94 @@ export const builderChannelsMessages = {
   "builder.channel.comments.save": { es: "Guardar comentarios", en: "Save comments" },
   "builder.channel.comments.saved": { es: "Comentarios guardados.", en: "Comments saved." },
 
+  // Spec 076 (requisito 4): los resultados del agente, a los anuncios de Meta del cliente.
+  "builder.channel.ads.title": { es: "Resultados en anuncios", en: "Results in ads" },
+  "builder.channel.ads.intro": {
+    es: "Cada reserva o pedido que el agente consigue en este número se le dice a Meta, para que los anuncios del cliente aprendan a quién mostrarse.",
+    en: "Every booking or order the agent gets on this number is reported to Meta, so the client’s ads learn who to show up for.",
+  },
+  "builder.channel.ads.state": { es: "Estado", en: "Status" },
+  "builder.channel.ads.state.on": { es: "Activada", en: "On" },
+  "builder.channel.ads.state.off": { es: "Desactivada", en: "Off" },
+  "builder.channel.ads.state.reauthorize": { es: "Falta un permiso de Meta", en: "A Meta permission is missing" },
+  "builder.channel.ads.dataset": { es: "Conjunto de datos de Meta", en: "Meta dataset" },
+  "builder.channel.ads.dataset.linked": { es: "Vinculado", en: "Linked" },
+  "builder.channel.ads.dataset.none": { es: "Sin vincular", en: "Not linked" },
+  "builder.channel.ads.sent7d": { es: "Enviados en los últimos 7 días", en: "Sent in the last 7 days" },
+  "builder.channel.ads.on": { es: "Activar", en: "Turn on" },
+  "builder.channel.ads.retry": { es: "Activar de nuevo", en: "Turn on again" },
+  "builder.channel.ads.off": { es: "Desactivar", en: "Turn off" },
+  "builder.channel.ads.off.hint": {
+    es: "Al desactivarla, lo que aún no salió hacia Meta no se envía.",
+    en: "When you turn it off, what has not reached Meta yet is not sent.",
+  },
+  "builder.channel.ads.on.done": { es: "Los resultados de este número ya van a Meta.", en: "This number’s results now go to Meta." },
+  "builder.channel.ads.off.done": { es: "Este número ya no envía resultados a Meta.", en: "This number no longer sends results to Meta." },
+  "builder.channel.ads.confirm.title": { es: "¿Enviar los resultados a Meta?", en: "Send the results to Meta?" },
+  "builder.channel.ads.confirm.body": {
+    es: "Esto es lo que Meta recibe de cada reserva o pedido que el agente consigue en este número.",
+    en: "This is what Meta gets for every booking or order the agent gets on this number.",
+  },
+  "builder.channel.ads.confirm.what": {
+    es: "El tipo de resultado (reserva, pedido o cancelación), su importe y su moneda.",
+    en: "The kind of result (booking, order or cancellation), its amount and its currency.",
+  },
+  "builder.channel.ads.confirm.who": {
+    es: "Quién lo consiguió: el clic en el anuncio por el que llegó, o su teléfono cifrado si no llegó por uno.",
+    en: "Who it was: the ad click they came from, or their encrypted phone number if they did not come from one.",
+  },
+  "builder.channel.ads.confirm.never": {
+    es: "Nunca los mensajes, el nombre ni el servicio, ni nada de quien se dio de baja en este número.",
+    en: "Never the messages, the name or the service, nor anything about people who opted out on this number.",
+  },
+  "builder.channel.ads.confirm.agree": {
+    es: "El negocio puede compartir estos datos con Meta para medir sus anuncios.",
+    en: "The business may share this data with Meta to measure its ads.",
+  },
+  "builder.channel.ads.reauthorize.title": { es: "Hay que volver a conectar el número", en: "The number has to be connected again" },
+  "builder.channel.ads.reauthorize.body": {
+    es: "La conexión de este número con Meta no incluye el permiso para enviar resultados. Vuelve a conectarlo y acepta el permiso nuevo. El agente sigue atendiendo igual.",
+    en: "This number’s connection to Meta does not include the permission to send results. Connect it again and accept the new permission. The agent keeps answering as usual.",
+  },
+  "builder.channel.ads.reauthorize.readonly": {
+    es: "La conexión de este número con Meta no incluye el permiso para enviar resultados. Quien gestiona los canales del cliente tiene que volver a conectarlo.",
+    en: "This number’s connection to Meta does not include the permission to send results. Whoever manages the client’s channels has to connect it again.",
+  },
+  "builder.channel.ads.reauthorize.paused": {
+    es: "La conexión de este número con Meta no incluye el permiso para enviar resultados. Reanuda el número y después vuelve a conectarlo.",
+    en: "This number’s connection to Meta does not include the permission to send results. Resume the number, then connect it again.",
+  },
+  "builder.channel.ads.reconnect": { es: "Volver a conectar", en: "Connect again" },
+  "builder.channel.ads.reconnect.done": {
+    es: "Número conectado de nuevo. Confirma para activar los resultados.",
+    en: "Number connected again. Confirm to turn the results on.",
+  },
+  "builder.channel.ads.error.title": { es: "El último envío a Meta falló", en: "The last send to Meta failed" },
+  "builder.channel.ads.error.reauthorize": {
+    es: "Falta el permiso para enviar resultados. Vuelve a conectar el número.",
+    en: "The permission to send results is missing. Connect the number again.",
+  },
+  "builder.channel.ads.error.page_required": {
+    es: "Meta pide que la cuenta de WhatsApp esté unida a una página de Facebook del negocio. Únela en Meta y los siguientes saldrán solos.",
+    en: "Meta asks for the WhatsApp account to be linked to a Facebook Page of the business. Link it at Meta and the next ones go out on their own.",
+  },
+  "builder.channel.ads.error.too_old": {
+    es: "Un resultado no pudo salir en 7 días y Meta ya no lo acepta. Los nuevos siguen saliendo.",
+    en: "A result could not go out within 7 days and Meta no longer accepts it. New ones keep going out.",
+  },
+  "builder.channel.ads.error.no_identity": {
+    es: "Un resultado no tenía ni clic ni teléfono con el que decirle a Meta quién era, y no se envió.",
+    en: "A result had neither a click nor a phone number to tell Meta who it was, so it was not sent.",
+  },
+  "builder.channel.ads.error.meta_unavailable": {
+    es: "Meta no respondió. Prueba otra vez en unos minutos.",
+    en: "Meta did not answer. Try again in a few minutes.",
+  },
+  "builder.channel.ads.error.other": {
+    es: "Meta rechazó un resultado. Los siguientes se siguen intentando. Si se repite, escríbenos.",
+    en: "Meta turned down a result. The next ones keep being tried. If it happens again, write to us.",
+  },
+
   "builder.channel.account.title": { es: "La cuenta en Meta", en: "The account at Meta" },
   "builder.channel.account.intro": { es: "Lo que Meta dice de este número. Se actualiza solo cuando Meta avisa.", en: "What Meta says about this number. It updates itself when Meta tells us." },
   "builder.channel.account.name": { es: "Nombre visible", en: "Display name" },

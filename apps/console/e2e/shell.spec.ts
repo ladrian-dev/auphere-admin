@@ -36,7 +36,16 @@ async function openV2(page: Page, path: string = "/notifications") {
 }
 
 const sidebar = (page: Page) => page.locator("[data-slot=shell-sidebar]");
-const mobileNav = (page: Page) => page.locator("[data-slot=shell-mobile-nav]");
+const mobileNav = (page: Page) => page.locator("[data-slot=shell-tabbar]");
+
+/**
+ * Equipo, Facturación y API viven en el menú del perfil, no en el lateral
+ * (Andrés, 2026-10-28): se llega a ellas abriéndolo desde el pie del lateral.
+ */
+async function openAccountItem(page: Page, name: string) {
+  await sidebar(page).locator("[data-slot=dropdown-menu-trigger]").click();
+  await page.getByRole("menu").getByRole("menuitem", { name }).click();
+}
 
 test.describe("Spec 047 — el marco de la consola nueva", () => {
   test.beforeEach(async ({ page }) => {
@@ -56,13 +65,21 @@ test.describe("Spec 047 — el marco de la consola nueva", () => {
     }
   });
 
-  test("escritorio: el menú lateral sin etiquetas de grupo, las migas y la página actual", async ({ page }) => {
-    await openV2(page, "/team");
+  test("escritorio: el menú lateral solo con «Operar», la cuenta en el perfil, las migas y la página actual", async ({ page }) => {
+    await openV2(page, "/clients");
     const nav = sidebar(page).getByRole("navigation", { name: "Menú principal" });
     await expect(nav).toBeVisible();
     await expect(mobileNav(page)).toBeHidden();
-    await expect(nav.getByRole("link", { name: "Equipo" })).toHaveAttribute("aria-current", "page");
-    await expect(page.getByText("Operar", { exact: true })).toHaveCount(0);
+    // Un solo grupo, con su etiqueta, como el prototipo; la cuenta no está en el lateral.
+    await expect(nav.getByRole("list", { name: "Operar" })).toBeVisible();
+    await expect(nav.getByText("Cuenta", { exact: true })).toHaveCount(0);
+    await expect(nav.getByRole("link", { name: "Clientes" })).toHaveAttribute("aria-current", "page");
+    for (const name of ["Equipo", "Facturación", "API"]) await expect(nav.getByRole("link", { name })).toHaveCount(0);
+
+    // Equipo sale del menú del perfil; en /team ninguna entrada del lateral es la actual.
+    await openAccountItem(page, "Equipo");
+    await expect(page).toHaveURL(/\/team$/);
+    await expect(nav.locator("[aria-current=page]")).toHaveCount(0);
     const crumbs = page.getByRole("navigation", { name: "Migas de pan" });
     await expect(crumbs.getByText("Equipo")).toHaveAttribute("aria-current", "page");
     await expect(crumbs.getByRole("link")).toHaveCount(0);
@@ -82,9 +99,9 @@ test.describe("Spec 047 — el marco de la consola nueva", () => {
     await expect(page.getByRole("button", { name: "Abrir menú" })).toHaveAttribute("aria-expanded", "false");
     await expect.poll(() => sidebar(page).evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(64);
 
-    const api = sidebar(page).getByRole("link", { name: "API" });
-    await api.hover();
-    await expect(page.locator("[data-slot=tooltip-content]")).toHaveText("API");
+    const clients = sidebar(page).getByRole("link", { name: "Clientes" });
+    await clients.hover();
+    await expect(page.locator("[data-slot=tooltip-content]")).toHaveText("Clientes");
     await expectNoSeriousAxe(page);
 
     await page.reload();
@@ -95,40 +112,54 @@ test.describe("Spec 047 — el marco de la consola nueva", () => {
 
   test("cada pantalla tiene su URL y el botón atrás vuelve a la anterior", async ({ page }) => {
     await openV2(page, "/notifications");
-    await sidebar(page).getByRole("link", { name: "Equipo" }).click();
+    await sidebar(page).getByRole("link", { name: "Clientes" }).click();
+    await expect(page).toHaveURL(/\/clients$/);
+    await openAccountItem(page, "Equipo");
     await expect(page).toHaveURL(/\/team$/);
-    await sidebar(page).getByRole("link", { name: "API" }).click();
+    await openAccountItem(page, "API");
     await expect(page).toHaveURL(/\/keys$/);
     await page.goBack();
     await expect(page).toHaveURL(/\/team$/);
-    await expect(sidebar(page).getByRole("link", { name: "Equipo" })).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("navigation", { name: "Migas de pan" }).getByText("Equipo")).toHaveAttribute("aria-current", "page");
+    await page.goBack();
+    await expect(page).toHaveURL(/\/clients$/);
+    await expect(sidebar(page).getByRole("link", { name: "Clientes" })).toHaveAttribute("aria-current", "page");
     await page.goBack();
     await expect(page).toHaveURL(/\/notifications$/);
   });
 
-  test("390 px: la barra superior conserva el menú, el perfil y el tema, sin desbordar", async ({ page }) => {
+  test("390 px (spec 074): una sola navegación, la barra inferior; el tema y lo demás en el perfil, sin desbordar", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openV2(page);
     await expect(sidebar(page)).toBeHidden();
     const bar = mobileNav(page);
     await expect(bar).toBeVisible();
-    await expect(bar.getByRole("link", { name: "API" })).toBeAttached();
+    // D1: abajo, a mano del pulgar, con las cuatro secciones de cada día.
+    const box = await bar.boundingBox();
+    expect(box && box.y + box.height).toBeGreaterThan(844 - 4);
+    await expect(bar.getByRole("link")).toHaveText(["Panel", "Clientes", "Consumo", "Auditoría"]);
+    for (const link of await bar.getByRole("link").all()) expect((await link.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await expect(page.locator("[data-slot=shell-mobile-nav]")).toHaveCount(0);
+    // Navega: la sección activa cambia.
+    await bar.getByRole("link", { name: "Clientes" }).click();
+    await expect(page).toHaveURL(/\/clients$/);
+    await expect(bar.getByRole("link", { name: "Clientes" })).toHaveAttribute("aria-current", "page");
     expect(await overflowOffenders(page)).toEqual([]);
     await expectNoSeriousAxe(page);
 
+    // D2: arriba no está el interruptor del tema; vive en el perfil, con la cuenta y lo demás de «Operar».
+    await expect(page.getByRole("switch", { name: "Modo oscuro" })).toBeHidden();
     await page.locator("[data-slot=shell-mobile-profile] [data-slot=dropdown-menu-trigger]").click();
     const menu = page.getByRole("menu");
-    await expect(menu.getByRole("menuitemradio")).toHaveText(["Claro", "Oscuro", "Sistema"]);
-    await expect(menu.getByRole("menuitem", { name: "Cerrar sesión" })).toBeVisible();
-    await menu.getByRole("menuitemradio", { name: "Oscuro" }).click();
+    for (const name of ["Guía del partner", "Equipo", "Facturación", "API", "Cerrar sesión"]) await expect(menu.getByRole("menuitem", { name })).toBeVisible();
+    await menu.getByRole("menuitem", { name: /Pasar a modo oscuro/ }).click();
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
-    // Elegir el tema cierra el menú; se audita cuando ha terminado de irse.
     await expect(menu).toBeHidden();
     expect(await overflowOffenders(page)).toEqual([]);
     await expectNoSeriousAxe(page);
   });
 
-  test("200 % de zoom: el marco pasa a la barra superior y nada se sale", async ({ page }) => {
+  test("200 % de zoom: el marco pasa a la barra inferior y nada se sale", async ({ page }) => {
     // Una ventana de 1280 × 800 al 200 % deja 640 × 400 px CSS: es lo que se mide.
     await page.setViewportSize({ width: 640, height: 400 });
     await openV2(page, "/team");
@@ -210,8 +241,11 @@ test.describe("Spec 047 — el marco de la consola nueva", () => {
 
     // Se mide cuando el menú ha terminado de entrar: durante la animación el
     // fondo pasa por valores intermedios.
+    // El desenfoque sale del token `--glass-blur`, no de un número copiado aquí.
+    const blur = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--glass-blur").trim());
+    expect(blur).toMatch(/^\d+px$/);
     await trigger.click();
-    await expect.poll(async () => (await glassOf()).filter).toContain("blur(20px)");
+    await expect.poll(async () => (await glassOf()).filter).toContain(`blur(${blur})`);
     const glass = await glassOf();
     expect(translucent(glass.background), `fondo del menú: ${glass.background}`).toBe(true);
     await page.keyboard.press("Escape");

@@ -199,7 +199,11 @@ export const homeUsageMessages = {
   "hu.audit.yesterday": { es: "Ayer", en: "Yesterday" },
   "hu.audit.repeats.hide": { es: "Ocultar", en: "Hide" },
   "hu.audit.sensitive": { es: "Acción sensible: no se puede deshacer", en: "Sensitive action: cannot be undone" },
-  "hu.audit.col.when": { es: "Fecha", en: "Date" },
+  // Spec 073 (1.2): el día va en su fila de grupo; la columna, solo la hora.
+  "hu.audit.col.when": { es: "Hora", en: "Time" },
+  "hu.audit.view": { es: "Qué se ve", en: "What is shown" },
+  "hu.audit.view.changes": { es: "Solo cambios", en: "Changes only" },
+  "hu.audit.view.all": { es: "Todo, con accesos", en: "Everything, with sign-ins" },
   "hu.audit.col.who": { es: "Persona", en: "Person" },
   "hu.audit.col.what": { es: "Qué pasó", en: "What happened" },
   "hu.audit.col.client": { es: "Cliente", en: "Client" },

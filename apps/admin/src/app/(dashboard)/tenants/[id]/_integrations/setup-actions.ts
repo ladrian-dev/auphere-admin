@@ -10,6 +10,7 @@
  */
 
 import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
 import { BackendError, backend } from "@/lib/backend";
 import type {
@@ -20,18 +21,30 @@ import type {
   MetaTestSendResult,
   WhatsAppTemplateCreateInput,
   WhatsAppTemplateCreateResult,
+  WhatsAppTemplateEditInput,
+  WhatsAppTemplateEditResult,
   WhatsAppTemplateList,
 } from "@/lib/backend";
 import { requireOperator } from "@/lib/session";
 
 export type ActionResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /** Closed-vocabulary code when the API answered with a structured
+       *  ``detail`` (spec 075); the screen writes the sentence from it. */
+      code?: string | null;
+      /** The rest of that structured detail (reasons, variables, Meta's codes). */
+      info?: Record<string, unknown>;
+    };
 
 function toError(err: unknown): string {
   if (err instanceof BackendError) {
-    const body = err.body as { detail?: string } | null;
-    return body?.detail ?? `HTTP ${err.status}`;
+    const detail = (err.body as { detail?: unknown } | null)?.detail;
+    if (typeof detail === "string") return detail;
+    // A FastAPI validation error carries a list: the screens paint this as text.
+    return detail ? `La API no aceptó la petición (HTTP ${err.status}).` : `HTTP ${err.status}`;
   }
   return err instanceof Error ? err.message : String(err);
 }
@@ -59,7 +72,7 @@ export async function connectMetaWhatsAppSetupAction(
   tenantId: string,
   body: MetaSignupInput,
 ): Promise<ActionResult<MetaSignupResult>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.metaSignup(tenantId, body);
     if (!result) {
@@ -91,7 +104,7 @@ export async function connectMetaOwnedNumberAction(
   tenantId: string,
   body: MetaConnectOwnedInput,
 ): Promise<ActionResult<MetaSignupResult>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.metaConnectOwned(tenantId, body);
     if (!result) {
@@ -117,7 +130,7 @@ export async function metaTestSendAction(
   tenantId: string,
   body: MetaTestSendInput,
 ): Promise<ActionResult<MetaTestSendResult>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.metaTestSend(tenantId, body);
     if (!result) {
@@ -146,7 +159,7 @@ export async function rotateWhatsAppPinAction(
   tenantId: string,
   channelId: string,
 ): Promise<ActionResult<null>> {
-  await requireOperator();
+  await requireOperator("credentials");
   try {
     await backend.rotateWhatsAppPin(tenantId, channelId);
     revalidatePath(`/tenants/${tenantId}/channels/${channelId}`);
@@ -159,7 +172,7 @@ export async function rotateWhatsAppPinAction(
 export async function tiktokAuthorizeUrlAction(
   tenantId: string,
 ): Promise<ActionResult<{ authorize_url: string }>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.tiktokAuthorizeUrl(tenantId);
     if (!result) {
@@ -179,7 +192,7 @@ export async function tiktokAuthorizeUrlAction(
 export async function tiktokDisconnectAction(
   tenantId: string,
 ): Promise<ActionResult<{ status: string }>> {
-  await requireOperator();
+  await requireOperator("delete");
   try {
     const result = await backend.tiktokDisconnect(tenantId);
     if (!result) {
@@ -209,7 +222,7 @@ export async function connectWooCommerceSetupAction(
     consumer_secret: string;
   },
 ): Promise<ActionResult<{ store_url: string }>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const storeUrl = body.store_url.trim().replace(/\/+$/, "");
     if (!storeUrl.startsWith("https://")) {
@@ -238,7 +251,7 @@ export async function connectWooCommerceSetupAction(
 export async function listWhatsAppTemplatesAction(
   tenantId: string,
 ): Promise<ActionResult<WhatsAppTemplateList>> {
-  await requireOperator();
+  await requireOperator("read");
   try {
     const result = await backend.listWhatsAppTemplates(tenantId);
     if (!result) {
@@ -250,13 +263,83 @@ export async function listWhatsAppTemplatesAction(
   }
 }
 
+export async function deleteWhatsAppTemplateAction(
+  tenantId: string,
+  name: string,
+): Promise<ActionResult<{ name: string; deleted: boolean }>> {
+  await requireOperator("delete");
+  try {
+    const result = await backend.deleteWhatsAppTemplate(tenantId, name);
+    if (!result) {
+      return { ok: false, error: "El backend no confirmó el borrado." };
+    }
+    return { ok: true, data: result };
+  } catch (err) {
+    return { ok: false, error: toError(err) };
+  }
+}
+
+// Spec 075: create a template (10.5) and edit one language of one, keeping its name.
+
+const TENANT_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const editButton = z.object({
+  type: z.enum(["QUICK_REPLY", "URL", "PHONE_NUMBER"]),
+  label: z.string().min(1).max(25),
+  url: z.string().url().max(2000).optional(),
+  phone_number: z.string().max(20).optional(),
+});
+
+const templateName = z.string().regex(/^[a-z0-9_]{1,512}$/);
+const templateLanguage = z.string().regex(/^[A-Za-z]{2,3}(_[A-Za-z0-9]{2,8})?$/);
+const templateExamples = z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.string().min(1).max(200)).default({});
+
+/** Spec 075 (10.5), 077 (3.4): the console's create shape; Authentication carries `otp_*`, never a body. */
+const createBody = z.discriminatedUnion("category", [
+  z
+    .object({
+      name: templateName,
+      language: templateLanguage,
+      category: z.enum(["MARKETING", "UTILITY"]),
+      header_text: z.string().max(60).optional(),
+      body_text: z.string().min(1).max(1024),
+      footer_text: z.string().max(60).optional(),
+      buttons: z.array(editButton).max(3).default([]),
+      examples: templateExamples,
+    })
+    .strict(),
+  z
+    .object({
+      name: templateName,
+      language: templateLanguage,
+      category: z.literal("AUTHENTICATION"),
+      otp_button_text: z.string().trim().min(1).max(25),
+      otp_expiration_minutes: z.number().int().min(1).max(90).optional(),
+      otp_security_recommendation: z.boolean(),
+    })
+    .strict(),
+]);
+
+/**
+ * Spec 075 (10.5): the panel creates with the console's shape — what the shared
+ * editor hands over — and the API builds what goes to Meta (9.3). The operator
+ * is required **first**; what is not that shape never reaches the API.
+ */
 export async function createWhatsAppTemplateAction(
   tenantId: string,
   body: WhatsAppTemplateCreateInput,
 ): Promise<ActionResult<WhatsAppTemplateCreateResult>> {
-  await requireOperator();
+  await requireOperator("operate");
+  const content = createBody.safeParse(body);
+  if (!TENANT_ID_RE.test(tenantId) || !content.success) {
+    return { ok: false, error: "La plantilla o el cliente no son válidos.", code: "invalid" };
+  }
+  const data =
+    content.data.category === "AUTHENTICATION"
+      ? content.data
+      : { ...content.data, header_text: content.data.header_text || undefined, footer_text: content.data.footer_text || undefined };
   try {
-    const result = await backend.createWhatsAppTemplate(tenantId, body);
+    const result = await backend.createWhatsAppTemplate(tenantId, data);
     if (!result) {
       return { ok: false, error: "El backend no devolvió la plantilla creada." };
     }
@@ -266,18 +349,71 @@ export async function createWhatsAppTemplateAction(
   }
 }
 
-export async function deleteWhatsAppTemplateAction(
+const editTarget = z.object({
+  tenantId: z.string().regex(TENANT_ID_RE),
+  name: templateName,
+  language: templateLanguage,
+});
+
+const editBody = z.object({
+  version: z.string().regex(/^[0-9a-f]{16}$/),
+  confirm: z.boolean().default(false),
+  category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]).optional(),
+  header_text: z.string().max(60).optional(),
+  body_text: z.string().min(1).max(1024),
+  footer_text: z.string().max(60).optional(),
+  buttons: z.array(editButton).max(3).default([]),
+  examples: templateExamples,
+});
+
+/** The API's structured ``detail`` → code + the rest, so the dialog can say it in words. */
+function toEditFailure(err: unknown): { ok: false; error: string; code: string | null; info: Record<string, unknown> } {
+  if (err instanceof BackendError) {
+    const detail = (err.body as { detail?: unknown } | null)?.detail;
+    if (detail && typeof detail === "object" && typeof (detail as { code?: unknown }).code === "string") {
+      const { code, ...info } = detail as { code: string } & Record<string, unknown>;
+      return { ok: false, error: code, code, info };
+    }
+    return { ok: false, error: typeof detail === "string" ? detail : `HTTP ${err.status}`, code: null, info: { status: err.status } };
+  }
+  return { ok: false, error: err instanceof Error ? err.message : String(err), code: null, info: {} };
+}
+
+/**
+ * Spec 075 (9.1, 8.3): the operator edits a client's template from the panel.
+ * The operator is required **first** — a panel Server Action without it was a
+ * P0 of the 2026-11-22 security review — and named to the API with
+ * ``X-Operator-Id``, so the audit records the person, not the panel's token.
+ */
+export async function editWhatsAppTemplateAction(
   tenantId: string,
   name: string,
-): Promise<ActionResult<{ name: string; deleted: boolean }>> {
-  await requireOperator();
+  language: string,
+  body: WhatsAppTemplateEditInput,
+): Promise<ActionResult<WhatsAppTemplateEditResult>> {
+  const operator = await requireOperator("operate");
+  const target = editTarget.safeParse({ tenantId, name, language });
+  const content = editBody.safeParse(body);
+  if (!target.success || !content.success) {
+    return { ok: false, error: "La plantilla o el cliente no son válidos.", code: "invalid", info: {} };
+  }
   try {
-    const result = await backend.deleteWhatsAppTemplate(tenantId, name);
+    const result = await backend.editWhatsAppTemplate(
+      target.data.tenantId,
+      target.data.name,
+      target.data.language,
+      {
+        ...content.data,
+        header_text: content.data.header_text || undefined,
+        footer_text: content.data.footer_text || undefined,
+      },
+      operator.id,
+    );
     if (!result) {
-      return { ok: false, error: "El backend no confirmó el borrado." };
+      return { ok: false, error: "El backend no devolvió la plantilla editada.", code: null, info: {} };
     }
     return { ok: true, data: result };
   } catch (err) {
-    return { ok: false, error: toError(err) };
+    return toEditFailure(err);
   }
 }

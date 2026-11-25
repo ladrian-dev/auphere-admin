@@ -13,6 +13,12 @@ import { expectLongGermanFits, expectNoOverflow, expectNoSeriousAxe, expectReach
  * alemán. Los avisos que llevan a `?tab=performance` y `?tab=improvements` caen
  * en su sección.
  *
+ * Spec 074 (4.1), al día con la pantalla de hoy: el agente es el h1 y sus partes
+ * son pestañas (Rendimiento · Configuración · Canales · Conectores, prototipo
+ * aprobado y spec 070); Recepción va en Configuración › «Más ajustes»; las
+ * mejoras son la tarjeta «Correcciones del negocio» de Rendimiento, con «Ver»
+ * en cada fila (H9); la gráfica pinta una barra por día con hoy marcado (072).
+ *
  *   pnpm exec playwright test -c e2e/fabrica.config.ts --project=partner
  *
  * Contra `fabrica-mock.mjs`.
@@ -36,14 +42,22 @@ async function state(page: Page) {
   };
 }
 
+// El agente es el título de la página (h1) y debajo van sus pestañas en vidrio
+// (prototipo aprobado, spec 070): Rendimiento · Configuración · Canales · Conectores.
 async function open(page: Page, path: string) {
   const res = await page.goto(path);
   expect(res?.status(), `${path} respondió ${res?.status()}`).toBeLessThan(400);
   await page.waitForLoadState("networkidle").catch(() => undefined);
-  await expect(page.getByRole("heading", { level: 2, name: "Recepción" }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Recepción" })).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Secciones del agente" })).toBeVisible();
 }
 
 const section = (page: Page, name: string) => page.getByRole("region", { name, exact: true });
+const tabs = (page: Page) => page.getByRole("tablist", { name: "Secciones del agente" });
+// Rendimiento es una pestaña: los 30 días, las correcciones, la gráfica y las conversaciones.
+const performanceTab = (page: Page) => page.getByRole("tabpanel", { name: "Rendimiento" });
+// Las mejoras por decidir viven en la tarjeta «Correcciones del negocio», dentro de Rendimiento.
+const improvementsCard = (page: Page) => section(page, "Correcciones del negocio");
 
 test.describe("Spec 047 — el agente del partner: Recepción, Rendimiento y Mejoras, y Equipo", () => {
   test.beforeEach(async ({ page }) => {
@@ -53,9 +67,14 @@ test.describe("Spec 047 — el agente del partner: Recepción, Rendimiento y Mej
 
   test("Recepción: marcarla, elegir a quién deriva y cuándo, y guardarlo en el borrador", async ({ page }) => {
     await open(page, agentPage);
-    const nav = page.getByRole("navigation", { name: "Partes del agente" });
-    await expect(nav.getByRole("link", { name: "Recepción" })).toHaveAttribute("href", "#agente-recepcion");
+    // Recepción vive en Configuración › «Más ajustes», plegada en su propia sección.
+    await tabs(page).getByRole("tab", { name: "Configuración" }).click();
+    await expect(tabs(page).getByRole("tab", { name: "Configuración" })).toHaveAttribute("aria-selected", "true");
+    const more = page.getByRole("button", { name: /^Más ajustes/ });
+    await more.click();
+    await expect(more).toHaveAttribute("aria-expanded", "true");
     const reception = section(page, "Recepción");
+    await reception.getByRole("heading", { level: 2, name: "Recepción" }).click();
     await expect(reception.getByText("No deriva")).toBeVisible();
     await reception.getByRole("button", { name: "Editar Recepción" }).click();
     await reception.getByRole("checkbox", { name: /Este agente es Recepción/ }).check();
@@ -74,12 +93,19 @@ test.describe("Spec 047 — el agente del partner: Recepción, Rendimiento y Mej
 
   test("Rendimiento: 30 días en bloques, la píldora con el teclado y las conversaciones con solo metadatos", async ({ page }) => {
     await open(page, `${agentPage}?tab=performance`);
-    const perf = section(page, "Rendimiento");
-    await expect(perf).toBeInViewport();
-    await expect(perf.getByText("Últimos 30 días")).toBeVisible();
+    await expect(tabs(page).getByRole("tab", { name: "Rendimiento" })).toHaveAttribute("aria-selected", "true");
+    const perf = performanceTab(page);
+    // La tarjeta de los 30 días, a la vista; la gráfica dice su periodo.
+    await expect(section(page, "Últimos 30 días")).toBeInViewport();
+    const chart = perf.locator("[data-slot=performance-chart]");
+    await expect(chart.getByText("Últimos 30 días")).toBeVisible();
     await expect(perf.getByRole("tab", { name: "30 días" })).toHaveAttribute("aria-selected", "true");
     await expect(perf.locator("[data-slot=performance-figures]").getByText("Conversaciones")).toBeVisible();
-    await expect(perf.getByRole("listbox", { name: "Conversaciones por día" })).toBeVisible();
+    // Spec 072: una barra por día, los 30, con hoy marcado.
+    const days = perf.getByRole("listbox", { name: "Conversaciones por día" });
+    await expect(days).toBeVisible();
+    await expect(days.getByRole("option")).toHaveCount(30);
+    await expect(days.getByRole("option").last()).toHaveAccessibleName(/\(hoy\)/);
     const table = perf.getByRole("table", { name: "Conversaciones", exact: true });
     await expect(table.getByRole("columnheader")).toHaveText(["Fecha", "Canal", "Duración", "Mensajes", "Resultado", "Motivo del traspaso", "Gasto"]);
     await expect(table.getByText("Derivaciones en bucle")).toBeVisible();
@@ -91,7 +117,8 @@ test.describe("Spec 047 — el agente del partner: Recepción, Rendimiento y Mej
     await expectReachableByTab(page, tab30, 120);
     await page.keyboard.press("ArrowRight");
     await expect(perf.getByRole("tab", { name: "90 días" })).toBeFocused();
-    await expect(perf.getByText("Últimos 90 días")).toBeVisible();
+    await expect(chart.getByText("Últimos 90 días")).toBeVisible();
+    await expect(days.getByRole("option")).toHaveCount(90);
     await expect(perf.getByRole("tab", { name: "90 días" })).toHaveAttribute("aria-selected", "true");
 
     const rows = table.getByRole("row");
@@ -103,22 +130,28 @@ test.describe("Spec 047 — el agente del partner: Recepción, Rendimiento y Mej
 
   test("Mejoras: el aviso cae aquí; aceptar dice en qué queda el borrador y descartar pide el motivo", async ({ page }) => {
     await open(page, `${agentPage}?tab=improvements`);
-    const improvements = section(page, "Mejoras");
+    // Las mejoras están en Rendimiento, en la tarjeta «Correcciones del negocio».
+    await expect(tabs(page).getByRole("tab", { name: "Rendimiento" })).toHaveAttribute("aria-selected", "true");
+    const improvements = improvementsCard(page);
     await expect(improvements).toBeInViewport();
     const list = improvements.getByRole("list", { name: "Mejoras por decidir" });
     await expect(list.getByText("12 conversaciones de 9 clientes")).toBeVisible();
-    await expect(list.getByText("Corrección del negocio")).toBeVisible();
-    await expect(list.getByText("Desde la app")).toBeVisible();
+    await expect(list.getByText("Corrección del negocio · Desde la app")).toBeVisible();
     await expectNoSeriousAxe(page, "Mejoras");
 
-    // Dos mejoras con dos botones: cada fila los pliega en «⋯» (la regla de los tres puntos).
-    await list.getByText("Ver propuesta").first().click();
-    await expect(list.getByText("Prueba nueva: Pregunta por el aparcamiento")).toBeVisible();
-    await list.getByRole("button", { name: /^Acciones de «12 clientes/ }).click();
-    await page.getByRole("menuitem", { name: "Aceptar" }).click();
+    // Cada fila lleva «Ver» (H9, 63.2): la mejora entera, con su propuesta y su prueba, y «Aceptar» o «Descartar».
+    await list.getByRole("button", { name: /^Ver «12 clientes/ }).click();
+    let view = page.getByRole("dialog", { name: /^12 clientes/ });
+    await expect(view.getByText("Ver propuesta")).toBeVisible();
+    await expect(view.getByText("Prueba nueva: Pregunta por el aparcamiento")).toBeVisible();
+    await expectNoSeriousAxe(page, "Mejoras · ver");
+    await view.getByRole("button", { name: "Aceptar" }).click();
+    await expect(view).toBeHidden();
     await expect(improvements.getByText(/El cambio y su prueba están en el borrador \(revisión 5\)/)).toBeVisible();
 
-    await improvements.getByRole("button", { name: "Descartar" }).click();
+    await list.getByRole("button", { name: "Ver «¿Dais citas el día de fiesta?»" }).click();
+    view = page.getByRole("dialog", { name: "¿Dais citas el día de fiesta?" });
+    await view.getByRole("button", { name: "Descartar" }).click();
     const dialog = page.getByRole("dialog", { name: "¿Por qué la descartas?" });
     await expect(dialog.getByText("El negocio no recibe tu motivo. Queda en la auditoría.")).toBeVisible();
     await expectNoSeriousAxe(page, "Mejoras · descartar");
@@ -135,28 +168,41 @@ test.describe("Spec 047 — el agente del partner: Recepción, Rendimiento y Mej
   test("los estados: parcial (el rendimiento falla y lo demás sigue), vacío y error con reintento", async ({ page }) => {
     await mode(page, { performance: "fail", improvements: "empty", conversations: "empty" });
     await open(page, agentPage);
-    const perf = section(page, "Rendimiento");
-    await expect(perf.getByText("No pudimos leer el rendimiento")).toBeVisible();
+    const perf = performanceTab(page);
+    // Ni los 30 días ni la gráfica llegan: cada tarjeta lo dice y deja reintentar.
+    await expect(perf.getByText("No pudimos leer el rendimiento")).toHaveCount(2);
     await expect(perf.getByText("Aún no hay conversaciones de este agente.")).toBeVisible();
-    await expect(section(page, "Mejoras").getByText("Nada que mejorar por ahora")).toBeVisible();
-    await expect(section(page, "Pruebas")).toBeVisible();
+    await expect(improvementsCard(page).getByText("Nada que mejorar por ahora")).toBeVisible();
     await expectNoSeriousAxe(page, "agente parcial");
+    // Lo demás del agente sigue: Configuración con sus pruebas.
+    await tabs(page).getByRole("tab", { name: "Configuración" }).click();
+    await page.getByRole("button", { name: /^Más ajustes/ }).click();
+    await expect(section(page, "Pruebas")).toBeVisible();
+    await tabs(page).getByRole("tab", { name: "Rendimiento" }).click();
     await mode(page, { performance: "ok" });
-    await perf.getByRole("button", { name: "Reintentar" }).click();
-    await expect(perf.getByText("Últimos 30 días")).toBeVisible();
+    await perf.locator("[data-slot=performance-chart]").getByRole("button", { name: "Reintentar" }).click();
+    await expect(perf.locator("[data-slot=performance-chart]").getByText("Últimos 30 días")).toBeVisible();
+    await expect(perf.getByRole("listbox", { name: "Conversaciones por día" })).toBeVisible();
 
     await mode(page, { performance: "empty", improvements: "fail" });
     await open(page, agentPage);
-    await expect(section(page, "Rendimiento").getByText("Sin conversaciones en estos 30 días.")).toBeVisible();
-    await expect(section(page, "Mejoras").getByText("No pudimos leer las mejoras")).toBeVisible();
+    await expect(performanceTab(page).getByText("Sin conversaciones en estos 30 días.")).toBeVisible();
+    await expect(improvementsCard(page).getByText("No pudimos leer las mejoras")).toBeVisible();
   });
 
   test("la pantalla del agente a 390 px, al 200 %, con textos largos en alemán y sin vidrio ni movimiento", async ({ page }) => {
     await preferLessGlassAndMotion(page);
     await open(page, agentPage);
     await expectSolidFloatingLayer(page, () => page.locator("[data-slot=shell-sidebar] [data-slot=dropdown-menu-trigger]").click());
-    await expectNoOverflow(page, "agente");
-    await expectLongGermanFits(page, "agente");
+    // Cada pestaña a su vez: las ocultas no se miden.
+    for (const name of ["Rendimiento", "Configuración", "Canales", "Conectores"]) {
+      await tabs(page).getByRole("tab", { name }).click();
+      await expect(tabs(page).getByRole("tab", { name })).toHaveAttribute("aria-selected", "true");
+      if (name === "Configuración") await page.getByRole("button", { name: /^Más ajustes/, expanded: false }).click();
+      await expectNoOverflow(page, `agente · ${name}`);
+    }
+    await tabs(page).getByRole("tab", { name: "Configuración" }).click();
+    await expectLongGermanFits(page, "agente · Configuración");
   });
 
   test("Equipo: «Qué puede hacer cada rol» a la vista, accesible y sin desbordar", async ({ page }) => {

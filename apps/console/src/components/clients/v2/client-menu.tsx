@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@nexus/ui";
+import { ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, cn } from "@nexus/ui";
 
 import {
   archiveClientAction,
@@ -80,23 +80,30 @@ export function ClientMenu({
   refId,
   name,
   allowed,
+  deleteBlocked = null,
   detail,
   actions,
   afterDelete = "/clients",
+  triggerClassName,
 }: {
   refId: string;
   name: string;
   allowed: readonly ClientAction[];
+  /** Spec 073 (2.2): lo dice la API; con un motivo, «Eliminar…» lo explica en lugar de pedir el nombre. */
+  deleteBlocked?: "archive_first" | null;
   /** Si la página ya lo leyó (la cabecera); si no, se pide al editar. */
   detail?: ClientDetailV2 | null;
   actions?: Partial<ClientMenuActions>;
   afterDelete?: string | null;
+  /** Spec 074 (M01): en el móvil el ⋯ mide 44 × 44; el resto, igual. */
+  triggerClassName?: string;
 }) {
   const t = useT();
   const router = useRouter();
   const act = React.useMemo(() => ({ ...DEFAULT_ACTIONS, ...actions }), [actions]);
   const [editing, setEditing] = React.useState<ClientDetailV2 | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [archiveFirst, setArchiveFirst] = React.useState(false);
   const [deleteError, setDeleteError] = React.useState<string | null>(null);
   const [balance, setBalance] = React.useState<BalanceMode | null>(null);
   const [leftover, setLeftover] = React.useState<Money | null>(null);
@@ -154,7 +161,10 @@ export function ClientMenu({
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={t("clients.v2.menu", { name })}
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          className={cn(
+            "inline-flex size-8 shrink-0 items-center justify-center rounded-sm outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring",
+            triggerClassName,
+          )}
           data-slot="client-menu"
         >
           <MoreHorizontal aria-hidden="true" className="size-4" />
@@ -173,7 +183,15 @@ export function ClientMenu({
             const separator = i > 0 && MENU_LIFECYCLE.has(a) && !MENU_LIFECYCLE.has(items[i - 1]!) ? <DropdownMenuSeparator /> : null;
             let item: React.ReactNode;
             if (a === "delete") {
-              item = (
+              item = deleteBlocked ? (
+                <DropdownMenuItem variant="destructive" onClick={() => setArchiveFirst(true)}>
+                  {Icon ? <Icon aria-hidden="true" /> : null}
+                  <span className="grid min-w-0">
+                    <span>{label(a)}</span>
+                    <span className="text-xs text-muted-foreground">{t(`clients.v2.delete.blocked.${deleteBlocked}` as MessageKey)}</span>
+                  </span>
+                </DropdownMenuItem>
+              ) : (
                 <DropdownMenuItem variant="destructive" onClick={() => setDeleting(true)}>
                   {content}
                 </DropdownMenuItem>
@@ -228,6 +246,21 @@ export function ClientMenu({
 
       <BalanceDialogs refId={refId} name={name} open={balance} onClose={() => setBalance(null)} />
       {leftover ? <ReturnBagDialog refId={refId} name={name} amount={leftover} onOpenChange={(o) => !o && setLeftover(null)} /> : null}
+
+      {/* Spec 073 (2.3): en un cliente activo, eliminar empieza por archivar. Sin
+          campo de nombre: no hay nada que confirmar todavía. */}
+      <ConfirmDialog
+        open={archiveFirst}
+        onOpenChange={setArchiveFirst}
+        title={t("clients.v2.delete.title", { name })}
+        description={t("clients.v2.delete.archiveFirst.body")}
+        confirmLabel={items.includes("archive") ? t("clients.v2.delete.archiveFirst.confirm") : t("clients.v2.delete.archiveFirst.ok")}
+        cancelLabel={t("business.submit.cancel")}
+        onConfirm={async () => {
+          if (items.includes("archive")) await archive();
+          setArchiveFirst(false);
+        }}
+      />
 
       <ConfirmDialog
         open={deleting}

@@ -27,17 +27,18 @@ describe("amount (spec 056)", () => {
 
   describe("formatAmount: Intl con el idioma de la persona (13.1)", () => {
     it("en español", () => {
-      expect(formatAmount({ amount_minor: 1000, currency: "USD" }, "es")).toBe("10,00 US$");
+      // Spec 072 (D1): el dólar con su código, como `formatMoney` de @nexus/ui.
+      expect(formatAmount({ amount_minor: 1000, currency: "USD" }, "es")).toBe("10,00 USD");
       expect(formatAmount({ amount_minor: 1550, currency: "EUR" }, "es")).toBe("15,50 €");
-      // Intl en español no agrupa cuatro cifras: es el formato del idioma.
-      expect(formatAmount({ amount_minor: 150_000, currency: "EUR" }, "es")).toBe("1500,00 €");
+      // Spec 072 (1.1): el mismo texto que `formatMoney`, con los miles siempre agrupados.
+      expect(formatAmount({ amount_minor: 150_000, currency: "EUR" }, "es")).toBe("1.500,00 €");
       expect(formatAmount({ amount_minor: 123_456_750, currency: "EUR" }, "es")).toBe("1.234.567,50 €");
       expect(formatAmount({ amount_minor: 1_000_000, currency: "COP" }, "es")).toBe("10.000,00 COP");
       expect(formatAmount({ amount_minor: 15_000, currency: "CLP" }, "es")).toBe("15.000 CLP");
     });
 
     it("en inglés", () => {
-      expect(formatAmount({ amount_minor: 1000, currency: "USD" }, "en")).toBe("$10.00");
+      expect(formatAmount({ amount_minor: 1000, currency: "USD" }, "en")).toBe("USD 10.00");
       expect(formatAmount({ amount_minor: 150_000, currency: "EUR" }, "en")).toBe("€1,500.00");
       expect(formatAmount({ amount_minor: 1_000_000, currency: "COP" }, "en")).toBe("COP 10,000.00");
       expect(formatAmount({ amount_minor: 15_000, currency: "CLP" }, "en")).toBe("CLP 15,000");

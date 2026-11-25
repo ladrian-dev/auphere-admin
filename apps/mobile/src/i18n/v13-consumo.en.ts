@@ -1,0 +1,40 @@
+import type { v13ConsumoEs } from "./v13-consumo.es";
+
+/** Spec 069 — Consumo y Ajustes, English. Every Spanish key must exist here (`tsc` checks it). */
+export const v13ConsumoEn: Record<keyof typeof v13ConsumoEs, string> = {
+  "v13.usage.lasts.months": "About {n} months, at the pace of the last 7 days.",
+  "v13.usage.lasts.days": "About {n} days, at the pace of the last 7 days.",
+  "v13.usage.lasts.day": "1 day, at the pace of the last 7 days.",
+  "v13.usage.lasts.lessThanDay": "Less than a day, at the pace of the last 7 days.",
+  // Worded so it never reads as a way to buy (the Consumo guard: no «top up», no «for more balance»).
+  "v13.usage.ask": "Need more balance? Ask {partner}.",
+  "v13.usage.chart.aria": "Spend per day",
+  "v13.usage.chart.aria.week": "Spend per week",
+  "v13.usage.chart.unit.day": "Per day",
+  "v13.usage.chart.unit.week": "Per week",
+  "v13.usage.chart.week": "{from} – {to}",
+
+  "v13.settings.channels": "Connected channels",
+  "v13.settings.channels.agent": "{agent} answers on all of them",
+  "v13.settings.channels.none": "No channels connected yet. They are connected from the web console.",
+  "v13.settings.channel.whatsapp": "WhatsApp",
+  "v13.settings.channel.instagram": "Instagram",
+  "v13.settings.channel.messenger": "Messenger",
+  "v13.settings.channel.on": "Connected",
+  "v13.settings.channel.off": "Not connected",
+  "v13.settings.channel.some": "{n} of {total} connected",
+  "v13.settings.urgent.title": "Turn off the urgent notice?",
+  "v13.settings.urgent.body": "You won't know on this phone when someone waits for a person.",
+  "v13.settings.urgent.off": "Turn off",
+  "v13.settings.urgent.keep": "Keep it on",
+  "v13.settings.help": "Privacy and help",
+  "v13.settings.privacy": "Privacy policy",
+  "v13.settings.support": "Support",
+  "v13.settings.support.hint": "Opens your email to write to Auphere",
+  "v13.settings.session": "Session",
+  "v13.settings.signOut.title": "Sign out?",
+  "v13.settings.signOut.body.agent": "{agent} keeps answering. You stop getting notifications on this phone. Your other phones stay as they are.",
+  "v13.settings.signOut.body.agents": "Your agents keep answering. You stop getting notifications on this phone. Your other phones stay as they are.",
+  "v13.settings.signOut.body": "You stop getting notifications on this phone. Your other phones stay as they are.",
+  "v13.settings.version": "Auphere Customers {version}",
+};

@@ -31,7 +31,19 @@ async function open(page: Page) {
   expect(res?.status(), `${PAGE} respondió ${res?.status()}`).toBeLessThan(400);
   // Typing before React hydrates lands in the server's HTML and nobody hears it.
   await page.waitForLoadState("networkidle").catch(() => undefined);
-  await expect(page.getByRole("textbox", { name: "Instrucciones" })).toBeVisible();
+  await hydrated(page);
+}
+
+/**
+ * `networkidle` can come before hydration in `next dev`. If `fill` selects the
+ * text and React hydrates the textarea right then (it sets its default value),
+ * the selection collapses to the start and the typed text lands in front of the
+ * old one. React marks every node it hydrates: wait for that mark.
+ */
+async function hydrated(page: Page) {
+  const box = page.getByRole("textbox", { name: "Instrucciones" });
+  await expect(box).toBeVisible();
+  await expect.poll(() => box.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps$"))), { message: "the textarea is not hydrated" }).toBe(true);
 }
 
 const bar = (page: Page) => page.getByRole("region", { name: "Cambios sin guardar" });
@@ -72,6 +84,7 @@ test.describe("Spec 047 — el borrador del agente", () => {
   test("dos personas a la vez: la segunda ve los cambios de la primera y no se pierde nada", async ({ page, request }) => {
     await open(page);
     await instructions(page).fill("Mis instrucciones.");
+    await expect(instructions(page)).toHaveValue("Mis instrucciones.");
     // The other tab saves first.
     await request.post(`${API}/__test/other-writes`);
     await page.getByRole("button", { name: "Guardar", exact: true }).click();
@@ -106,7 +119,7 @@ test.describe("Spec 047 — el borrador del agente", () => {
 
   test("la pestaña con la barra abierta pasa axe, no desborda y aguanta el texto largo", async ({ page }) => {
     await auditView(page, PAGE, async () => {
-      await page.waitForLoadState("networkidle").catch(() => undefined);
+      await hydrated(page);
       await instructions(page).fill("Una instrucción nueva para que la barra esté a la vista.");
       await expect(bar(page)).toBeVisible();
     });

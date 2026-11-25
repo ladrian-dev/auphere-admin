@@ -77,7 +77,7 @@ test("a 390 px el líquido es una franja encima, y a 320 px nada se sale de lado
   expect(Math.round(hb.height)).toBe(200);
   expect(hb.y + hb.height).toBeLessThanOrEqual(fb.y);
   await expect(page.getByText("Tus clientes, siempre al alcance.")).toBeHidden();
-  for (const path of ["/login", "/forgot", "/reset/tok_abcdefghijklmnop"]) {
+  for (const path of ["/login", "/forgot", "/reset/tok_abcdefghijklmnop", "/signup", "/signup/tok_abcdefghijklmnop"]) {
     await page.setViewportSize({ width: 320, height: 700 });
     await ready(page, path);
     const over = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -99,6 +99,33 @@ test("Contraseña nueva: reglas en vivo, y un enlace muerto tiene su pantalla (R
   await expect(page.getByText("Este enlace ya no vale")).toBeVisible();
 });
 
+test("alta: Entrar → Crear cuenta cambia el panel sin volver a montar el líquido (spec 067, R1)", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await ready(page, "/login");
+  await expect(page.locator(".auth-liquid-gl")).toHaveAttribute("data-live", "");
+  await page.locator(".auth-liquid-gl").evaluate((el) => el.setAttribute("data-mark", "same"));
+  await page.getByRole("link", { name: "Regístrate" }).click();
+  await page.waitForURL("**/signup");
+  await expect(page.getByText("Empieza con Auphere.")).toBeVisible();
+  await expect(page.locator('li[aria-current="step"]')).toContainText("Crea tu cuenta");
+  await expect(page.locator('.auth-liquid-gl[data-mark="same"]')).toHaveCount(1);
+});
+
+test("alta: Google primero, «enviado» con el correo y el segundo paso legible (spec 067, R2–R4)", async ({ page }) => {
+  await ready(page, "/signup");
+  const google = page.getByRole("button", { name: "Registrarte con Google" });
+  const email = page.getByRole("textbox", { name: "Correo de trabajo" });
+  expect((await google.boundingBox())!.y).toBeLessThan((await email.boundingBox())!.y);
+  await email.fill("ana@agencia.com");
+  await page.getByRole("button", { name: "Continuar" }).click();
+  await expect(page.getByText("Si ana@agencia.com puede registrarse", { exact: false })).toBeVisible();
+  await expect(google).toBeHidden();
+  await ready(page, "/signup/tok_abcdefghijklmnop");
+  await expect(page.getByTestId("signup-email")).toHaveText("ana@agencia.com");
+  await ready(page, "/signup/dead_abcdefghijklmnop");
+  await expect(page.getByRole("link", { name: "Pedir otro enlace" })).toHaveAttribute("href", "/signup");
+});
+
 test.describe("con reducir movimiento", () => {
   test("pinta un cuadro quieto (R2.6)", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -116,10 +143,10 @@ test.describe("con reducir movimiento", () => {
   });
 });
 
-test("axe no encuentra nada grave en las tres páginas, en claro y en oscuro (R6.3)", async ({ page }) => {
+test("axe no encuentra nada grave en Entrar, Recuperar, Contraseña nueva y el alta, en claro y en oscuro (R6.3)", async ({ page }) => {
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme });
-    for (const path of ["/login", "/forgot", "/reset/tok_abcdefghijklmnop"]) {
+    for (const path of ["/login", "/forgot", "/reset/tok_abcdefghijklmnop", "/signup", "/signup/tok_abcdefghijklmnop"]) {
       await ready(page, path);
       expect(await axe(page), `${path} (${scheme})`).toEqual([]);
     }

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button, Callout, StatusBadge, Tabs, TabsContent, TabsList, TabsTrigger } from "@nexus/ui";
 
+import { SlidingLens } from "@/components/shell/sliding-lens";
 import { agentAgendaAction } from "@/app/(console)/clients/[ref]/agents/agenda-actions";
 import { builderDraftAction, decideProposalAction, saveAgentSpecAction } from "@/app/(console)/clients/[ref]/agents/builder-actions";
 import { agentHeaderAction } from "@/app/(console)/clients/[ref]/agents/life-actions";
@@ -737,7 +738,8 @@ export function AgentBuilder({
             </>
           )}
           {!draft.exists && draft.active_number ? <span className="text-muted-foreground">{t("builder.agent.noDraft")}</span> : null}
-          <TestsLine tests={draft.tests} />
+          {/* Spec 073 (3b.3): con la tarjeta de pruebas a la vista, «sin ejecutar» se dice allí, una vez. */}
+          <TestsLine tests={draft.tests} stale={!quality} />
         </div>
         {header?.visible_state.code === "paused" ? <Callout tone="warning">{t("builder.life.paused")}</Callout> : null}
         {/* Spec 057 (4.4): lleva o va a llevar la agenda y a Reservas le falta algo. */}
@@ -770,6 +772,8 @@ export function AgentBuilder({
 
       <Tabs value={shown} onValueChange={(value) => setTab(value as AgentTab)} className="min-w-0 flex-col gap-6">
         <TabsList floating aria-label={t("builder.screen.sections")}>
+          {/* Spec 070: la lente viaja a la pestaña activa. */}
+          <SlidingLens selector="[data-active]" variant="tabs" />
           {tabs.map((x) => (
             <TabsTrigger key={x.id} value={x.id}>
               {x.label}
@@ -953,12 +957,11 @@ export function AgentBuilder({
             {quality ? (
               // Como el prototipo (§5), con el orden que pidió el owner (2026-10-28): el
               // chat de prueba arriba y, justo debajo, las pruebas con «Ejecutar todas».
-              // Pegada al bajar, nunca más alta que lo que deja la barra flotante
-              // (arriba 120 px, abajo la barra con su margen): la barra no tapa el
-              // chat; si no cabe todo, lo de abajo se desplaza dentro de la columna.
+              // Spec 073 (3b.2): se mueve con la página. Antes iba pegada con su propio
+              // scroll, y la rueda movía una columna u otra según dónde estuviera el puntero.
               <aside
                 aria-label={t("agentProto.aside")}
-                className="grid min-w-0 content-start gap-3 min-[1060px]:sticky min-[1060px]:top-30 min-[1060px]:max-h-[calc(100dvh-13rem)] min-[1060px]:overflow-y-auto min-[1060px]:overscroll-contain"
+                className="grid min-w-0 content-start gap-3"
               >
                 <AgentPlayground
                   refId={refId}
@@ -1047,6 +1050,7 @@ export function AgentBuilder({
                   }}
                   onChanged={setChannelUpdate}
                   actions={qualityActions.channelPage}
+                  meta={channels?.meta ?? null}
                 />
               ) : null}
               <div hidden={Boolean(showingChannel)} className="min-w-0">
@@ -1172,13 +1176,13 @@ function MoreSettings({ open, onToggle, proposals, children }: { open: boolean; 
 }
 
 /** «8 pruebas · 3 sin ejecutar»: editar un bloque deja las pruebas sin ejecutar (17.7). */
-function TestsLine({ tests }: { tests: BuilderDraft["tests"] }) {
+function TestsLine({ tests, stale = true }: { tests: BuilderDraft["tests"]; stale?: boolean }) {
   const t = useT();
   if (!tests || tests.total === 0) return <span className="text-muted-foreground">{t("builder.tests.none")}</span>;
   return (
     <span className="inline-flex min-w-0 flex-wrap items-center gap-2" data-slot="builder-tests">
       <span>{t("builder.tests.total", { n: tests.total })}</span>
-      {tests.stale > 0 ? <StatusBadge tone="warn">{t("builder.tests.stale", { n: tests.stale })}</StatusBadge> : null}
+      {stale && tests.stale > 0 ? <StatusBadge tone="warn">{t("builder.tests.stale", { n: tests.stale })}</StatusBadge> : null}
     </span>
   );
 }

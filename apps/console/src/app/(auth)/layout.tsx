@@ -22,14 +22,27 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
   return (
     <main className="auth-shell">
       <AuthHero
-        eyebrow={t("login.eyebrow")}
-        title={t("auth.hero.title")}
         beta={t("shell.beta")}
+        base={{ eyebrow: t("login.eyebrow"), title: t("auth.hero.title") }}
+        signup={{
+          eyebrow: t("login.eyebrow"),
+          title: t("signup.hero.title"),
+          body: t("signup.hero.body"),
+          stepsLabel: t("signup.hero.steps"),
+          currentLabel: t("signup.step.current"),
+          nextLabel: t("signup.step.next"),
+          steps: [
+            { title: t("signup.step1.title"), body: t("signup.step1.body") },
+            { title: t("signup.step2.title"), body: t("signup.step2.body") },
+            { title: t("signup.step3.title"), body: t("signup.step3.body") },
+          ],
+        }}
       />
       <div className="auth-side">
         <div className="auth-col">
+          {/* Sin pie «Auphere» (owner, 2026-11-20, spec 067): el logo ya está
+              en el panel. */}
           {children}
-          <p className="text-xs text-muted-foreground">{t("login.footer")}</p>
         </div>
       </div>
     </main>

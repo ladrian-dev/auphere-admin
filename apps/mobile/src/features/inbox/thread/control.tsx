@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 
-import type { T } from "@/i18n/t";
+import { useLocale, type T } from "@/i18n/t";
 import { useNowMs } from "@/lib/use-now";
 import { Button } from "@/ui/button";
 import { Icon, icons } from "@/ui/icon";
@@ -30,6 +30,7 @@ export function ControlCard({
   onGiveBack,
   onReopen,
   onReadMore,
+  contactName,
 }: {
   mode: Exclude<ComposerMode, { kind: "mine" }>;
   busy: boolean;
@@ -39,9 +40,12 @@ export function ControlCard({
   onGiveBack: () => void;
   onReopen: () => void;
   onReadMore?: () => void;
+  /** Spec 069 (R11.2): who waits, so the action says «Atender a {nombre}» (their first name). */
+  contactName?: string | null;
 }) {
   const [overflows, setOverflows] = useState(false);
   const now = useNowMs();
+  const locale = useLocale();
   const off = busy || !online;
 
   if (mode.kind === "resolved") {
@@ -109,27 +113,59 @@ export function ControlCard({
             </Text>
           </Pressable>
         ) : null}
-        <Button label={t("inbox.composer.takeover")} full busy={busy} disabled={!online} onPress={onTakeOver} testID="take-over" />
+        <Button
+          label={firstName(contactName) ? t("v13.conv.attend", { name: firstName(contactName) as string }) : t("inbox.composer.takeover")}
+          icon={icons.hand}
+          full
+          busy={busy}
+          disabled={!online}
+          onPress={onTakeOver}
+          testID="take-over"
+        />
         <Button label={t("inbox.composer.giveBack")} variant="ghost" full disabled={off} onPress={onGiveBack} />
       </View>
     );
   }
 
+  // Spec 069 (R11.5): once the agent can no longer answer, the strip says until when a person can — never «Responde …».
+  const expired = mode.kind === "agent" && (mode.windowClosed || mode.personUntil);
+  const line =
+    mode.kind === "agent"
+      ? mode.personUntil
+        ? mode.agent
+          ? t("v13.conv.window.personOnly", { agent: mode.agent, until: untilLabel(mode.personUntil, locale) })
+          : t("inbox.composer.agent_person_only", { until: untilLabel(mode.personUntil, locale) })
+        : mode.windowClosed
+          ? // Named as the header names it (review H23); the console's words without a name.
+            mode.agent
+            ? t("v13.conv.window.closed", { agent: mode.agent })
+            : t("inbox.composer.agent_window_closed")
+          : mode.agent
+            ? t("app.inbox.agentAnswers", { agent: mode.agent })
+            : t("app.inbox.agentAnswers.noAgent")
+      : t("inbox.composer.other", { name: mode.name ?? t("inbox.who.someone") });
   return (
     <View style={styles.stack}>
       <View style={styles.head}>
-        <Icon name={icons.bot} size={18} tone="primaryText" />
-        <Text variant="callout" tone="mutedForeground" style={styles.flex}>
-          {mode.kind === "agent"
-            ? mode.agent
-              ? t("app.inbox.agentAnswers", { agent: mode.agent })
-              : t("app.inbox.agentAnswers.noAgent")
-            : t("inbox.composer.other", { name: mode.name ?? t("inbox.who.someone") })}
+        <Icon name={expired ? icons.clock : icons.bot} size={20} tone={expired ? "warningText" : "highlightInk"} />
+        <Text variant="callout" tone={expired ? "foreground" : "mutedForeground"} style={styles.flex} testID={expired ? "agent-window" : undefined}>
+          {line}
         </Text>
       </View>
-      <Button label={t("inbox.composer.takeover")} variant="secondary" full busy={busy} disabled={!online} onPress={onTakeOver} testID="take-over" />
+      <Button label={t("inbox.composer.takeover")} icon={icons.hand} full busy={busy} disabled={!online} onPress={onTakeOver} testID="take-over" />
     </View>
   );
+}
+
+/** The first word of a contact's name that is a word (not a number): «Atender a Lucía». */
+export function firstName(name: string | null | undefined): string | null {
+  const word = (name ?? "").split(/\s+/).find((p) => /^\p{L}/u.test(p));
+  return word ?? null;
+}
+
+/** «el jueves 27 de noviembre, 10:00»: until when a person can still answer (the console's `untilLabel`). */
+export function untilLabel(at: string, locale: string): string {
+  return new Date(at).toLocaleString(locale, { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 }
 
 const styles = StyleSheet.create({

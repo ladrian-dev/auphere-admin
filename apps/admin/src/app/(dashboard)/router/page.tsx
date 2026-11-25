@@ -8,6 +8,7 @@ import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 import { ProfileEditor } from "./profile-editor";
 import { RoutePreview } from "./route-preview";
 import { RouterTabs } from "./router-tabs";
+import { requirePageOperator } from "@/lib/session";
 
 /**
  * Spec 059 (2.3): parked, the address is «no existe» from the metadata on — before
@@ -25,6 +26,7 @@ export const dynamic = "force-dynamic";
  * the next turn — and a preview of what it would choose for an agent.
  */
 export default async function RouterPage() {
+  await requirePageOperator("read");
   // Spec 059 (2.3): parked, the address is «no existe», before asking the API.
   if (!ROUTER_PANEL_VISIBLE) notFound();
   const [taxonomy, profiles, deployments] = await Promise.all([

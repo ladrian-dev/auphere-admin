@@ -10,9 +10,9 @@ const formatMoneyCompact = (...a: Parameters<typeof fmc>) => plain(fmc(...a));
 
 describe("money (spec 027)", () => {
   it("formats cents as dollars, two decimals, by locale", () => {
-    expect(formatMoney(1235, "es")).toBe("12,35 US$");
-    expect(formatMoney(1235, "en")).toBe("$12.35");
-    expect(formatMoney(0, "es")).toBe("0,00 US$");
+    expect(formatMoney(1235, "es")).toBe("12,35 USD");
+    expect(formatMoney(1235, "en")).toBe("USD 12.35");
+    expect(formatMoney(0, "es")).toBe("0,00 USD");
     expect(formatMoney(null)).toBe("—");
   });
 
@@ -22,13 +22,13 @@ describe("money (spec 027)", () => {
         expect(fm(cents, locale)).toBe(formatAmount({ amount_minor: cents, currency: "USD" }, locale));
       }
     }
-    expect(formatMoney(150_000, "es")).toBe("1500,00 US$");
-    expect(formatMoney(150_000, "en")).toBe("$1,500.00");
+    expect(formatMoney(150_000, "es")).toBe("1.500,00 USD");
+    expect(formatMoney(150_000, "en")).toBe("USD 1,500.00");
   });
 
   it("compacts only large amounts", () => {
-    expect(formatMoneyCompact(5_000, "es")).toBe("50,00 US$");
-    expect(formatMoneyCompact(20_000_000, "es")).toBe("200 mil US$");
+    expect(formatMoneyCompact(5_000, "es")).toBe("50,00 USD");
+    expect(formatMoneyCompact(20_000_000, "es")).toBe("200 mil USD");
   });
 
   it("reads what the partner types, with comma or point", () => {
@@ -49,7 +49,7 @@ describe("money (spec 027)", () => {
     for (const typed of ["0", "0,01", "25,50", "999,99", "123456,78"]) {
       const parsed = parseMoney(typed);
       expect(parsed.kind).toBe("money");
-      if (parsed.kind === "money") expect(formatMoney(parsed.cents, "es").replace(/\s?US\$/, "").replace(/\./g, "")).toBe(typed.includes(",") ? typed : `${typed},00`);
+      if (parsed.kind === "money") expect(formatMoney(parsed.cents, "es").replace(/\s?USD/, "").replace(/\./g, "")).toBe(typed.includes(",") ? typed : `${typed},00`);
     }
   });
 });

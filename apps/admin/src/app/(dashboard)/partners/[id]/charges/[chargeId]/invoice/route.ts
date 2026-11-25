@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { backend } from "@/lib/backend";
-import { requireOperator } from "@/lib/session";
+import { routeOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,12 @@ export async function GET(
   request: Request,
   ctx: { params: Promise<{ id: string; chargeId: string }> },
 ): Promise<Response> {
+  // Spec 079 (2.5): the guard goes first, before even reading the params.
+  const operator = await routeOperator("read");
+  if (operator instanceof Response) return operator;
   const { id, chargeId } = await ctx.params;
-  const operator = await requireOperator();
   const back = NextResponse.redirect(new URL(`/partners/${id}/money?invoice=missing`, request.url), 303);
-  if (operator.access !== "ok" || !UUID.test(id) || !UUID.test(chargeId)) return back;
+  if (!UUID.test(id) || !UUID.test(chargeId)) return back;
   try {
     const res = await backend.getPartnerChargeInvoice(id, chargeId);
     return res?.url ? NextResponse.redirect(res.url, 303) : back;

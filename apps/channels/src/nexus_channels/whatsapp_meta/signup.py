@@ -493,6 +493,19 @@ class EmbeddedSignupOrchestrator:
         # Embedded Signup path leaves it absent.
         if catalog_id:
             config["catalog_id"] = catalog_id
+        # Spec 077 (R2.1): a send-only client's number has no agent behind it
+        # and is the line its business-initiated sends leave from. Every path
+        # that connects a WhatsApp number comes through here, so this is the
+        # one place to say it (the inbound gate also treats it as send-only).
+        from nexus_api.db.models import Tenant
+
+        send_only = bool(
+            await self._session.scalar(select(Tenant.send_only).where(Tenant.id == tenant_id))
+        )
+        if send_only:
+            config["agent_enabled"] = False
+            if row is None or not (row.config or {}).get("role"):
+                config["role"] = "notifications"
         now = datetime.now(tz=UTC)
         if row is None:
             row = Channel(

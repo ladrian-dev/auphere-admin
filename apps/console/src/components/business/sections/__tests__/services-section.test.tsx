@@ -207,7 +207,8 @@ describe("ServicesSection", () => {
       .getAllByRole("row")
       .slice(1)
       .map((r) => (r.querySelector("th") ?? r.querySelector("td span"))?.textContent);
-    expect(rows).toEqual(["Color", "Tinte", "Corte", "Básico", "Heavy", "Sin categoría", "Consulta"]);
+    // Spec 073 (4.2): cada grupo dice cuántos tiene.
+    expect(rows).toEqual(["Color · 1", "Tinte", "Corte · 2", "Básico", "Heavy", "Sin categoría · 1", "Consulta"]);
   });
 
   it("spec 055: without any category the list looks as it always did", () => {
@@ -231,7 +232,7 @@ describe("ServicesSection", () => {
   it("spec 055: the client's console shows the groups but does not edit the category", async () => {
     const user = userEvent.setup();
     section({ categorizable: false, services: { ...SERVICES, items: [svc({ category: "Corte" })] } });
-    expect(screen.getByText("Corte")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Corte · 1" })).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Añadir servicio" }));
     const dialog = await screen.findByRole("dialog", { name: "Añadir servicio" });
     expect(within(dialog).queryByRole("combobox", { name: /Categoría/ })).toBeNull();
@@ -266,5 +267,44 @@ describe("ServicesSection", () => {
     expect(screen.queryByRole("button", { name: /^Duplicar/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Archivar/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Acciones de/ })).toBeNull();
+  });
+
+  // ── Spec 073 (§4): Negocio que se lee ────────────────────────────────────
+  const many = (n: number, category: string, over: Partial<Service> = {}) =>
+    Array.from({ length: n }, (_, i) => svc({ id: `${category}-${i}`, name: `${category} ${i + 1}`, category, ...over }));
+
+  it("spec 073 (4.2): con más de 12, los grupos empiezan plegados salvo el primero, y se abren", async () => {
+    const user = userEvent.setup();
+    section({ services: { ...SERVICES, items: [...many(8, "Barbería"), ...many(6, "Uñas")] } });
+    const first = screen.getByRole("button", { name: "Barbería · 8" });
+    const second = screen.getByRole("button", { name: "Uñas · 6" });
+    expect(first).toHaveAttribute("aria-expanded", "true");
+    expect(second).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("Barbería 1")).toBeVisible();
+    expect(screen.queryByText("Uñas 1")).toBeNull();
+    await user.click(second);
+    expect(second).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Uñas 1")).toBeVisible();
+  });
+
+  it("spec 073 (4.3): lo que es igual en todos sale una vez y su columna desaparece", () => {
+    section({ services: { ...SERVICES, items: many(3, "Corte", { price: { kind: "none" } }) } });
+    const headers = screen.getAllByRole("columnheader").filter((h) => !h.hasAttribute("scope")).map((h) => h.textContent);
+    expect(headers).not.toContain("Precio");
+    expect(headers).not.toContain("Reserva");
+    expect(headers).not.toContain("Lo usan");
+    const summary = screen.getByRole("list", { name: "Lo mismo en todos los servicios" });
+    expect(summary).toHaveTextContent("Ninguno de los 3 tiene precio, así que su agente dirá que lo confirma el equipo.");
+    expect(summary).toHaveTextContent("Ninguno se reserva.");
+    expect(summary).toHaveTextContent("Todos los ofrece Recepción.");
+    expect(within(summary).getByRole("button", { name: "Poner precios" })).toBeVisible();
+    expect(screen.queryByText("Sin precio")).toBeNull();
+  });
+
+  it("spec 073 (4.1): lo buscado filtra los servicios y abre los grupos con resultados", () => {
+    section({ services: { ...SERVICES, items: [...many(8, "Barbería"), ...many(6, "Uñas")] }, query: "uñas 2" });
+    expect(screen.getByRole("button", { name: "Uñas · 1" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Uñas 2")).toBeVisible();
+    expect(screen.queryByText("Barbería 1")).toBeNull();
   });
 });

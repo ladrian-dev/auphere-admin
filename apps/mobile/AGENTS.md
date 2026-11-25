@@ -67,3 +67,26 @@ la sustituye.
   (`specs/042-liquid-glass-en-la-app/`, regla nº1). Los cambios de UI citan
   la spec 042 (su requisito o su tarea) y actualizan `docs/app-movil.md` en
   el mismo commit; lo que la spec no cubre abre una spec nueva, no un parche.
+
+## Spec 069: el diseño nuevo (2026-11-21)
+
+El aspecto lo manda el diseño aprobado por el owner. La spec está en `specs/069-la-app-con-el-diseno-nuevo/` y el inventario del diseño en la KB, en `research/2026-11-21-app-movil-a-tiendas/`. Lo que cambia para quien trabaje aquí:
+
+- **Iconos:**
+  - `<Icon name={icons.x} />` dibuja **Lucide** (trazo 1,75). Cada entrada de `icons` lleva también su símbolo del sistema (`.ios` y `.android`), que es lo único que aceptan el cromo nativo, `Stack.Toolbar`, los menús nativos y `NativeTabs`.
+  - Un icono nuevo se importa por su ruta, `lucide-react-native/icons/<nombre>`, nunca desde el barril: Metro no lo poda.
+  - Los logos de canal y la «G» de Google están en `ui/brand-icons.tsx`.
+- **Letra:**
+  - Los títulos y las cifras del diseño son los estilos `screenTitle`, `sheetTitle`, `dialogTitle`, `name` y `figureLarge` de `theme/type.ts`. El resto, fuente del sistema con Dynamic Type.
+  - Ningún peso por encima de 600.
+  - Helvena va en todos los builds (licencia confirmada el 2026-11-21): sus tres TTF están en `assets/fonts/helvena/`. Si falta uno, `app.config.ts` para el build. `APP_HELVENA=0` deja la fuente del sistema en un build local, para medir.
+- **Color:**
+  - Los roles nuevos de la app (`selection`, `highlight*`, `bubbleAgent`, `toast*`) salen del generador (`scripts/gen-tokens.mts`, `APP_ROLES`), sin tocar `tokens.css`.
+  - Los colores de marca de los canales están en `useTheme().brand`.
+- **Radios:** `RADII` de `theme/theme.ts`; las tarjetas usan 16.
+- **Movimiento:**
+  - Las microinteracciones del diseño están en `motion/micro.tsx`.
+  - Nada pasa de 300 ms ni rebota.
+  - Con «Reducir movimiento», fundido o estado final, sin acortar esperas que no son animación.
+- **Datos de ejemplo:** `EXPO_PUBLIC_DEMO=1` en un build de desarrollo sirve toda la app con un negocio ficticio (`src/api/demo/`). Fuera de `__DEV__` no existe, y ningún perfil de `eas.json` lo activa (hay un test que lo comprueba).
+- **Android:** sigue en Material 3, sin vidrio imitado y con las mismas funciones que iOS.
