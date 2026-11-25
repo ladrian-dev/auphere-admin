@@ -269,9 +269,9 @@ async def test_no_response_ever_carries_a_secret(client, admin_headers, db_sessi
 async def test_the_role_travels_and_defaults_to_qa_operator(
     client, admin_headers, db_session
 ) -> None:
-    """El rol NO es una rejilla nueva: es la que ``auth.user.role`` ya tenía
-    y que ``qa-access.ts`` usa para dejar entrar al Playground. Si dejara de
-    viajar, el panel abriría el Playground a todo el mundo."""
+    """El rol viaja en la sesión: es el que ``auth.user.role`` ya tenía, y con
+    él el panel aplica la matriz de ``core/operator_permissions.py`` (spec
+    079). Si dejara de viajar, el panel no sabría qué puede hacer nadie."""
     await _make_operator(db_session)
     assert (await _login(client, admin_headers)).json()["operator"]["role"] == "qa_operator"
 
@@ -282,8 +282,8 @@ async def test_the_role_travels_and_defaults_to_qa_operator(
 
 async def test_an_invented_role_never_reaches_the_table(client, admin_headers, db_session) -> None:
     """La CHECK es la red: sin ella, un typo en un script de alta crea una
-    cuenta con un rol que ``qa-access.ts`` no reconoce y que se comporta
-    como ``viewer`` sin que nadie lo haya decidido."""
+    cuenta con un rol que la matriz no conoce y que se queda sin ningún
+    permiso sin que nadie lo haya decidido (spec 079, 1.4)."""
     with pytest.raises(Exception) as exc:
         await _make_operator(db_session, email="raro@auphere.test", role="superadmin")
     assert "ck_operator_principals_role" in str(exc.value)

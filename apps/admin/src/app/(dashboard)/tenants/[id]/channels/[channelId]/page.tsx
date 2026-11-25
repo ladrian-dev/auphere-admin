@@ -25,7 +25,7 @@ import { WhatsAppPinDialog } from "../../_integrations/whatsapp-pin-dialog";
 import { WhatsAppTemplatesDialog } from "../../_integrations/whatsapp-templates-dialog";
 import { ChannelAgentForm } from "./channel-agent-form";
 import { ChannelSettings } from "./channel-settings";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -54,7 +54,7 @@ export default async function ChannelDetailPage({
   params: Promise<{ id: string; channelId: string }>;
   searchParams: Promise<{ tab?: string }>;
 }) {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id, channelId } = await params;
   const requested = (await searchParams).tab;
   const [channels, agents, connectors] = await Promise.all([

@@ -14,7 +14,7 @@ export async function launchCertificationAction(body: {
   tasks?: string[];
   agent_ids?: string[];
 }): Promise<Result<{ jobs: { job_id: string }[] }>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("qa");
   try {
     const data = await modelsBackend.launchCertification(body, operator.id);
     revalidatePath("/certifications");

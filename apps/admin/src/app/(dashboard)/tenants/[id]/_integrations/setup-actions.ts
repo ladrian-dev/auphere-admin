@@ -59,7 +59,7 @@ export async function connectMetaWhatsAppSetupAction(
   tenantId: string,
   body: MetaSignupInput,
 ): Promise<ActionResult<MetaSignupResult>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.metaSignup(tenantId, body);
     if (!result) {
@@ -91,7 +91,7 @@ export async function connectMetaOwnedNumberAction(
   tenantId: string,
   body: MetaConnectOwnedInput,
 ): Promise<ActionResult<MetaSignupResult>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.metaConnectOwned(tenantId, body);
     if (!result) {
@@ -117,7 +117,7 @@ export async function metaTestSendAction(
   tenantId: string,
   body: MetaTestSendInput,
 ): Promise<ActionResult<MetaTestSendResult>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.metaTestSend(tenantId, body);
     if (!result) {
@@ -146,7 +146,7 @@ export async function rotateWhatsAppPinAction(
   tenantId: string,
   channelId: string,
 ): Promise<ActionResult<null>> {
-  await requireOperator();
+  await requireOperator("credentials");
   try {
     await backend.rotateWhatsAppPin(tenantId, channelId);
     revalidatePath(`/tenants/${tenantId}/channels/${channelId}`);
@@ -159,7 +159,7 @@ export async function rotateWhatsAppPinAction(
 export async function tiktokAuthorizeUrlAction(
   tenantId: string,
 ): Promise<ActionResult<{ authorize_url: string }>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.tiktokAuthorizeUrl(tenantId);
     if (!result) {
@@ -179,7 +179,7 @@ export async function tiktokAuthorizeUrlAction(
 export async function tiktokDisconnectAction(
   tenantId: string,
 ): Promise<ActionResult<{ status: string }>> {
-  await requireOperator();
+  await requireOperator("delete");
   try {
     const result = await backend.tiktokDisconnect(tenantId);
     if (!result) {
@@ -209,7 +209,7 @@ export async function connectWooCommerceSetupAction(
     consumer_secret: string;
   },
 ): Promise<ActionResult<{ store_url: string }>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const storeUrl = body.store_url.trim().replace(/\/+$/, "");
     if (!storeUrl.startsWith("https://")) {
@@ -238,7 +238,7 @@ export async function connectWooCommerceSetupAction(
 export async function listWhatsAppTemplatesAction(
   tenantId: string,
 ): Promise<ActionResult<WhatsAppTemplateList>> {
-  await requireOperator();
+  await requireOperator("read");
   try {
     const result = await backend.listWhatsAppTemplates(tenantId);
     if (!result) {
@@ -254,7 +254,7 @@ export async function createWhatsAppTemplateAction(
   tenantId: string,
   body: WhatsAppTemplateCreateInput,
 ): Promise<ActionResult<WhatsAppTemplateCreateResult>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const result = await backend.createWhatsAppTemplate(tenantId, body);
     if (!result) {
@@ -270,7 +270,7 @@ export async function deleteWhatsAppTemplateAction(
   tenantId: string,
   name: string,
 ): Promise<ActionResult<{ name: string; deleted: boolean }>> {
-  await requireOperator();
+  await requireOperator("delete");
   try {
     const result = await backend.deleteWhatsAppTemplate(tenantId, name);
     if (!result) {

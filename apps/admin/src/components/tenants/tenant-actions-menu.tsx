@@ -44,9 +44,10 @@ import {
 import type { TenantStatus } from "@/lib/backend";
 
 import {
+  archiveTenantAction,
   deleteTenantAction,
   setSendOnlyAction,
-  setTenantStatusAction,
+  setTenantPausedAction,
 } from "@/app/(dashboard)/tenants/actions";
 
 type Variant = "icon" | "labelled";
@@ -103,7 +104,13 @@ export function TenantActionsMenu({
     },
   ) {
     start(async () => {
-      const res = await setTenantStatusAction(tenantId, next);
+      // Spec 079 (2.4): archiving is its own action, with its own permission.
+      const res =
+        next === "archived"
+          ? await archiveTenantAction(tenantId)
+          : next === "active" || next === "paused"
+            ? await setTenantPausedAction(tenantId, next)
+            : ({ ok: false, error: `estado no admitido: ${next}` } as const);
       if (!res.ok) {
         toast.error(`No se pudo actualizar: ${res.error}`);
         return;

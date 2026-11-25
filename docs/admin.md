@@ -10,25 +10,66 @@ altas, tickets, conectores, canales propios, Playground QA y estado de la instan
 Solo lo usan operadores; la identidad vive en la API (`/admin/auth/*`, ADR-034) y el
 panel no tiene base de datos.
 
-## Quién puede operar (spec 078)
+## Quién puede operar (specs 078 y 079)
 
 El panel llama a la API con el token de servicio, así que la API no sabe qué operador
-pide cada cosa: quien decide si se obedece es el panel, con `requireOperator()`
-(`src/lib/session.ts`).
+pide cada cosa: quien decide si se obedece es el panel, con su guarda
+(`src/lib/session.ts`). Desde la spec 079 la guarda mira también el **rol**.
 
-- **Toda Server Action empieza por ella**, directamente o devolviendo una función del
-  mismo archivo que empiece por ella; nunca dentro de un `try`, que se traga la
+### Qué puede hacer cada rol
+
+Los tres roles son del equipo de Auphere; los de la consola de partners son otros. La
+matriz vive en la API (`core/operator_permissions.py`) y el panel guarda una copia
+(`src/lib/permissions.ts`); `lib/__tests__/permissions.test.ts` lee el archivo de la API
+y falla si difieren. Qué cubre cada permiso, acción por acción, está en
+[`specs/079-panel-respeta-el-rol/inventario.md`](../specs/079-panel-respeta-el-rol/inventario.md).
+
+| Permiso | `admin` | `qa_operator` | `viewer` |
+|---|---|---|---|
+| `read` · leer, también las conversaciones | sí | sí | sí |
+| `qa` · Playground, evaluaciones, calibración, certificaciones | sí | sí | no |
+| `operate` · configurar partners, clientes, agentes, canales y conectores | sí | sí | no |
+| `money` · saldo, pagos, crédito, cobro, facturas, membresías, topes | sí | no | no |
+| `credentials` · claves de API y PIN de WhatsApp | sí | no | no |
+| `impersonate` · suplantar a un partner | sí | no | no |
+| `people` · invitaciones, crear partners y vincularles clientes, acceso a la consola del cliente, teléfonos de dueño, bajas | sí | no | no |
+| `delete` · borrar, archivar o reactivar un cliente archivado, suprimir a una persona, desconectar | sí | no | no |
+| `platform` · modelos y precios, router, conectores por defecto, números de Auphere | sí | no | no |
+
+Un rol que la matriz no conoce, o una cuenta deshabilitada, no tiene ningún permiso. El
+rol se cambia con `apps/api/scripts/seed_operator.py --role`.
+
+### Cómo se declara
+
+- **Server Action**: `await requireOperator("<permiso>")` como primera sentencia, o una
+  función del mismo archivo que la reciba como primer argumento literal y empiece por
+  `requireOperator(<ese parámetro>)`. Nunca dentro de un `try`, que se traga la
   redirección. Solo `loginAction` y `logoutAction` no la llaman.
-- **Toda página y layout de servidor de `app/(dashboard)` empieza por ella**, y también
-  su `generateMetadata` si lee la API. Next no vuelve a ejecutar un layout al navegar,
-  así que la guarda del layout raíz no protege las lecturas de cada página.
-- `src/__tests__/server-actions-require-operator.test.ts` lee el código y falla con el
-  nombre de la acción o la página que no empiece por la guarda.
-- **No mira el rol**: un `viewer` puede hacer lo mismo que un `admin`. Está fuera de la
-  spec 078.
-- **Una cuenta deshabilitada** (`access: "disabled"`) entra con su contraseña, pero
-  `requireOperator()` la lleva a `/sin-acceso`, que solo deja cerrar sesión. Las rutas
-  de `app/api` le contestan 403.
+- **Página, layout y `generateMetadata` que lee la API** de `app/(dashboard)`:
+  `await requirePageOperator("<permiso>")`. Next no vuelve a ejecutar un layout al
+  navegar, así que la guarda del layout raíz no protege las lecturas de cada página.
+- **Ruta** (cualquier `route.ts` de `app`, no solo `app/api`):
+  `const op = await routeOperator("<permiso>"); if (op instanceof Response) return op;`.
+- `src/__tests__/server-actions-require-operator.test.ts` barre el código y falla con el
+  nombre de lo que no declare su permiso; `role-guard-checker.test.ts` prueba que el
+  comprobador muerde.
+
+### Qué pasa sin el permiso
+
+- **Una acción** no llama a la API: deja la línea `operator.permission_denied` (sin los
+  argumentos de la acción) y vuelve a la misma página con `?sin-permiso=1`, donde un
+  aviso dice que no se hizo nada. La vuelta pasa por `lib/safe-redirect.ts`.
+- **Una página** pinta «no encontrada»: no se explica qué permiso falta.
+- **Una ruta** contesta 401 sin sesión y 403 en los demás casos. Nunca redirige.
+- **Hasta la fase 1b de la spec 079** la interfaz aún no oculta los controles que el rol
+  no puede usar: se ven, y al pulsarlos sale el aviso. Y **hasta su fase 2** la API no
+  comprueba el rol por su cuenta.
+
+### Sesión y cuenta
+
+- **Una cuenta deshabilitada** (`access: "disabled"`) entra con su contraseña, pero la
+  guarda la lleva a `/sin-acceso`, que solo deja cerrar sesión. `/sin-acceso` devuelve
+  al panel solo a quien tiene algún permiso, así que un rol desconocido no rebota.
 - El middleware solo mira que exista la cookie: no protege nada por sí mismo.
 - **Después del login** solo se vuelve a una ruta del panel (`lib/safe-redirect.ts`): un
   `?from=//otro-sitio` acaba en `/tenants`.

@@ -77,9 +77,9 @@ class OperatorAccount(Base):
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    #: El rol que gatea el QA Playground, portado de ``auth.user.role``. NO
-    #: decide qué se puede tocar en ``/admin/*``: el panel sigue siendo
-    #: god-mode por ADR-009.
+    #: El rol del operador. Sus permisos los da ``core/operator_permissions.py``
+    #: (spec 079); el panel los aplica, y la API lo hará en ``/admin/*`` en la
+    #: fase 2 de esa spec.
     role: Mapped[str] = mapped_column(String(32), nullable=False, server_default="qa_operator")
     #: Intentos fallidos consecutivos; se pone a cero al acertar.
     failed_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

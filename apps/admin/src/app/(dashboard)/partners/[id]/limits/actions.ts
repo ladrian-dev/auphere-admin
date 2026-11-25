@@ -21,7 +21,7 @@ export async function setBuildBudgetAction(
   partnerId: string,
   body: { cap: MoneyMicros; reason: string },
 ): Promise<Result<BuildBudgetSaved>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const data = await leversBackend.setBuildBudget(partnerId, body, operator.id);
     revalidatePath(path(partnerId));
@@ -36,7 +36,7 @@ export async function setAccountCurrencyAction(
   partnerId: string,
   body: { currency: Currency; reason: string },
 ): Promise<Result<AccountCurrencyChange>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const data = await leversBackend.setAccountCurrency(partnerId, body, operator.id);
     revalidatePath(path(partnerId));

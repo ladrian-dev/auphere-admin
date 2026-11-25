@@ -4,7 +4,7 @@ import { isChannelOnly } from "@/components/connectors/labels";
 import { backend } from "@/lib/backend";
 
 import { ConnectorsCatalog } from "./connectors-catalog";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Conectores" };
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ const LIVE = new Set(["connected", "partial", "needs_reauth", "pending", "paused
  * WhatsApp and TikTok are channels and live in Canales.
  */
 export default async function ConnectorsCatalogPage() {
-  await requireOperator();
+  await requirePageOperator("read");
   const [connectors, installs] = await Promise.all([
     backend.listConnectors().catch(() => null),
     backend.listConnectorInstalls().catch(() => ({}) as Record<string, never>),

@@ -10,7 +10,8 @@ vi.mock("@/lib/backend-whatsapp-beta", () => ({ loginBetaBackend: { countries: (
 vi.mock("@/lib/backend", () => ({
   backend: { getChannelCatalog: () => h.catalog(), listAllChannels: () => h.channels() },
 }));
-vi.mock("@/lib/session", () => ({ requireOperator: async () => ({ id: "op-1" }) }));
+// Spec 079: pages use requirePageOperator; actions, requireOperator.
+vi.mock("@/lib/session", () => ({ requireOperator: async () => ({ id: "op-1" }), requirePageOperator: async () => ({ id: "op-1" }) }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new Error("notFound");

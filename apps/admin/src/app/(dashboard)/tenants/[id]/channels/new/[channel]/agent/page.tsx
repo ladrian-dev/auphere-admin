@@ -7,13 +7,13 @@ import { CHANNEL_NAME } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
 
 import { AssignAgentForm } from "./assign-form";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** Step 3 — assign the agent. The newest channel of this kind comes chosen. */
 export default async function AssignAgentPage({ params }: { params: Promise<{ id: string; channel: string }> }) {
-  await requireOperator();
+  await requirePageOperator("operate");
   const { id, channel } = await params;
   const [channels, agents, tenant] = await Promise.all([
     backend.listChannels(id).catch(() => null),

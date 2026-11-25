@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow } from "@nexus/ui";
 import { backend, BackendError } from "@/lib/backend";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { AccessForm } from "./access-form";
 import { PeopleSection } from "./people-section";
@@ -17,7 +17,7 @@ import { PeopleSection } from "./people-section";
  */
 export default async function AccessPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const operator = await requireOperator();
+  const operator = await requirePageOperator("read");
   const tenant = await backend.getTenant(id);
   if (!tenant) notFound();
 

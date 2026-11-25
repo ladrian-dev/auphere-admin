@@ -16,7 +16,7 @@ export async function setLoginBetaCountryAction(
   country: string,
   body: { enabled: boolean; reason: string },
 ): Promise<Result<LoginBetaCountry[]>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     const data = await loginBetaBackend.setCountry(country, body, operator.id);
     revalidatePath("/channels/whatsapp-login");

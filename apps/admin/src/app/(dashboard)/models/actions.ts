@@ -16,6 +16,7 @@ import {
   type SalePolicyIn,
   type WeightsIn,
 } from "@/lib/backend-models";
+import type { Permission } from "@/lib/permissions";
 import { requireOperator } from "@/lib/session";
 
 import { ERRORS, POLICY_ERRORS, PRICE_ERRORS, refusalWords } from "./labels";
@@ -49,10 +50,11 @@ function refusal(err: unknown, words: Record<string, string>): Failure {
 }
 
 async function guarded<T>(
+  permission: Permission,
   fn: (operatorId: string) => Promise<T | null>,
   words: Record<string, string> = ERRORS,
 ): Promise<Result<T>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator(permission);
   try {
     const data = await fn(operator.id);
     revalidatePath("/models");
@@ -63,54 +65,54 @@ async function guarded<T>(
 }
 
 export async function createDeploymentAction(body: DeploymentIn): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.createDeployment(body, op));
+  return guarded("platform", (op) => modelsBackend.createDeployment(body, op));
 }
 
 export async function activateAction(uuid: string, reason: string): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.activate(uuid, reason, op));
+  return guarded("platform", (op) => modelsBackend.activate(uuid, reason, op));
 }
 
 export async function addPriceAction(uuid: string, body: PriceIn): Promise<Result<{ deployment: DeploymentRow }>> {
-  return guarded((op) => modelsBackend.addPrice(uuid, body, op), PRICE_ERRORS);
+  return guarded("platform", (op) => modelsBackend.addPrice(uuid, body, op), PRICE_ERRORS);
 }
 
 export async function retireAction(
   uuid: string,
   body: { retire_after: string; reason: string },
 ): Promise<Result<{ deployment: DeploymentRow; proposals: ProposalOut[] }>> {
-  return guarded((op) => modelsBackend.retire(uuid, body, op));
+  return guarded("platform", (op) => modelsBackend.retire(uuid, body, op));
 }
 
 export async function unavailableAction(uuid: string, reason: string): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.unavailable(uuid, reason, op));
+  return guarded("platform", (op) => modelsBackend.unavailable(uuid, reason, op));
 }
 
 export async function cancelRetirementAction(uuid: string, reason: string): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.cancelRetirement(uuid, reason, op));
+  return guarded("platform", (op) => modelsBackend.cancelRetirement(uuid, reason, op));
 }
 
 export async function restoreAction(uuid: string, reason: string): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.restore(uuid, reason, op));
+  return guarded("platform", (op) => modelsBackend.restore(uuid, reason, op));
 }
 
 export async function putWeightsAction(uuid: string, body: WeightsIn): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.putWeights(uuid, body, op));
+  return guarded("platform", (op) => modelsBackend.putWeights(uuid, body, op));
 }
 
 export async function putSalePolicyAction(
   body: SalePolicyIn,
 ): Promise<Result<{ sale_policy: SalePolicy; applied_to: string[] }>> {
-  return guarded((op) => modelsBackend.putSalePolicy(body, op), POLICY_ERRORS);
+  return guarded("platform", (op) => modelsBackend.putSalePolicy(body, op), POLICY_ERRORS);
 }
 
 /** Spec 065 (`contracts/api.md`): the model can answer the agents in this environment. */
 export async function respondEnableAction(uuid: string, note: string): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.respondEnable(uuid, note, op));
+  return guarded("platform", (op) => modelsBackend.respondEnable(uuid, note, op));
 }
 
 /** Spec 065: it stops being choosable; a model in use is refused in words (`model_in_use`). */
 export async function respondDisableAction(uuid: string, reason: string): Promise<Result<DeploymentRow>> {
-  return guarded((op) => modelsBackend.respondDisable(uuid, reason, op));
+  return guarded("platform", (op) => modelsBackend.respondDisable(uuid, reason, op));
 }
 
 /**
@@ -127,7 +129,7 @@ const PREVIEW_REASON = "Revisar los agentes que cambian, sin guardar";
 export async function previewRespondDefaultAction(
   modelId: string,
 ): Promise<Result<{ affected: RespondDefaultAffected[] }>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("read");
   try {
     await modelsBackend.putRespondDefault({ model_id: modelId, reason: PREVIEW_REASON, confirm: false }, operator.id);
     // An API that saved without `confirm` is not this contract: say what it did.
@@ -144,5 +146,5 @@ export async function previewRespondDefaultAction(
 
 /** Spec 065 (13.2–13.5): the change, confirmed, with its reason. Silent for the partners (13.6). */
 export async function confirmRespondDefaultAction(modelId: string, reason: string): Promise<Result<RespondDefault>> {
-  return guarded((op) => modelsBackend.putRespondDefault({ model_id: modelId, reason, confirm: true }, op));
+  return guarded("platform", (op) => modelsBackend.putRespondDefault({ model_id: modelId, reason, confirm: true }, op));
 }

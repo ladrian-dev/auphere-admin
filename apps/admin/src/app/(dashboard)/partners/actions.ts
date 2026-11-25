@@ -69,7 +69,7 @@ function err(e: unknown): { ok: false; error: string } {
 export async function createPartnerAction(
   body: PartnerCreateInput,
 ): Promise<Result<PartnerCreatedOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("people");
   if (operator.access !== "ok") return { ok: false, error: OPERATOR_DISABLED };
   try {
     // Sin `revalidatePath`: repintaría esta página en la misma respuesta, y un
@@ -89,7 +89,7 @@ export async function updatePartnerAction(
   partnerId: string,
   body: PartnerUpdateInput,
 ): Promise<ActionResult<PartnerOut>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const r = await backend.updatePartner(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -107,7 +107,7 @@ export async function createPartnerKeyAction(
   partnerId: string,
   body: PartnerApiKeyCreateInput,
 ): Promise<ActionResult<PartnerApiKeyCreatedOut>> {
-  await requireOperator();
+  await requireOperator("credentials");
   try {
     const r = await backend.createPartnerKey(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -123,7 +123,7 @@ export async function rotatePartnerKeyAction(
   keyId: string,
   graceHours: number,
 ): Promise<ActionResult<PartnerApiKeyCreatedOut>> {
-  await requireOperator();
+  await requireOperator("credentials");
   try {
     const r = await backend.rotatePartnerKey(partnerId, keyId, {
       grace_hours: graceHours,
@@ -140,7 +140,7 @@ export async function revokePartnerKeyAction(
   partnerId: string,
   keyId: string,
 ): Promise<ActionResult<PartnerApiKeyOut>> {
-  await requireOperator();
+  await requireOperator("credentials");
   try {
     const r = await backend.revokePartnerKey(partnerId, keyId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -157,7 +157,7 @@ export async function linkPartnerTenantAction(
   partnerId: string,
   body: PartnerTenantLinkInput,
 ): Promise<ActionResult<PartnerTenantOut>> {
-  await requireOperator();
+  await requireOperator("people");
   try {
     const r = await backend.linkPartnerTenant(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -174,7 +174,7 @@ export async function generateReceiptAction(
   partnerId: string,
   body: ReceiptGenerateInput,
 ): Promise<ActionResult<ReceiptOut>> {
-  await requireOperator();
+  await requireOperator("money");
   try {
     const r = await backend.generatePartnerReceipt(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -189,7 +189,7 @@ export async function sendReceiptAction(
   partnerId: string,
   invoiceId: string,
 ): Promise<ActionResult<ReceiptSendOut>> {
-  await requireOperator();
+  await requireOperator("money");
   try {
     const r = await backend.sendPartnerReceipt(partnerId, invoiceId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -211,7 +211,7 @@ export async function rechargePartnerWallet(
   amountCents: number,
   idempotencyKey: string,
 ): Promise<ActionResult<PartnerWalletOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const r = await backend.rechargePartnerWallet(
       partnerId,
@@ -232,7 +232,7 @@ export async function setPartnerModels(
   partnerId: string,
   modelIds: string[],
 ): Promise<ActionResult<PartnerModelsOut>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const r = await backend.putPartnerModels(partnerId, modelIds);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -247,7 +247,7 @@ export async function blockPartnerLlm(
   partnerId: string,
   blocked: boolean,
 ): Promise<ActionResult<PartnerLlmOut>> {
-  await requireOperator();
+  await requireOperator("money");
   try {
     const r = await backend.blockPartnerLlm(partnerId, blocked);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -263,7 +263,7 @@ export async function patchTicketStatus(
   ticketId: string,
   status: TicketStatus,
 ): Promise<ActionResult<AdminTicketDetailOut>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const r = await backend.patchTicketStatus(ticketId, status);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -283,7 +283,7 @@ export async function startImpersonationAction(
   reason: string,
   ttlSeconds: number,
 ): Promise<ActionResult<AdminImpersonateOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("impersonate");
   try {
     const r = await backend.startImpersonation(
       partnerId,
@@ -302,7 +302,7 @@ export async function startImpersonationAction(
 export async function revokeImpersonationAction(
   sessionId: string,
 ): Promise<ActionResult<AdminImpersonateOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("impersonate");
   try {
     const r = await backend.revokeImpersonation(sessionId, operator.id);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -319,7 +319,7 @@ export async function setPartnerCreditLimitAction(
   partnerId: string,
   creditLimitCents: number,
 ): Promise<ActionResult<null>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     await backend.setPartnerCreditLimit(partnerId, creditLimitCents, operator.id);
     revalidatePath(`/partners/${partnerId}`, "layout");
@@ -346,7 +346,7 @@ export async function setPartnerChargingAction(
   partnerId: string,
   body: { mode: "manual" | "auto_recharge" | "postpaid"; recharge_threshold_cents: number | null; recharge_amount_cents: number | null },
 ): Promise<ActionResult<null>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     await backend.setPartnerCharging(partnerId, body, operator.id);
     revalidatePath(`/partners/${partnerId}`, "layout");
@@ -381,7 +381,7 @@ export async function recordPartnerPaymentAction(
   partnerId: string,
   body: import("@/lib/backend").TenantPaymentInput & { tenant_id: string },
 ): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const r = await backend.recordPartnerPayment(partnerId, body, operator.id);
     if (!r) return { ok: false, error: "empty response" };
@@ -396,7 +396,7 @@ export async function voidPartnerPaymentAction(
   partnerId: string,
   paymentId: string,
 ): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const r = await backend.voidPartnerPayment(partnerId, paymentId, operator.id);
     if (!r) return { ok: false, error: "empty response" };
@@ -411,7 +411,7 @@ export async function creditPartnerPaymentAction(
   partnerId: string,
   paymentId: string,
 ): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   try {
     const r = await backend.creditPartnerPayment(partnerId, paymentId, operator.id);
     if (!r) return { ok: false, error: "empty response" };

@@ -8,7 +8,7 @@ import { leversBackend } from "@/lib/backend-levers";
 import { AccountCurrencyForm } from "./account-currency-form";
 import { BudgetRequests } from "./budget-requests";
 import { BuildBudgetForm } from "./build-budget-form";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
  * the rate limits and the blueprint still live (the note at the bottom says so).
  */
 export default async function PartnerLimitsPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id } = await params;
   const [partner, budget, requests] = await Promise.all([
     backend.getPartner(id),

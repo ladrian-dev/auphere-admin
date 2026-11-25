@@ -3,7 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, Eyebrow, StatusDot } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 type GuaranteeMeta = {
   index: string;
@@ -62,7 +62,7 @@ export default async function IsolationPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id } = await params;
   const [tenant, snapshot] = await Promise.all([
     backend.getTenant(id),

@@ -3,7 +3,7 @@ import { ErrorState, PageHeader } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 import { CapabilitiesCatalog } from "./catalog";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +19,7 @@ export default async function CapabilitiesPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ all?: string; agent?: string }>;
 }) {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id } = await params;
   const { all, agent } = await searchParams;
   const data = await backend.getCapabilities(id, { all: all === "1", agent }).catch(() => null);

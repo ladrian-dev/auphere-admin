@@ -2,13 +2,13 @@ import { ErrorState } from "@nexus/ui";
 
 import { ChannelTile } from "@/components/channels/channel-tile";
 import { backend } from "@/lib/backend";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** Step 1 — the catalog, as Chatwoot's «Elegir canal». */
 export default async function ChooseChannelPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireOperator();
+  await requirePageOperator("operate");
   const { id } = await params;
   const catalog = await backend.getChannelCatalog().catch(() => null);
   return (

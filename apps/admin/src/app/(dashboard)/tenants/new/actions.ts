@@ -17,7 +17,7 @@ export async function createTenantAction(
   input: TenantCreateInput,
 ): Promise<CreateTenantState> {
   // Before the try: without a session it redirects, and the catch would swallow that.
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     const tenant = await backend.createTenant(input, operator.id);
     if (!tenant) {
@@ -42,7 +42,7 @@ export async function createTenantAction(
 }
 
 export async function checkSlugAction(slug: string): Promise<{ available: boolean }> {
-  await requireOperator();
+  await requireOperator("read");
   try {
     const result = await backend.checkSlugAvailability(slug);
     return { available: result?.available ?? false };
@@ -54,7 +54,7 @@ export async function checkSlugAction(slug: string): Promise<{ available: boolea
 }
 
 export async function gotoTenantIntegrations(tenantId: string): Promise<never> {
-  await requireOperator();
+  await requireOperator("read");
   redirect(`/tenants/${tenantId}/channels/new`);
 }
 
@@ -77,7 +77,7 @@ export async function finishSendOnlySetupAction(
   followUp: SendOnlyFollowUp,
 ): Promise<{ notSaved: string[] }> {
   // Every write here names the operator, the partner one too.
-  const operator = await requireOperator();
+  const operator = await requireOperator("money");
   const notSaved: string[] = [];
   if (followUp.partnerId) {
     try {

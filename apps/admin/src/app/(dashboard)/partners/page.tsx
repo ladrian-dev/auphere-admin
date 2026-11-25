@@ -5,7 +5,7 @@ import { Button, EmptyState, ErrorState, PageHeader } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 import { PartnersTable } from "./partners-table";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Partners" };
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  * their own clients. One row each with their clients, people and balance.
  */
 export default async function PartnersPage() {
-  await requireOperator();
+  await requirePageOperator("read");
   const partners = await backend.listPartners().catch(() => null);
   return (
     <>

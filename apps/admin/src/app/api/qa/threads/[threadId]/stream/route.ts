@@ -17,7 +17,7 @@
  */
 import { NextRequest } from "next/server";
 
-import { QAForbidden, requireQAOperator } from "@/lib/qa-access";
+import { routeOperator } from "@/lib/session";
 import { adminToken } from "@/lib/admin-token";
 
 export const dynamic = "force-dynamic";
@@ -31,15 +31,8 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ threadId: string }> },
 ) {
-  let access;
-  try {
-    access = await requireQAOperator();
-  } catch (err) {
-    if (err instanceof QAForbidden) {
-      return new Response(err.reason, { status: err.status });
-    }
-    throw err;
-  }
+  const access = await routeOperator("qa");
+  if (access instanceof Response) return access;
 
   const { threadId } = await context.params;
   if (!UUID_RE.test(threadId)) {
@@ -61,7 +54,7 @@ export async function GET(
     upstream = await fetch(target.toString(), {
       headers: {
         Authorization: `Bearer ${adminToken()}`,
-        "X-Operator-Id": access.operatorId,
+        "X-Operator-Id": access.id,
         Accept: "text/event-stream",
       },
       // Pass the client's abort signal through so closing the

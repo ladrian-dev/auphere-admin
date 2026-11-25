@@ -20,7 +20,7 @@ export type ActionResult<T> = { ok: true; data: T } | { ok: false; error: string
 export async function resendSignupAction(
   signupId: string,
 ): Promise<ActionResult<SignupRowOut | null>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const data = await backend.resendSignup(signupId);
     revalidatePath("/signups");
