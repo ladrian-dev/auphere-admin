@@ -89,6 +89,7 @@ export async function updatePartnerAction(
   partnerId: string,
   body: PartnerUpdateInput,
 ): Promise<ActionResult<PartnerOut>> {
+  await requireOperator();
   try {
     const r = await backend.updatePartner(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -106,6 +107,7 @@ export async function createPartnerKeyAction(
   partnerId: string,
   body: PartnerApiKeyCreateInput,
 ): Promise<ActionResult<PartnerApiKeyCreatedOut>> {
+  await requireOperator();
   try {
     const r = await backend.createPartnerKey(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -121,6 +123,7 @@ export async function rotatePartnerKeyAction(
   keyId: string,
   graceHours: number,
 ): Promise<ActionResult<PartnerApiKeyCreatedOut>> {
+  await requireOperator();
   try {
     const r = await backend.rotatePartnerKey(partnerId, keyId, {
       grace_hours: graceHours,
@@ -137,6 +140,7 @@ export async function revokePartnerKeyAction(
   partnerId: string,
   keyId: string,
 ): Promise<ActionResult<PartnerApiKeyOut>> {
+  await requireOperator();
   try {
     const r = await backend.revokePartnerKey(partnerId, keyId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -153,6 +157,7 @@ export async function linkPartnerTenantAction(
   partnerId: string,
   body: PartnerTenantLinkInput,
 ): Promise<ActionResult<PartnerTenantOut>> {
+  await requireOperator();
   try {
     const r = await backend.linkPartnerTenant(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -169,6 +174,7 @@ export async function generateReceiptAction(
   partnerId: string,
   body: ReceiptGenerateInput,
 ): Promise<ActionResult<ReceiptOut>> {
+  await requireOperator();
   try {
     const r = await backend.generatePartnerReceipt(partnerId, body);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -183,6 +189,7 @@ export async function sendReceiptAction(
   partnerId: string,
   invoiceId: string,
 ): Promise<ActionResult<ReceiptSendOut>> {
+  await requireOperator();
   try {
     const r = await backend.sendPartnerReceipt(partnerId, invoiceId);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -204,8 +211,8 @@ export async function rechargePartnerWallet(
   amountCents: number,
   idempotencyKey: string,
 ): Promise<ActionResult<PartnerWalletOut>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     const r = await backend.rechargePartnerWallet(
       partnerId,
       { amount_cents: amountCents, idempotency_key: idempotencyKey },
@@ -225,6 +232,7 @@ export async function setPartnerModels(
   partnerId: string,
   modelIds: string[],
 ): Promise<ActionResult<PartnerModelsOut>> {
+  await requireOperator();
   try {
     const r = await backend.putPartnerModels(partnerId, modelIds);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -239,6 +247,7 @@ export async function blockPartnerLlm(
   partnerId: string,
   blocked: boolean,
 ): Promise<ActionResult<PartnerLlmOut>> {
+  await requireOperator();
   try {
     const r = await backend.blockPartnerLlm(partnerId, blocked);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -254,6 +263,7 @@ export async function patchTicketStatus(
   ticketId: string,
   status: TicketStatus,
 ): Promise<ActionResult<AdminTicketDetailOut>> {
+  await requireOperator();
   try {
     const r = await backend.patchTicketStatus(ticketId, status);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
@@ -273,8 +283,8 @@ export async function startImpersonationAction(
   reason: string,
   ttlSeconds: number,
 ): Promise<ActionResult<AdminImpersonateOut>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     const r = await backend.startImpersonation(
       partnerId,
       { reason, ttl_seconds: ttlSeconds },
@@ -292,8 +302,8 @@ export async function startImpersonationAction(
 export async function revokeImpersonationAction(
   sessionId: string,
 ): Promise<ActionResult<AdminImpersonateOut>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     const r = await backend.revokeImpersonation(sessionId, operator.id);
     if (!r) return { ok: false, error: "Respuesta vacía del backend" };
     await clearImpersonateCookie();
@@ -309,8 +319,8 @@ export async function setPartnerCreditLimitAction(
   partnerId: string,
   creditLimitCents: number,
 ): Promise<ActionResult<null>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     await backend.setPartnerCreditLimit(partnerId, creditLimitCents, operator.id);
     revalidatePath(`/partners/${partnerId}`, "layout");
     return { ok: true, data: null };
@@ -336,8 +346,8 @@ export async function setPartnerChargingAction(
   partnerId: string,
   body: { mode: "manual" | "auto_recharge" | "postpaid"; recharge_threshold_cents: number | null; recharge_amount_cents: number | null },
 ): Promise<ActionResult<null>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     await backend.setPartnerCharging(partnerId, body, operator.id);
     revalidatePath(`/partners/${partnerId}`, "layout");
     revalidatePath("/partners");
@@ -371,8 +381,8 @@ export async function recordPartnerPaymentAction(
   partnerId: string,
   body: import("@/lib/backend").TenantPaymentInput & { tenant_id: string },
 ): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     const r = await backend.recordPartnerPayment(partnerId, body, operator.id);
     if (!r) return { ok: false, error: "empty response" };
     revalidatePartnerMoney(partnerId, body.tenant_id);
@@ -386,8 +396,8 @@ export async function voidPartnerPaymentAction(
   partnerId: string,
   paymentId: string,
 ): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     const r = await backend.voidPartnerPayment(partnerId, paymentId, operator.id);
     if (!r) return { ok: false, error: "empty response" };
     revalidatePartnerMoney(partnerId, r.tenant_id);
@@ -401,8 +411,8 @@ export async function creditPartnerPaymentAction(
   partnerId: string,
   paymentId: string,
 ): Promise<ActionResult<import("@/lib/backend").PartnerPaymentOut>> {
+  const operator = await requireOperator();
   try {
-    const operator = await requireOperator();
     const r = await backend.creditPartnerPayment(partnerId, paymentId, operator.id);
     if (!r) return { ok: false, error: "empty response" };
     revalidatePartnerMoney(partnerId, r.tenant_id);

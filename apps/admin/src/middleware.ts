@@ -3,10 +3,11 @@
  * sin cookie de sesión.
  *
  * Comprobación barata, sin llamar a la API: sólo mira que la cookie EXISTA.
- * La verificación de verdad la hacen los Server Components y las Server
- * Actions con ``getOperator()`` / ``requireOperator()``, que preguntan a
- * ``/admin/auth/session``. Aquí sólo se trata de no montar un layout entero
- * para alguien que ni siquiera trae credencial.
+ * La verificación de verdad la hacen los Server Components, las rutas y las
+ * Server Actions con ``requireOperator()``, que pregunta a
+ * ``/admin/auth/session`` y rechaza las cuentas deshabilitadas (spec 078).
+ * Aquí sólo se trata de no montar un layout entero para alguien que ni
+ * siquiera trae credencial: esta comprobación sola no protege nada.
  */
 
 import { NextResponse, type NextRequest } from "next/server";

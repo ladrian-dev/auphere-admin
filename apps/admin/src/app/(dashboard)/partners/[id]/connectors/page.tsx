@@ -4,6 +4,7 @@ import { ReadError } from "@/components/states/read-error";
 import { connectorAccessBackend } from "@/lib/backend-connector-access";
 
 import { PartnerConnectorsList } from "./partner-connectors-list";
+import { requireOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export const dynamic = "force-dynamic";
  * valor por defecto del conector salvo que Auphere decida otra cosa para este partner.
  */
 export default async function PartnerConnectorsPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireOperator();
   const { id } = await params;
   const data = await connectorAccessBackend.forPartner(id).catch(() => null);
   if (!data) {

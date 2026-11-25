@@ -22,6 +22,7 @@ import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
 
 import { TicketStatusForm } from "./status-form";
+import { requireOperator } from "@/lib/session";
 
 const LINK_LABELS = [
   { key: "consumo" as const, label: "Consumo" },
@@ -37,6 +38,7 @@ export default async function TicketDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireOperator();
   const { id } = await params;
   const ticket = await backend.getTicket(id);
   if (!ticket) notFound();

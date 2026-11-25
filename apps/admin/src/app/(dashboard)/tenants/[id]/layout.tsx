@@ -13,6 +13,7 @@ import { planLabel, relativeTime, statusLabel } from "@/lib/format";
 import { headerMembershipPill } from "@/lib/send-only";
 
 import { TenantTabs } from "./tabs";
+import { requireOperator } from "@/lib/session";
 
 const STATUS_TONE = {
   active: "positive",
@@ -22,6 +23,7 @@ const STATUS_TONE = {
 } as const;
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  await requireOperator();
   const { id } = await params;
   const tenant = await backend.getTenant(id).catch(() => null);
   return { title: tenant ? tenant.name : "Cliente" };
@@ -41,6 +43,7 @@ export default async function TenantLayout({
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }) {
+  await requireOperator();
   const { id } = await params;
   const tenant = await backend.getTenant(id);
   if (!tenant) notFound();

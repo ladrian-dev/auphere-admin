@@ -42,6 +42,7 @@ export async function createTenantAction(
 }
 
 export async function checkSlugAction(slug: string): Promise<{ available: boolean }> {
+  await requireOperator();
   try {
     const result = await backend.checkSlugAvailability(slug);
     return { available: result?.available ?? false };
@@ -53,6 +54,7 @@ export async function checkSlugAction(slug: string): Promise<{ available: boolea
 }
 
 export async function gotoTenantIntegrations(tenantId: string): Promise<never> {
+  await requireOperator();
   redirect(`/tenants/${tenantId}/channels/new`);
 }
 

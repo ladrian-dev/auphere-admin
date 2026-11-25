@@ -6,6 +6,7 @@ import { isChannelOnly } from "@/components/connectors/labels";
 import { backend } from "@/lib/backend";
 
 import { ConnectorsGrid } from "./connectors-grid";
+import { requireOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ export default async function TenantConnectorsPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tiktok?: string }>;
 }) {
+  await requireOperator();
   const { id } = await params;
   const { tiktok } = await searchParams;
   if (tiktok) redirect(`/tenants/${id}/channels?tiktok=${encodeURIComponent(tiktok)}`);

@@ -17,6 +17,7 @@ import {
 } from "@nexus/ui";
 import { backend, consoleHref, type KnowledgeDocumentOut } from "@/lib/backend";
 import { formatBytes, relativeTime } from "@/lib/format";
+import { requireOperator } from "@/lib/session";
 
 const STATUS_VARIANT: Record<
   KnowledgeDocumentOut["status"],
@@ -37,6 +38,7 @@ export default async function PartnerKnowledgePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireOperator();
   const { id } = await params;
   const [partner, knowledge, mappings] = await Promise.all([
     backend.getPartner(id),

@@ -13,6 +13,7 @@ import {
 } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 import { relativeTime } from "@/lib/format";
+import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "Tickets" };
 
@@ -33,6 +34,7 @@ const STATUS_LABEL: Record<string, string> = {
  * El POST que los crea sigue siendo /console/support/tickets.
  */
 export default async function TicketsPage() {
+  await requireOperator();
   const tickets = await backend.listTickets();
   const counts = {
     total: tickets.length,

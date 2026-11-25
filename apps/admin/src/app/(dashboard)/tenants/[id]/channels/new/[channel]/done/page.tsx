@@ -5,6 +5,7 @@ import { Button } from "@nexus/ui";
 
 import { CHANNEL_NAME } from "@/components/channels/labels";
 import { backend } from "@/lib/backend";
+import { requireOperator } from "@/lib/session";
 
 /** Step 4 — «¡Listo!», with where to go next (Chatwoot's FinishSetup). */
 export default async function ChannelDonePage({
@@ -14,6 +15,7 @@ export default async function ChannelDonePage({
   params: Promise<{ id: string; channel: string }>;
   searchParams: Promise<{ channel?: string }>;
 }) {
+  await requireOperator();
   const { id, channel } = await params;
   const channelId = (await searchParams).channel;
   const tenant = await backend.getTenant(id).catch(() => null);

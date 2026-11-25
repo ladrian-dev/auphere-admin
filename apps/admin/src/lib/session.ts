@@ -35,10 +35,19 @@ export async function getOperator(): Promise<Operator | null> {
   return resolveSession(token);
 }
 
-/** Para páginas y acciones que exigen sesión. Redirige al login si no hay. */
+/**
+ * Para páginas, acciones y rutas que exigen sesión. Sin sesión, al login; con
+ * la cuenta deshabilitada, a ``/sin-acceso`` (spec 078).
+ *
+ * El panel llama a la API con el token de servicio, así que la API no sabe qué
+ * operador pide cada cosa: esta función es la única que decide si se obedece.
+ * Toda Server Action la llama antes de hablar con la API, y una prueba
+ * estructural lo exige (``src/__tests__/server-actions-require-operator``).
+ */
 export async function requireOperator(): Promise<Operator> {
   const operator = await getOperator();
   if (!operator) redirect("/login");
+  if (operator.access !== "ok") redirect("/sin-acceso");
   return operator;
 }
 
@@ -47,7 +56,7 @@ export async function requireOperator(): Promise<Operator> {
  * del fallo, sin traducirlo: quien pinta el mensaje es el formulario.
  *
  * Un operador con ``access !== "ok"`` **entra igual** —la cookie se pone—
- * y es el layout el que le enseña "sin acceso". Distinguirlo aquí sería
+ * y ``requireOperator()`` lo lleva a ``/sin-acceso``. Distinguirlo aquí sería
  * reintroducir por la puerta de atrás el oráculo que la API evita.
  */
 export async function startSession(

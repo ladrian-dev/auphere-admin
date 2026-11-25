@@ -36,6 +36,7 @@ export async function setTenantStatusAction(
   tenantId: string,
   status: TenantStatus,
 ): Promise<ActionResult<{ status: TenantStatus }>> {
+  await requireOperator();
   try {
     const r = await backend.updateTenant(tenantId, { status });
     if (!r) return { ok: false, error: "empty response" };
@@ -61,6 +62,7 @@ export async function setTenantStatusAction(
 export async function deleteTenantAction(
   tenantId: string,
 ): Promise<ActionResult<{ deleted: true }>> {
+  await requireOperator();
   try {
     await backend.deleteTenant(tenantId);
     revalidatePath("/tenants");
@@ -91,6 +93,7 @@ export async function updateTenantBillingAction(
 export async function createBillingPlanAction(
   body: import("@/lib/backend").BillingPlanCreateInput,
 ): Promise<ActionResult<import("@/lib/backend").BillingPlanOut>> {
+  await requireOperator();
   try {
     const r = await backend.createBillingPlan(body);
     if (!r) return { ok: false, error: "empty response" };

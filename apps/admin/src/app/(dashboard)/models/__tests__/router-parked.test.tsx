@@ -10,6 +10,8 @@ import { POLICY, row } from "./fixtures";
  * back with nothing else changed.
  */
 const flag = vi.hoisted(() => ({ visible: false }));
+// Spec 078: pages start with the operator guard; here the operator is signed in.
+vi.mock("@/lib/session", () => ({ requireOperator: async () => ({ id: "op-1", access: "ok", role: "admin" }) }));
 vi.mock("@/lib/router-panel", () => ({
   get ROUTER_PANEL_VISIBLE() {
     return flag.visible;

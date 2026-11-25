@@ -9,6 +9,7 @@ import { backend } from "@/lib/backend";
 
 import { OptOuts } from "./opt-outs";
 import { PendingLinks } from "./pending-links";
+import { requireOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export default async function TenantChannelsPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tiktok?: string }>;
 }) {
+  await requireOperator();
   const { id } = await params;
   const tiktok = (await searchParams).tiktok;
   const [channels, links, optOuts] = await Promise.all([

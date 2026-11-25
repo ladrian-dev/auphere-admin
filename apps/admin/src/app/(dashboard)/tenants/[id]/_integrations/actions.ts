@@ -17,6 +17,7 @@ import {
   type ConnectorToolMode,
 } from "@/lib/backend";
 import type { ChannelRole } from "@/lib/channels";
+import { requireOperator } from "@/lib/session";
 
 export type ActionResult<T> =
   | { ok: true; data: T }
@@ -37,6 +38,7 @@ export async function initiateConsentAction(
   tenantId: string,
   slug: string,
 ): Promise<ActionResult<{ redirect_url: string; signed_consent_url: string; expires_at: string }>> {
+  await requireOperator();
   try {
     const r = await backend.initiateConnectorConsent(tenantId, slug);
     if (!r) return { ok: false, error: "empty response" };
@@ -58,6 +60,7 @@ export async function disconnectAction(
   tenantId: string,
   slug: string,
 ): Promise<ActionResult<string>> {
+  await requireOperator();
   try {
     const r = await backend.disconnectConnector(tenantId, slug);
     revalidatePath(`/tenants/${tenantId}`, "layout");
@@ -71,6 +74,7 @@ export async function pauseConnectorAction(
   tenantId: string,
   slug: string,
 ): Promise<ActionResult<string>> {
+  await requireOperator();
   try {
     const r = await backend.pauseConnector(tenantId, slug);
     revalidatePath(`/tenants/${tenantId}`, "layout");
@@ -84,6 +88,7 @@ export async function resumeConnectorAction(
   tenantId: string,
   slug: string,
 ): Promise<ActionResult<string>> {
+  await requireOperator();
   try {
     const r = await backend.resumeConnector(tenantId, slug);
     revalidatePath(`/tenants/${tenantId}`, "layout");
@@ -97,6 +102,7 @@ export async function syncAction(
   tenantId: string,
   slug: string,
 ): Promise<ActionResult<{ added: number; deprecated: number; unchanged: number }>> {
+  await requireOperator();
   try {
     const r = await backend.syncConnector(tenantId, slug);
     revalidatePath(`/tenants/${tenantId}`, "layout");
@@ -118,6 +124,7 @@ export async function reissueConsentAction(
   tenantId: string,
   slug: string,
 ): Promise<ActionResult<{ signed_consent_url: string; expires_at: string }>> {
+  await requireOperator();
   try {
     const r = await backend.reissueConnectorConsent(tenantId, slug);
     revalidatePath(`/tenants/${tenantId}`, "layout");
@@ -140,6 +147,7 @@ export async function putOverrideAction(
   mode: ConnectorToolMode,
   reason: string | null,
 ): Promise<ActionResult<{ mode: ConnectorToolMode }>> {
+  await requireOperator();
   try {
     const r = await backend.putConnectorToolOverride(tenantId, toolName, {
       mode,
@@ -156,6 +164,7 @@ export async function deleteOverrideAction(
   tenantId: string,
   toolName: string,
 ): Promise<ActionResult<void>> {
+  await requireOperator();
   try {
     await backend.deleteConnectorToolOverride(tenantId, toolName);
     revalidatePath(`/tenants/${tenantId}`, "layout");
@@ -170,6 +179,7 @@ export async function updateChannelRoleAction(
   channelId: string,
   body: { role?: ChannelRole | null; agent_enabled?: boolean },
 ): Promise<ActionResult<ChannelOut>> {
+  await requireOperator();
   try {
     const r = await backend.updateChannelRole(tenantId, channelId, body);
     if (!r) return { ok: false, error: "empty response" };

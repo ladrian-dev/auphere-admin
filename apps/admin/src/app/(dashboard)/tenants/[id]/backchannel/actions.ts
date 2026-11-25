@@ -8,6 +8,7 @@ import type {
   BackchannelOwnerUpdateInput,
   OwnerPhoneIndexOut,
 } from "@/lib/backend";
+import { requireOperator } from "@/lib/session";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -30,6 +31,7 @@ export async function registerOwnerAction(
   tenantId: string,
   body: BackchannelOwnerCreateInput,
 ): Promise<Result<OwnerPhoneIndexOut>> {
+  await requireOperator();
   try {
     const row = await backend.registerBackchannelOwner(tenantId, body);
     revalidatePath(`/tenants/${tenantId}/backchannel`);
@@ -45,6 +47,7 @@ export async function updateOwnerAction(
   phoneE164: string,
   body: BackchannelOwnerUpdateInput,
 ): Promise<Result<OwnerPhoneIndexOut>> {
+  await requireOperator();
   try {
     const row = await backend.updateBackchannelOwner(tenantId, phoneE164, body);
     revalidatePath(`/tenants/${tenantId}/backchannel`);
@@ -59,6 +62,7 @@ export async function deregisterOwnerAction(
   tenantId: string,
   phoneE164: string,
 ): Promise<Result<null>> {
+  await requireOperator();
   try {
     await backend.deregisterBackchannelOwner(tenantId, phoneE164);
     revalidatePath(`/tenants/${tenantId}/backchannel`);

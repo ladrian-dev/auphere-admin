@@ -33,6 +33,8 @@ export async function putMembershipAction(
   tenantId: string,
   body: MembershipPutInput,
 ): Promise<Result<MembershipOut | null>> {
+  // Spec 078: the guard goes first, before even validating the input.
+  await requireOperator();
   if (!Number.isInteger(body.amount_cents) || body.amount_cents <= 0) {
     return { ok: false, error: SEND_ONLY_ERRORS.invalid_amount };
   }

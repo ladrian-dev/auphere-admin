@@ -22,6 +22,7 @@ import {
 } from "@/lib/signups";
 
 import { ResendButton } from "./resend-button";
+import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "Altas" };
 
@@ -35,6 +36,7 @@ export const metadata = { title: "Altas" };
  * escondería justo la relación que el operador necesita ver.
  */
 export default async function SignupsPage() {
+  await requireOperator();
   const signups = await backend.listSignups();
   const aMedias = signups.filter(isHalfFinished).length;
   const nacidos = signups.filter((s) => s.partner !== null).length;
