@@ -21,7 +21,7 @@ export async function saveProfileAction(
   profile: string,
   body: { policy: ProfilePolicyJson; reason: string },
 ): Promise<Result<RouterProfile>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     const data = await modelsBackend.saveProfile(profile, body, operator.id);
     revalidatePath("/router");
@@ -37,7 +37,7 @@ export async function previewAction(body: {
   task: string;
   profile?: string;
 }): Promise<Result<RouterPreview>> {
-  await requireOperator();
+  await requireOperator("read");
   try {
     const data = await modelsBackend.preview(body);
     return { ok: true, data: data as RouterPreview };

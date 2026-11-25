@@ -37,7 +37,7 @@ export async function setPartnerAccessAction(
   partnerId: string,
   body: { console_enabled: boolean; modules: PartnerModule[] },
 ): Promise<Result<PartnerAccessOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     const data = await backend.setPartnerAccess(partnerId, body, operator.id);
     revalidatePath(`/partners/${partnerId}`, "layout");
@@ -53,7 +53,7 @@ export async function setPartnerBetaChannelsAction(
   partnerId: string,
   channels: BetaChannel[],
 ): Promise<Result<PartnerBetaChannelsOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     const data = await backend.setPartnerBetaChannels(partnerId, channels, operator.id);
     revalidatePath(`/partners/${partnerId}`, "layout");

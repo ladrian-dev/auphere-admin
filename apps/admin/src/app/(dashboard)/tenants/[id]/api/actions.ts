@@ -19,7 +19,7 @@ function revalidate(tenantId: string) {
 }
 
 export async function createTenantKeyAction(tenantId: string): Promise<Result<TenantApiKeyCreatedOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("credentials");
   try {
     const data = await backend.createTenantApiKey(tenantId, operator.id);
     if (!data?.plaintext) return { ok: false, error: "La API no devolvió la clave." };
@@ -35,7 +35,7 @@ export async function rotateTenantKeyAction(
   keyId: string,
   graceHours: number,
 ): Promise<Result<TenantApiKeyCreatedOut>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("credentials");
   if (!Number.isInteger(graceHours) || graceHours < 0 || graceHours > 336) {
     return { ok: false, error: "Las horas de gracia van de 0 a 336." };
   }
@@ -50,7 +50,7 @@ export async function rotateTenantKeyAction(
 }
 
 export async function revokeTenantKeyAction(tenantId: string, keyId: string): Promise<Result<TenantApiKeyOut | null>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("credentials");
   try {
     const data = await backend.revokeTenantApiKey(tenantId, keyId, operator.id);
     revalidate(tenantId);

@@ -24,7 +24,7 @@ export async function assignChannelAgentAction(
   channelId: string,
   agentId: string,
 ): Promise<Result<null>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     await backend.assignChannelAgent(tenantId, channelId, agentId, operator.id);
     revalidatePath(`/tenants/${tenantId}`, "layout");
@@ -39,7 +39,7 @@ export async function createSignupLinkAction(
   tenantId: string,
   mode: "coexistence" | "cloud_api",
 ): Promise<Result<{ url: string; expires_at: string }>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     const link = await backend.createSignupLink(tenantId, mode, operator.id);
     if (!link?.url) return { ok: false, error: "La API no devolvió el enlace." };
@@ -51,7 +51,7 @@ export async function createSignupLinkAction(
 }
 
 export async function revokeSignupLinkAction(tenantId: string, linkId: string): Promise<Result<null>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     await backend.revokeSignupLink(tenantId, linkId, operator.id);
     revalidatePath(`/tenants/${tenantId}/channels`);
@@ -63,7 +63,7 @@ export async function revokeSignupLinkAction(tenantId: string, linkId: string): 
 
 /** Spec 050 (5.5): lift a stop word's or an operator's opt-out, with a reason. */
 export async function liftOptOutAction(tenantId: string, optOutId: string, reason: string): Promise<Result<null>> {
-  await requireOperator();
+  await requireOperator("people");
   try {
     await backend.liftOptOut(tenantId, optOutId, reason);
     revalidatePath(`/tenants/${tenantId}/channels`);
@@ -79,7 +79,7 @@ export async function erasePersonAction(
   channelId: string,
   body: { identifier: string; requested_by: string },
 ): Promise<Result<{ erased: boolean; messages_emptied: number }>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("delete");
   try {
     const data = await backend.erasePerson(tenantId, channelId, body, operator.id);
     if (!data) return { ok: false, error: "empty_response" };

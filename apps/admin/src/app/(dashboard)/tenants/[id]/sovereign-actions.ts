@@ -13,7 +13,7 @@ export async function setSovereignAction(
   tenantId: string,
   body: { enabled: boolean; reason: string },
 ): Promise<Result<SovereignState>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     const data = await leversBackend.setSovereign(tenantId, body, operator.id);
     revalidatePath(`/tenants/${tenantId}`);

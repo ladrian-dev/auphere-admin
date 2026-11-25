@@ -5,7 +5,7 @@ import { Button, Callout, EmptyState, ErrorState, PageHeader } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 import { TenantsTable } from "./tenants-table";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Clientes" };
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  * something and why — then where it is and how it is doing.
  */
 export default async function TenantsPage() {
-  await requireOperator();
+  await requirePageOperator("read");
   const now = new Date();
   const [tenants, partners, periodPayments, health] = await Promise.all([
     backend.listTenants().catch(() => null),

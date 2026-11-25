@@ -1,10 +1,12 @@
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@nexus/ui";
+import { Suspense } from "react";
 
 import { AppSidebar } from "@/components/shell/app-sidebar";
 import { AdminCommandPalette } from "@/components/shell/command-palette";
+import { PermissionDeniedNotice } from "@/components/shell/permission-denied-notice";
 import { TopBarBreadcrumbs } from "@/components/shell/top-bar-breadcrumbs";
 import { backend } from "@/lib/backend";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 /**
  * Spec 031: the operator panel's shell, the same frame as the console — the
@@ -12,7 +14,7 @@ import { requireOperator } from "@/lib/session";
  * content scrolls.
  */
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const operator = await requireOperator();
+  const operator = await requirePageOperator("read");
   // R2.5: open tickets next to their entry. A failed read shows no count
   // rather than a wrong one.
   const openTickets = await backend
@@ -47,6 +49,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
             tabIndex={-1}
             className="mx-auto flex w-full max-w-[1400px] min-w-0 flex-col gap-6 px-4 py-6 outline-none md:px-8 md:py-8"
           >
+            {/* Spec 079, 2.2: useSearchParams needs a Suspense boundary to keep the shell static. */}
+            <Suspense fallback={null}>
+              <PermissionDeniedNotice />
+            </Suspense>
             {children}
           </main>
         </div>

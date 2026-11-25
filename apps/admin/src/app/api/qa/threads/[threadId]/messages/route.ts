@@ -7,25 +7,15 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-import { QAForbidden, requireQAOperator } from "@/lib/qa-access";
+import { routeOperator } from "@/lib/session";
 import { QAApiError, qaApi } from "@/lib/qa-api";
 
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ threadId: string }> },
 ) {
-  let access;
-  try {
-    access = await requireQAOperator();
-  } catch (err) {
-    if (err instanceof QAForbidden) {
-      return NextResponse.json(
-        { detail: err.reason, role: err.role },
-        { status: err.status },
-      );
-    }
-    throw err;
-  }
+  const access = await routeOperator("qa");
+  if (access instanceof Response) return access;
 
   const { threadId } = await context.params;
   const limitParam = request.nextUrl.searchParams.get("limit");
@@ -33,7 +23,7 @@ export async function GET(
 
   try {
     const rows = await qaApi.getThreadMessages({
-      operatorId: access.operatorId,
+      operatorId: access.id,
       threadId,
       limit,
     });

@@ -31,7 +31,7 @@ export async function registerOwnerAction(
   tenantId: string,
   body: BackchannelOwnerCreateInput,
 ): Promise<Result<OwnerPhoneIndexOut>> {
-  await requireOperator();
+  await requireOperator("people");
   try {
     const row = await backend.registerBackchannelOwner(tenantId, body);
     revalidatePath(`/tenants/${tenantId}/backchannel`);
@@ -47,7 +47,7 @@ export async function updateOwnerAction(
   phoneE164: string,
   body: BackchannelOwnerUpdateInput,
 ): Promise<Result<OwnerPhoneIndexOut>> {
-  await requireOperator();
+  await requireOperator("people");
   try {
     const row = await backend.updateBackchannelOwner(tenantId, phoneE164, body);
     revalidatePath(`/tenants/${tenantId}/backchannel`);
@@ -62,7 +62,7 @@ export async function deregisterOwnerAction(
   tenantId: string,
   phoneE164: string,
 ): Promise<Result<null>> {
-  await requireOperator();
+  await requireOperator("people");
   try {
     await backend.deregisterBackchannelOwner(tenantId, phoneE164);
     revalidatePath(`/tenants/${tenantId}/backchannel`);

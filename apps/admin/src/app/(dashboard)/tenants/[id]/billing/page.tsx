@@ -7,7 +7,7 @@ import { BillingForm } from "./billing-form";
 import { MembershipCard, type MembershipState } from "./membership-card";
 import { PaymentsCard } from "./payments-card";
 import { UnlimitedCard } from "./unlimited-card";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 const MODEL_LABEL: Record<string, string> = {
   subscription: "Suscripción",
@@ -35,7 +35,7 @@ export default async function TenantBillingPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id } = await params;
   const [billing, partners, plans, payments, unlimited, membership, charges] = await Promise.all([
     backend.getTenantBilling(id),

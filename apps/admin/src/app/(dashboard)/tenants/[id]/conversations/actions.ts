@@ -51,7 +51,7 @@ export async function toggleConversationAgentAction(
     agent_active_version: number;
   }>
 > {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const r = await backend.toggleConversationAgent(
       tenantId,
@@ -86,7 +86,7 @@ export async function operatorSendMessageAction(
   conversationId: string,
   content: string,
 ): Promise<ActionResult<{ message_id: string }>> {
-  await requireOperator();
+  await requireOperator("operate");
   try {
     const r = await backend.operatorSendMessage(
       tenantId,

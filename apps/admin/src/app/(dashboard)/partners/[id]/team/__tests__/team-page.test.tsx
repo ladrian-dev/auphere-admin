@@ -6,7 +6,8 @@ import type { PartnerInvitation, PartnerMembersOut } from "@/lib/backend";
 const getPartner = vi.fn();
 const getPartnerMembers = vi.fn();
 // Spec 078: pages start with the operator guard; here the operator is signed in.
-vi.mock("@/lib/session", () => ({ requireOperator: async () => ({ id: "op-1", access: "ok", role: "admin" }) }));
+// Spec 079: pages use requirePageOperator; actions, requireOperator.
+vi.mock("@/lib/session", () => ({ requireOperator: async () => ({ id: "op-1", access: "ok", role: "admin" }), requirePageOperator: async () => ({ id: "op-1", access: "ok", role: "admin" }) }));
 vi.mock("@/lib/backend", () => ({
   backend: {
     getPartner: (...a: unknown[]) => getPartner(...a),

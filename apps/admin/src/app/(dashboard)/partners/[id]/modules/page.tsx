@@ -4,13 +4,13 @@ import { backend } from "@/lib/backend";
 
 import { BetaChannelsForm } from "./beta-channels-form";
 import { ModulesForm } from "./modules-form";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /** Spec 032: Auphere chooses which console views and services this partner has. */
 export default async function PartnerModulesPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id } = await params;
   const [access, beta] = await Promise.all([
     backend.getPartnerAccess(id).catch(() => null),

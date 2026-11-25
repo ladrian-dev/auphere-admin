@@ -13,7 +13,7 @@
 
 import { NextRequest } from "next/server";
 
-import { getOperator } from "@/lib/session";
+import { routeOperator } from "@/lib/session";
 import { adminToken } from "@/lib/admin-token";
 
 export const dynamic = "force-dynamic";
@@ -26,14 +26,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ conv_id: string }> },
 ) {
-  const operator = await getOperator();
-  if (!operator) {
-    return new Response("unauthorized", { status: 401 });
-  }
-  // Spec 078, 2.3: a disabled account keeps its session but may not operate.
-  if (operator.access !== "ok") {
-    return new Response("forbidden", { status: 403 });
-  }
+  // Spec 078 (2.3) and 079 (2.5): no session → 401; disabled, unknown role or no
+  // permission → 403. Never a redirect: this is an event stream.
+  const operator = await routeOperator("read");
+  if (operator instanceof Response) return operator;
 
   const { conv_id } = await params;
   const tenantId = request.nextUrl.searchParams.get("tenant_id");

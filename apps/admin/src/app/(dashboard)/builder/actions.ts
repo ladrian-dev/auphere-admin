@@ -23,7 +23,7 @@ export async function publishSectorTestsAction(
   sector: string,
   tests: SectorTest[],
 ): Promise<Result<SectorCatalog>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     const data = await builderBackend.publishSectorTests(sector, tests, operator.id);
     revalidatePath("/builder/sector-tests");
@@ -38,7 +38,7 @@ export async function publishSectorTestsAction(
  * keep its agreement as the certification of the task `judge`. Auphere pays.
  */
 export async function calibrateJudgeAction(deploymentId: string): Promise<Result<CalibrationRun>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("qa");
   try {
     const data = await builderBackend.calibrate(deploymentId, operator.id);
     revalidatePath("/builder/judge-calibration");
@@ -54,7 +54,7 @@ export async function calibrateJudgeAction(deploymentId: string): Promise<Result
  * descriptions) and keep the figures. It writes nothing in any client.
  */
 export async function runEvalAction(limit: number | null): Promise<Result<EvalRun>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("qa");
   try {
     const data = await builderBackend.runEval(limit, operator.id);
     revalidatePath("/builder/eval");

@@ -8,8 +8,8 @@
  *
  * URL shape: ``/qa/[tenantId]/chat?thread=[threadId?]``.
  *
- * Access: gated by the (dashboard) layout's ``requireOperator()``. The
- * operator id is the Better Auth operator.id; the same id is
+ * Access: ``requirePageOperator("qa")`` below (spec 079); without ``qa`` the
+ * page is «no encontrada». The operator id is the session's operator.id; the same id is
  * stamped into ``qa.threads.operator_id`` so RLS keeps two operators
  * inspecting the same tenant from seeing each other's threads.
  */
@@ -21,7 +21,7 @@ import { CrumbName } from "@/components/shell/crumb-names";
 import { backend } from "@/lib/backend";
 import { qaApi, type QAThread } from "@/lib/qa-api";
 import { pickPlaygroundAgent, shellAgent, threadsOfAgent } from "@/lib/qa-playground-agent";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "QA Playground" };
 
@@ -34,7 +34,7 @@ export default async function PlaygroundPage({
 }) {
   const { tenantId } = await params;
   const { thread: activeThreadId, agent } = await searchParams;
-  const operator = await requireOperator();
+  const operator = await requirePageOperator("qa");
   const operatorId = operator.id;
 
   // Spec 030: `?agent=` says which agent is tested (the principal without it).

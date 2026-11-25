@@ -8,32 +8,22 @@
  */
 import { NextResponse } from "next/server";
 
-import { QAForbidden, requireQAOperator } from "@/lib/qa-access";
+import { routeOperator } from "@/lib/session";
 import { qaApi } from "@/lib/qa-api";
 
 export async function GET(
   req: Request,
   context: { params: Promise<{ threadId: string }> },
 ) {
-  let access;
-  try {
-    access = await requireQAOperator();
-  } catch (err) {
-    if (err instanceof QAForbidden) {
-      return NextResponse.json(
-        { detail: err.reason, role: err.role },
-        { status: err.status },
-      );
-    }
-    throw err;
-  }
+  const access = await routeOperator("qa");
+  if (access instanceof Response) return access;
   const { threadId } = await context.params;
   const url = new URL(req.url);
   const limitRaw = url.searchParams.get("limit");
   const limit = limitRaw ? Number(limitRaw) : undefined;
   try {
     const rows = await qaApi.getThreadAudit({
-      operatorId: access.operatorId,
+      operatorId: access.id,
       threadId,
       limit,
     });

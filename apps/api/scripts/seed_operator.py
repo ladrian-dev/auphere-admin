@@ -22,7 +22,7 @@ alta inicial de un panel interno: no hay flujo de invitación por correo
 otra persona en una línea de comandos deja el secreto en el historial del
 shell y en los logs de la task.
 
-Roles (sólo gatean el QA Playground, ver ``services/operator_identity.py``):
+Roles (qué puede hacer cada uno: ``core/operator_permissions.py``, spec 079):
 ``admin`` · ``qa_operator`` (por defecto) · ``viewer``.
 """
 

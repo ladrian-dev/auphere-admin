@@ -7,7 +7,7 @@ import { backend, type ConversationOut } from "@/lib/backend";
 import { leversBackend } from "@/lib/backend-levers";
 import { fullDateTime, relativeTime } from "@/lib/format";
 import { qaApi, type QAThread } from "@/lib/qa-api";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { readinessChecks } from "./readiness";
 import { SendOnlyOverview } from "./send-only-overview";
@@ -24,7 +24,7 @@ const CONVERSATION_LABEL = { open: "Abierta", escalated: "Escalada", closed: "Re
  */
 export default async function TenantOverview({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const operator = await requireOperator();
+  const operator = await requirePageOperator("read");
   const [tenant, health, conversations, connectors, threads, sovereign] = await Promise.all([
     backend.getTenant(id),
     backend.getTenantHealth(id).catch(() => null),

@@ -66,7 +66,7 @@ export async function setConnectorPartnerStateAction(
   partnerId: string,
   body: { state: PartnerConnectorState; reason: string; confirm: boolean },
 ): Promise<AccessOutcome> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     await connectorAccessBackend.setPartnerState(slug, partnerId, body, operator.id);
     refresh(slug, partnerId);
@@ -80,7 +80,7 @@ export async function setConnectorDefaultAction(
   slug: string,
   body: { enabled: boolean; reason: string; confirm: boolean },
 ): Promise<AccessOutcome> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("platform");
   try {
     await connectorAccessBackend.setDefault(slug, body, operator.id);
     refresh(slug);

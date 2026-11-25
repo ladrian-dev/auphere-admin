@@ -1,6 +1,6 @@
 import { ErrorState, PageHeader } from "@nexus/ui";
 import { builderBackend } from "@/lib/backend-builder";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { BuilderTabs } from "../builder-tabs";
 import { SectorCatalogView } from "./sector-catalog";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function SectorTestsPage() {
   const [operator, sectors] = await Promise.all([
-    requireOperator(),
+    requirePageOperator("read"),
     builderBackend.sectorTests().catch(() => null),
   ]);
   return (

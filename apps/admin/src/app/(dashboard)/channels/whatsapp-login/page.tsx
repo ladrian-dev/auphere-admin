@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { ErrorState, PageHeader } from "@nexus/ui";
 import { loginBetaBackend } from "@/lib/backend-whatsapp-beta";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { ChannelsTabs } from "../channels-tabs";
 import { countryNames } from "./countries";
@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function WhatsappLoginBetaPage() {
   const [operator, beta] = await Promise.all([
-    requireOperator(),
+    requirePageOperator("read"),
     loginBetaBackend.countries().catch(() => null),
   ]);
   if (beta !== null && !beta.configured) notFound();

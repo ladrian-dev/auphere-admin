@@ -5,7 +5,7 @@ import { ErrorState, Metric, PageHeader } from "@nexus/ui";
 
 import { backend, type AdminOverview } from "@/lib/backend";
 import { cardLabel, formatCents, relativeTime } from "@/lib/format";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 export const metadata = { title: "Panel" };
 export const dynamic = "force-dynamic";
@@ -50,7 +50,7 @@ function attentionRows(o: AdminOverview): AttentionRow[] {
 }
 
 export default async function HomePage() {
-  await requireOperator();
+  await requirePageOperator("read");
   const overview: AdminOverview | null = await backend.getOverview().catch(() => null);
   if (!overview) {
     return (

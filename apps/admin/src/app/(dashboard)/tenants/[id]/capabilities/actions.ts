@@ -22,7 +22,7 @@ export async function setCapabilityAction(input: {
   mode?: CapabilityModeChange;
   agent?: string;
 }): Promise<Result> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("operate");
   try {
     await backend.setCapability(
       input.tenantId,

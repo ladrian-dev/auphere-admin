@@ -7,7 +7,7 @@ import { ROUTER_PANEL_VISIBLE } from "@/lib/router-panel";
 
 import { RouterTabs } from "../router-tabs";
 import { AnomaliesView } from "./anomalies-view";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 /**
  * Spec 059 (2.3): parked, the address is «no existe» from the metadata on — before
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 /** Spec 047 (T150, 40.7, 40.8, 54.9): the last 7 days of every client. */
 export default async function RouterAnomaliesPage() {
-  await requireOperator();
+  await requirePageOperator("read");
   // Spec 059 (2.3): parked, the address is «no existe», before asking the API.
   if (!ROUTER_PANEL_VISIBLE) notFound();
   const data = await modelsBackend.anomalies().catch(() => null);

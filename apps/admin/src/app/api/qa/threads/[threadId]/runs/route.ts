@@ -7,12 +7,12 @@
  * against ``GET /api/qa/threads/{threadId}/stream?run_id=...`` to
  * consume the live events.
  *
- * Auth: ``requireQAOperator()`` (Better Auth session + role check).
+ * Auth: ``routeOperator("qa")`` (spec 079): 401 without a session, 403 without ``qa``.
  * The browser never sees the backend's admin Bearer.
  */
 import { NextResponse } from "next/server";
 
-import { QAForbidden, requireQAOperator } from "@/lib/qa-access";
+import { routeOperator } from "@/lib/session";
 import { QAApiError, qaApi } from "@/lib/qa-api";
 
 const START_TIMEOUT_MS = 30_000;
@@ -21,18 +21,8 @@ export async function POST(
   req: Request,
   context: { params: Promise<{ threadId: string }> },
 ) {
-  let access;
-  try {
-    access = await requireQAOperator();
-  } catch (err) {
-    if (err instanceof QAForbidden) {
-      return NextResponse.json(
-        { detail: err.reason, role: err.role },
-        { status: err.status },
-      );
-    }
-    throw err;
-  }
+  const access = await routeOperator("qa");
+  if (access instanceof Response) return access;
   const { threadId } = await context.params;
 
   let body: unknown;
@@ -56,7 +46,7 @@ export async function POST(
   const t = setTimeout(() => ac.abort(), START_TIMEOUT_MS);
   try {
     const out = await qaApi.startRun({
-      operatorId: access.operatorId,
+      operatorId: access.id,
       threadId,
       input: { message },
       signal: ac.signal,

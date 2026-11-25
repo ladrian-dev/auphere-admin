@@ -1,7 +1,7 @@
 import { backend } from "@/lib/backend";
 
 import { WizardSteps } from "./wizard-steps";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 /**
  * Spec 035: the «Añadir canal» wizard shell. Wide screens get Chatwoot's rail
@@ -18,7 +18,7 @@ export default async function NewChannelLayout({
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }) {
-  await requireOperator();
+  await requirePageOperator("operate");
   const { id } = await params;
   const tenant = await backend.getTenant(id).catch(() => null);
   const sendOnly = tenant?.send_only === true;

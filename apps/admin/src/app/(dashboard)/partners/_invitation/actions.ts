@@ -36,7 +36,7 @@ export async function inviteOwnerAction(
   partnerId: string,
   email: string,
 ): Promise<Result<OwnerInvitationResult>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("people");
   if (operator.access !== "ok") return { ok: false, error: OPERATOR_DISABLED };
   try {
     const data = await backend.inviteOwner(partnerId, email, operator.id);
@@ -51,7 +51,7 @@ export async function resendOwnerInvitationAction(
   partnerId: string,
   invitationId: string,
 ): Promise<Result<OwnerInvitationResult>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("people");
   if (operator.access !== "ok") return { ok: false, error: OPERATOR_DISABLED };
   try {
     const data = await backend.resendOwnerInvitation(partnerId, invitationId, operator.id);
@@ -66,7 +66,7 @@ export async function revokeOwnerInvitationAction(
   partnerId: string,
   invitationId: string,
 ): Promise<Result<OwnerInvitationRevoked>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("people");
   if (operator.access !== "ok") return { ok: false, error: OPERATOR_DISABLED };
   try {
     const data = await backend.revokeOwnerInvitation(partnerId, invitationId, operator.id);

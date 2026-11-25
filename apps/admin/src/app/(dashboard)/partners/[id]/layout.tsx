@@ -8,7 +8,7 @@ import { CrumbName } from "@/components/shell/crumb-names";
 import { backend } from "@/lib/backend";
 import { getImpersonateSessionId } from "@/lib/impersonate";
 import { matchImpersonationBanner } from "@/lib/impersonate-cookie";
-import { getOperator, requireOperator } from "@/lib/session";
+import { getOperator, requirePageOperator } from "@/lib/session";
 import { formatCents, statusLabel } from "@/lib/format";
 
 import { ImpersonateBannerView } from "./impersonate-banner";
@@ -25,7 +25,7 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id } = await params;
   const partner = await backend.getPartner(id).catch(() => null);
   return {
@@ -40,7 +40,7 @@ export default async function PartnerLayout({
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }) {
-  await requireOperator();
+  await requirePageOperator("read");
   const { id } = await params;
   const partner = await backend.getPartner(id);
   if (!partner) notFound();

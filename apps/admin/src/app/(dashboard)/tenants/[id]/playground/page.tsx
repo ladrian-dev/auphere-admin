@@ -4,7 +4,7 @@ import { AgentsUnreadable, PlaygroundShell } from "@/components/qa/playground-sh
 import { backend } from "@/lib/backend";
 import { qaApi, type QAThread } from "@/lib/qa-api";
 import { pickPlaygroundAgent, shellAgent, threadsOfAgent } from "@/lib/qa-playground-agent";
-import { requireOperator } from "@/lib/session";
+import { requirePageOperator } from "@/lib/session";
 
 import { AgentPicker } from "../agent/agent-picker";
 
@@ -27,7 +27,7 @@ export default async function TenantPlaygroundPage({
 }) {
   const { id } = await params;
   const { thread, agent } = await searchParams;
-  const operator = await requireOperator();
+  const operator = await requirePageOperator("qa");
   const listed = await backend.listTenantAgents(id).catch(() => null);
   const { agents, selected } = pickPlaygroundAgent(listed, agent);
   const [tenant, bundle, allThreads] = await Promise.all([

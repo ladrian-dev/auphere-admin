@@ -10,6 +10,7 @@ import {
   type ClientInvitationOut,
   type ClientPhoneOut,
 } from "@/lib/backend";
+import type { Permission } from "@/lib/permissions";
 import { requireOperator } from "@/lib/session";
 
 import { ACCESS_ERRORS, PHONE_GONE } from "./messages";
@@ -46,8 +47,8 @@ function toFailure(err: unknown): Failure {
   return { ok: false, error: err instanceof Error ? err.message : String(err) };
 }
 
-async function guarded<T>(tenantId: string, fn: (operatorId: string) => Promise<T | null>): Promise<Result<T>> {
-  const operator = await requireOperator();
+async function guarded<T>(permission: Permission, tenantId: string, fn: (operatorId: string) => Promise<T | null>): Promise<Result<T>> {
+  const operator = await requireOperator(permission);
   try {
     const data = await fn(operator.id);
     revalidatePath(`/tenants/${tenantId}/access`);
@@ -58,27 +59,27 @@ async function guarded<T>(tenantId: string, fn: (operatorId: string) => Promise<
 }
 
 export async function setAccessAction(tenantId: string, body: ClientAccessIn): Promise<Result<ClientAccessOut>> {
-  return guarded(tenantId, (op) => backend.setClientAccess(tenantId, body, op));
+  return guarded("people", tenantId, (op) => backend.setClientAccess(tenantId, body, op));
 }
 
 export async function inviteAction(
   tenantId: string,
   body: { email: string; name?: string | null },
 ): Promise<Result<ClientInvitationOut>> {
-  return guarded(tenantId, (op) => backend.inviteClientMember(tenantId, body, op));
+  return guarded("people", tenantId, (op) => backend.inviteClientMember(tenantId, body, op));
 }
 
 export async function resendAction(tenantId: string, memberId: string): Promise<Result<ClientInvitationOut>> {
-  return guarded(tenantId, (op) => backend.resendClientInvitation(tenantId, memberId, op));
+  return guarded("people", tenantId, (op) => backend.resendClientInvitation(tenantId, memberId, op));
 }
 
 export async function revokeAction(tenantId: string, memberId: string): Promise<Result<null>> {
-  return guarded(tenantId, (op) => backend.revokeClientMember(tenantId, memberId, op));
+  return guarded("people", tenantId, (op) => backend.revokeClientMember(tenantId, memberId, op));
 }
 
 /** Spec 031 (R7.4): the phones of one person. A read: nothing to revalidate. */
 export async function listPhonesAction(tenantId: string, memberId: string): Promise<Result<ClientPhoneOut[]>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("read");
   try {
     return { ok: true, data: (await backend.listClientMemberPhones(tenantId, memberId, operator.id)) ?? [] };
   } catch (err) {
@@ -88,7 +89,7 @@ export async function listPhonesAction(tenantId: string, memberId: string): Prom
 
 /** Spec 031 (R7.4): Auphere closes one phone (a lost one, say). Audited with this operator. */
 export async function closePhoneAction(tenantId: string, memberId: string, phoneId: string): Promise<Result<null>> {
-  const operator = await requireOperator();
+  const operator = await requireOperator("people");
   try {
     await backend.closeClientMemberPhone(tenantId, memberId, phoneId, operator.id);
     return { ok: true, data: null };
