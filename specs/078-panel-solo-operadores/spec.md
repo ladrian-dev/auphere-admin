@@ -50,10 +50,21 @@ Next no vuelve a ejecutar un layout al navegar entre las páginas que lo compart
 
 3.3 WHEN alguien añade una página sin la guarda THEN una prueba DEBE fallar y nombrarla.
 
+### 4. Después del login, solo a una ruta del panel *(enmienda, 2026-11-25)*
+
+El login vuelve a `?from=`. El middleware lo rellena con una ruta propia, pero cualquiera puede escribir un enlace al login con otro valor. Con `//otro-sitio`, el operador acababa en otra web justo después de un login de verdad.
+
+4.1 WHEN el login termina THEN el sistema DEBE volver a `from` solo si, resuelto contra el origen del panel, sigue en ese origen; si no, DEBE volver a `/tenants`.
+
+### 5. Un solo token de servicio, y nunca el de desarrollo en producción *(enmienda, 2026-11-25)*
+
+5.1 El token con el que el panel llama a la API DEBE salir de un único sitio (`lib/admin-token.ts`). Ningún otro archivo lee `NEXUS_ADMIN_TOKEN` ni repite el valor de desarrollo.
+
+5.2 WHEN el panel corre en producción (`NODE_ENV=production`) sin `NEXUS_ADMIN_TOKEN` o con un valor `change-me` THEN DEBE fallar al hacer la llamada, con un mensaje que nombre la variable. La API ya se niega a arrancar así en producción. Se comprueba al llamar y no al cargar, para que `next build` no lo necesite.
+
 ## Fuera
 
-- **El rol.** `requireOperator()` mira si la cuenta está activa, no su rol. Un operador `viewer` («Solo lectura» en su menú) puede ejecutar cualquier acción. Decidir qué puede hacer cada rol es una spec aparte.
+- **El rol.** `requireOperator()` mira si la cuenta está activa, no su rol. Un operador `viewer` («Solo lectura» en su menú) puede ejecutar cualquier acción. Lo trata una spec aparte.
 - Un stream de conversación abierto sigue vivo si se deshabilita la cuenta mientras está conectado.
-
 - Que la API sepa qué operador pide cada cosa (token por operador). Es el arreglo de fondo y lleva su propia spec.
 - El resto de hallazgos de la revisión del 2026-11-22.
