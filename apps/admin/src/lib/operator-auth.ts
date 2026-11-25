@@ -18,9 +18,9 @@
  */
 
 import "server-only";
+import { adminToken } from "@/lib/admin-token";
 
 const BACKEND_URL = process.env.NEXUS_BACKEND_URL ?? "http://localhost:8000";
-const ADMIN_TOKEN = process.env.NEXUS_ADMIN_TOKEN ?? "dev-admin-token-change-me";
 
 /** Roles que la API devuelve. Sólo gatean el QA Playground. */
 export const QA_ROLES = ["admin", "qa_operator"] as const;
@@ -44,7 +44,7 @@ async function post<T>(path: string, body: unknown): Promise<{ status: number; d
   const res = await fetch(`${BACKEND_URL}${path}`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      Authorization: `Bearer ${adminToken()}`,
       "Content-Type": "application/json",
       Accept: "application/json",
     },
