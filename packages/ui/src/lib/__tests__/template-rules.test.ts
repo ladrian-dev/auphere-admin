@@ -134,3 +134,64 @@ describe("authentication templates (spec 077, 3.1 and 3.4)", () => {
     });
   });
 });
+
+describe("authentication goes through the shared editor (spec 075, 10.2 and 10.3)", () => {
+  const draft = {
+    name: "tecfin_codigo_",
+    language: "es",
+    category: "AUTHENTICATION" as const,
+    header: "",
+    body: "",
+    footer: "",
+    buttons: [],
+    examples: {},
+  };
+
+  it("sends only the name, the language, the category and otp_*, as the console's action takes it", async () => {
+    const { toSubmission } = await import("../template-rules");
+    expect(toSubmission({ ...draft, otp: { buttonText: " Copiar código ", minutes: "10", security: true } })).toStrictEqual({
+      name: "tecfin_codigo",
+      language: "es",
+      category: "AUTHENTICATION",
+      otp_button_text: "Copiar código",
+      otp_expiration_minutes: 10,
+      otp_security_recommendation: true,
+    });
+  });
+
+  it("leaves the expiry out when it is empty", async () => {
+    const { toSubmission } = await import("../template-rules");
+    expect(toSubmission({ ...draft, otp: { buttonText: "Copiar", minutes: "", security: false } })).toStrictEqual({
+      name: "tecfin_codigo",
+      language: "es",
+      category: "AUTHENTICATION",
+      otp_button_text: "Copiar",
+      otp_security_recommendation: false,
+    });
+  });
+
+  it("Meta's fixed text is one, in Spanish, and follows the fields", async () => {
+    const { otpPreviewText } = await import("../template-rules");
+    expect(otpPreviewText({ buttonText: "", minutes: "10", security: true })).toEqual({
+      body: "123456 es tu código de verificación. Por tu seguridad, no lo compartas.",
+      expiry: "Este código caduca en 10 minutos.",
+    });
+    expect(otpPreviewText({ buttonText: "", minutes: "1", security: false })).toEqual({
+      body: "123456 es tu código de verificación.",
+      expiry: "Este código caduca en 1 minuto.",
+    });
+    expect(otpPreviewText({ buttonText: "", minutes: "", security: true }).expiry).toBeNull();
+    expect(otpPreviewText({ buttonText: "", minutes: "120", security: true }).expiry).toBeNull();
+  });
+});
+
+describe("Meta's fixed text is Spanish (spec 077, 3.1; one rule for both screens since 075, 10.3)", () => {
+  it("so it stands only for a template in Spanish", async () => {
+    const { isSpanishTemplate } = await import("../template-rules");
+    expect(isSpanishTemplate("es")).toBe(true);
+    expect(isSpanishTemplate(" ES_mx ")).toBe(true);
+    expect(isSpanishTemplate("en_US")).toBe(false);
+    expect(isSpanishTemplate("pt_BR")).toBe(false);
+    expect(isSpanishTemplate("")).toBe(false);
+  });
+});

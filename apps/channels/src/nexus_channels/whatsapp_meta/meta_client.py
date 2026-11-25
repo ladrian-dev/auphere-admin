@@ -12,6 +12,7 @@ Endpoints exercised in Phase 1 (Embedded Signup + steady-state messaging):
 - ``GET /{waba_id}/message_templates`` — list templates.
 - ``POST /{waba_id}/message_templates`` — create a template.
 - ``DELETE /{waba_id}/message_templates`` — delete by name.
+- ``POST /{template_id}`` — edit a template's content (spec 075).
 - ``GET /{media_id}`` — resolve media id to a (short-lived) download URL.
 - ``GET <signed_url>`` — download media bytes; the URL is the one returned
   from the previous step. Auth header is required even on the CDN URL.
@@ -630,6 +631,34 @@ class MetaClient:
             body["parameter_format"] = parameter_format
         return await self._post(
             f"/{waba_id}/message_templates",
+            access_token=access_token,
+            json_body=body,
+        )
+
+    async def edit_template(
+        self,
+        *,
+        template_id: str,
+        access_token: str,
+        components: list[dict[str, Any]],
+        category: str | None = None,
+        parameter_format: str | None = None,
+    ) -> dict[str, Any]:
+        """Spec 075: replace a template's content in place, keeping its name.
+
+        Meta only lets ``category``, ``components`` and the TTL change — name
+        and language never travel. The components are replaced as a whole, so
+        the caller sends everything the template must keep. The documented
+        answer is ``{"success": true}`` without the new status: read the
+        template again to learn it.
+        """
+        body: dict[str, Any] = {"components": components}
+        if category:
+            body["category"] = category
+        if parameter_format:
+            body["parameter_format"] = parameter_format
+        return await self._post(
+            f"/{template_id}",
             access_token=access_token,
             json_body=body,
         )

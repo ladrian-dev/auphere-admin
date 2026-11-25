@@ -32,7 +32,7 @@ Orden de ejecución. Cada tarea de prueba se ve en **rojo** antes de su implemen
   - el `TemplateCreateIn` de la consola construye los componentes de autenticación sin `body_text`.
 
   _Requisitos: 3.2, 3.3, 3.4_
-- [x] **T007** Constructor común y los dos `TemplateCreateIn`. _Requisitos: 3.2–3.4_
+- [x] **T007** Constructor común y los dos `TemplateCreateIn`. _Requisitos: 3.2–3.4_ _(2026-11-25: queda uno solo, el de la consola, por la 075 T042.)_
 
 ## Fase 3 — Claves por cliente
 
@@ -138,13 +138,13 @@ Orden de ejecución. Cada tarea de prueba se ve en **rojo** antes de su implemen
   - lo de hoy, intacto.
 
   _Requisitos: 6.1–6.7, 7.1, 7.7, 7.10, 8.8_
-- [x] **T028** Diálogo de plantillas: campos de autenticación y texto fijo de Meta. _Requisitos: 3.1, 3.3_
+- [x] **T028** Diálogo de plantillas: campos de autenticación y texto fijo de Meta. _Requisitos: 3.1, 3.3_ _(2026-11-25: sustituido por el editor compartido, 075 T041.)_
 - [x] **T029** Conexión de canal de un cliente de solo envío sin pasos de agente. _Requisitos: 2.2_
 
 ## Fase 8 — Consola
 
 - [x] **T030** Página pública `/pago-recibido`. _Requisitos: 7.9_
-- [x] **T031** Formulario de plantillas con autenticación (ES/EN). _Requisitos: 3.1, 3.4_
+- [x] **T031** Formulario de plantillas con autenticación (ES/EN). _Requisitos: 3.1, 3.4_ _(2026-11-25: dentro del editor compartido, 075 T039 y T040.)_
 
 ## Fase 9 — Revisión `/cso` (2026-11-24)
 

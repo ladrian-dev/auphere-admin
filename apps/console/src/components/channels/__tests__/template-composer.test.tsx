@@ -166,4 +166,15 @@ describe("Nueva plantilla de WhatsApp", () => {
     expect(await screen.findByText("No se pudo crear la plantilla")).toBeInTheDocument();
     expect(screen.getByText("Meta rechazó la creación: nombre en uso.")).toBeInTheDocument();
   });
+
+  it("si la acción falla sin respuesta, lo dice en el diálogo en vez de quedarse callado", async () => {
+    createTemplateAction.mockReset();
+    createTemplateAction.mockRejectedValue(new Error("network"));
+    mount();
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "aviso" } });
+    fireEvent.change(body(), { target: { value: "Gracias por tu compra." } });
+    fireEvent.click(send());
+    expect(await screen.findByText("No se pudo crear la plantilla")).toBeInTheDocument();
+    expect(screen.getByText("No se pudo guardar. Inténtalo de nuevo en un momento.")).toBeInTheDocument();
+  });
 });

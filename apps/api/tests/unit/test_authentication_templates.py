@@ -4,14 +4,19 @@ Meta fija el cuerpo de una plantilla de autenticación; solo se eligen el aviso
 de seguridad, la caducidad y el texto del botón de copiar código. Mandar un
 cuerpo libre (lo que hacían el panel y la consola) es lo que Meta rechaza. Y
 Marketing y Utilidad no cambian ni un byte.
+
+Desde el 2026-11-25 (spec 075, requisito 10) el panel y la consola crean con el
+mismo ``TemplateCreateIn``: el del panel, con ``components`` u ``otp``, ya no existe.
 """
 
 from __future__ import annotations
 
+import typing
+
 import pytest
 from pydantic import ValidationError
 
-from nexus_api.api.admin.whatsapp_templates import TemplateCreateIn as AdminTemplateIn
+from nexus_api.api.admin import whatsapp_templates as admin_routes
 from nexus_api.api.console.schemas_channels import TemplateCreateIn as ConsoleTemplateIn
 from nexus_api.schemas.whatsapp_authentication import authentication_components
 
@@ -41,35 +46,30 @@ def test_builder_rejects_expiry_out_of_range(minutes: int) -> None:
         authentication_components(code_expiration_minutes=minutes)
 
 
-def test_admin_authentication_is_built_from_otp() -> None:
-    body = AdminTemplateIn(
-        name="tecfin_codigo",
-        category="authentication",
-        otp={"button_text": "Copiar", "code_expiration_minutes": 5},
-    )
-    components = body.final_components()
-    assert components[0] == {"type": "BODY", "add_security_recommendation": True}
-    assert components[-1]["buttons"][0]["otp_type"] == "COPY_CODE"
+def test_panel_and_console_create_with_the_same_model() -> None:
+    """Spec 075, 10.5 (D7, 2026-11-25): one shape to create, in both screens."""
+    from nexus_api.schemas import whatsapp_templates as shared
+
+    hints = typing.get_type_hints(admin_routes.create_whatsapp_template)
+    assert hints["body"] is ConsoleTemplateIn
+    assert getattr(shared, "TemplateCreateIn", None) is ConsoleTemplateIn
+    assert not hasattr(admin_routes, "OtpTemplateIn")
 
 
-def test_admin_authentication_with_free_text_is_refused() -> None:
+def test_authentication_with_free_text_is_refused() -> None:
     with pytest.raises(ValidationError):
-        AdminTemplateIn(
+        ConsoleTemplateIn(
             name="tecfin_codigo",
             category="AUTHENTICATION",
             components=[{"type": "BODY", "text": "Tu código es {{1}}"}],
         )
 
 
-def test_admin_utility_is_unchanged() -> None:
-    components = [{"type": "BODY", "text": "Hola {{nombre}}"}]
-    body = AdminTemplateIn(name="recordatorio", category="UTILITY", components=components)
-    assert body.final_components() == components
-
-
-def test_admin_utility_without_components_is_refused() -> None:
+def test_the_panels_old_otp_object_is_refused() -> None:
     with pytest.raises(ValidationError):
-        AdminTemplateIn(name="recordatorio", category="UTILITY")
+        ConsoleTemplateIn(
+            name="tecfin_codigo", category="AUTHENTICATION", otp={"button_text": "Copiar"}
+        )
 
 
 def test_console_authentication_needs_no_body() -> None:

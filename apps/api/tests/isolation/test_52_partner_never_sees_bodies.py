@@ -75,6 +75,11 @@ PHONE_FIELDS_ALLOWED: dict[tuple[str, str], str] = {
         "A quién avisa una escalada (32.5): personas del negocio que el partner o el dueño "
         "escriben a mano, como los números de «Solo mi equipo»; nunca salen de una conversación."
     ),
+    ("TemplateButtonOut", "phone_number"): (
+        "El número de un botón «Llamar» de una plantilla del propio negocio (spec 075): lo "
+        "escribe el partner y va en la plantilla que Meta enseña a todos; nunca sale de una "
+        "conversación. Es lo mismo que ya trae ``components``, ahora con su forma."
+    ),
     ("LocationOut", "phone_e164"): (
         "El teléfono de una sede del propio negocio (las sedes de Negocio, requisito 9.1): lo "
         "escribe el partner o lo lee de la web del negocio, nunca de una conversación."

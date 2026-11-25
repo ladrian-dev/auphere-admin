@@ -5,12 +5,17 @@
  *
  * Lists the WABA's message templates straight from the Cloud API
  * (estado de aprobación incluido), lets the operator submit a new
- * template for review and delete existing ones. Las plantillas son
- * necesarias para iniciar conversación fuera de la ventana de 24h
- * (recordatorios, alertas, consultas al dueño).
+ * template for review, edit one (spec 075) and delete existing ones. Las
+ * plantillas son necesarias para iniciar conversación fuera de la ventana
+ * de 24h (recordatorios, alertas, consultas al dueño).
+ *
+ * Crear y editar usan el mismo editor que la consola (`TemplateEditor`, de
+ * `@nexus/ui`), también para las de autenticación y para los clientes de
+ * solo envío (spec 075, requisito 10): no hay otro formulario. Qué se puede
+ * editar lo dice la API en cada fila (`edit_blocker`), nunca esta pantalla (9.3).
  */
 
-import { LayoutTemplate, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { LayoutTemplate, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,27 +28,25 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  Input,
-  Label,
   Separator,
   Skeleton,
-  Textarea,
+  TemplateEditor,
+  canEditTemplate,
+  draftFromContent,
+  languageLabel,
+  templateEditFailure,
+  type TemplateEditorOutcome,
+  type TemplateSubmission,
 } from "@nexus/ui";
-import type { WhatsAppTemplate } from "@/lib/backend";
+import type { WhatsAppTemplate, WhatsAppTemplateEditResult } from "@/lib/backend";
 
-import {
-  isSpanishTemplate,
-  OTP_BUTTON_MAX,
-  OTP_DEFAULT_BUTTON,
-  otpIssues,
-  otpPayload,
-  otpPreview,
-} from "./otp-template";
 import {
   createWhatsAppTemplateAction,
   deleteWhatsAppTemplateAction,
+  editWhatsAppTemplateAction,
   listWhatsAppTemplatesAction,
 } from "./setup-actions";
+import { TEMPLATE_EDITOR_LABELS_ES, blockerSentence, editFailureSentence } from "./template-editor-labels";
 
 const STATUS_TONE: Record<string, string> = {
   APPROVED:
@@ -78,81 +81,68 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<WhatsAppTemplate[]>([]);
-  const [creating, setCreating] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+  // A fresh editor each time «Nueva plantilla» opens it: the next one starts empty.
+  const [creating, setCreating] = useState<{ key: number; open: boolean }>({ key: 0, open: false });
   const [deleting, setDeleting] = useState<string | null>(null);
+  // Spec 075: the template being edited, as it was when the editor opened —
+  // its fingerprint is what the save sends. «Recargar» starts again from a fresh one.
+  const [editing, setEditing] = useState<{ key: number; tpl: WhatsAppTemplate; open: boolean } | null>(null);
 
-  // Create-form state.
-  const [name, setName] = useState("");
-  const [language, setLanguage] = useState("es");
-  const [category, setCategory] = useState("UTILITY");
-  const [bodyText, setBodyText] = useState("");
-  // Spec 077 (3.1): an authentication template is Meta's fixed text; only these are chosen.
-  const [otpButton, setOtpButton] = useState(OTP_DEFAULT_BUTTON);
-  const [otpMinutes, setOtpMinutes] = useState("10");
-  const [otpSecurity, setOtpSecurity] = useState(true);
-  const isAuth = category === "AUTHENTICATION";
-  const otpDraft = { buttonText: otpButton, minutes: otpMinutes, security: otpSecurity };
-  const otpProblems = otpIssues(otpDraft);
-  const preview = otpPreview(otpDraft);
-
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<WhatsAppTemplate[] | null> => {
     setLoading(true);
     setLoadError(null);
     const res = await listWhatsAppTemplatesAction(tenantId);
     setLoading(false);
     if (!res.ok) {
       setLoadError(res.error);
-      return;
+      return null;
     }
     setTemplates(res.data.templates);
+    return res.data.templates;
   }, [tenantId]);
 
-  async function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    const cleanName = name.trim();
-    if (!/^[a-z0-9_]+$/.test(cleanName)) {
-      toast.error("Nombre inválido", {
-        description:
-          "Solo minúsculas, números y guiones bajos (ej. recordatorio_24h).",
-      });
-      return;
-    }
-    if (isAuth) {
-      const problem = otpProblems.button ?? otpProblems.minutes;
-      if (problem) {
-        toast.error("Revisa la plantilla de código", { description: problem });
-        return;
-      }
-    } else if (!bodyText.trim()) {
-      toast.error("Falta el texto del mensaje");
-      return;
-    }
-    setCreating(true);
-    // Spec 077: AUTHENTICATION goes as `otp`, never as free text (Meta refuses it).
-    const res = await createWhatsAppTemplateAction(
-      tenantId,
-      isAuth
-        ? { name: cleanName, language, category: "AUTHENTICATION", otp: otpPayload(otpDraft) }
-        : {
-            name: cleanName,
-            language,
-            category,
-            components: [{ type: "BODY", text: bodyText.trim() }],
-          },
+  function openEditor(tpl: WhatsAppTemplate) {
+    setEditing((e) => ({ key: (e?.key ?? 0) + 1, tpl, open: true }));
+  }
+
+  function closeEditor() {
+    setEditing((e) => (e ? { ...e, open: false } : e));
+  }
+
+  function onEdited(result: WhatsAppTemplateEditResult) {
+    const status = (result.status ?? "").toUpperCase();
+    toast.success(
+      result.changed
+        ? `Cambios enviados a Meta. Estado: ${STATUS_LABEL[status] ?? result.status ?? "desconocido"}.`
+        : "No había cambios: no se ha mandado nada a Meta.",
     );
-    setCreating(false);
-    if (!res.ok) {
-      toast.error("Meta no aceptó la plantilla", { description: res.error });
-      return;
-    }
-    toast.success(`Plantilla ${cleanName} enviada a revisión`, {
-      description:
-        "Meta la revisa (minutos a horas). El estado se actualiza solo.",
+    closeEditor();
+    void refresh();
+  }
+
+  /**
+   * After a conflict: the list again, and the editor from the template as it is now.
+   * What went wrong comes back to the editor, which is in front of the list.
+   */
+  async function reloadEditing(): Promise<string | null> {
+    const current = editing?.tpl;
+    if (!current) return null;
+    const res = await listWhatsAppTemplatesAction(tenantId);
+    if (!res.ok) return `No se pudo recargar la plantilla: ${res.error}`;
+    setTemplates(res.data.templates);
+    const again = res.data.templates.find((t) => t.name === current.name && t.language === current.language);
+    if (!again) toast.error("Esta plantilla ya no existe en ese idioma.");
+    setEditing((e) =>
+      again && canEditTemplate(again) ? { key: (e?.key ?? 0) + 1, tpl: again, open: true } : e ? { ...e, open: false } : e,
+    );
+    return null;
+  }
+
+  function onCreated(tplName: string) {
+    toast.success(`Plantilla ${tplName} enviada a revisión`, {
+      description: "Meta la revisa (minutos a horas). El estado se actualiza solo.",
     });
-    setShowForm(false);
-    setName("");
-    setBodyText("");
+    setCreating((c) => ({ ...c, open: false }));
     void refresh();
   }
 
@@ -184,7 +174,8 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
           </Button>
         }
       />
-      <DialogContent className="max-w-2xl">
+      {/* sm: — without it the primitive's sm:max-w-sm wins and the list is 384 px wide on a desktop. */}
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Plantillas de WhatsApp</DialogTitle>
           <DialogDescription>
@@ -205,170 +196,11 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
             <RefreshCw className="mr-2 size-4" />
             Actualizar
           </Button>
-          <Button
-            variant={showForm ? "secondary" : "default"}
-            size="sm"
-            onClick={() => setShowForm((v) => !v)}
-          >
+          <Button size="sm" onClick={() => setCreating((c) => ({ key: c.key + 1, open: true }))}>
             <Plus className="mr-2 size-4" />
             Nueva plantilla
           </Button>
         </div>
-
-        {showForm ? (
-          <form
-            onSubmit={onCreate}
-            className="grid gap-3 rounded-md border border-border bg-card p-4"
-          >
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="grid gap-2">
-                <Label htmlFor="tpl-name">Nombre</Label>
-                <Input
-                  id="tpl-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="recordatorio_24h"
-                  className="font-mono"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="tpl-lang">Idioma</Label>
-                <Input
-                  id="tpl-lang"
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  placeholder="es"
-                  className="font-mono"
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="tpl-cat">Categoría</Label>
-                <select
-                  id="tpl-cat"
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                >
-                  <option value="UTILITY">Utility (avisos, recordatorios)</option>
-                  <option value="MARKETING">Marketing</option>
-                  <option value="AUTHENTICATION">Autenticación</option>
-                </select>
-              </div>
-            </div>
-            {isAuth ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                <fieldset className="grid content-start gap-3">
-                  <legend className="mb-1 text-xs text-muted-foreground">
-                    Autenticación: Meta fija el texto. Solo se eligen estos campos.
-                  </legend>
-                  <div className="grid gap-2">
-                    <div className="grid gap-2">
-                      <Label htmlFor="tpl-otp-button">Texto del botón</Label>
-                      <Input
-                        id="tpl-otp-button"
-                        value={otpButton}
-                        maxLength={OTP_BUTTON_MAX}
-                        onChange={(e) => setOtpButton(e.target.value)}
-                        aria-invalid={otpProblems.button ? true : undefined}
-                        aria-describedby="tpl-otp-button-help"
-                      />
-                      <p
-                        id="tpl-otp-button-help"
-                        className={otpProblems.button ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
-                      >
-                        {otpProblems.button ?? `Hasta ${OTP_BUTTON_MAX} caracteres.`}
-                      </p>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="tpl-otp-minutes">Caduca en (min)</Label>
-                      <Input
-                        id="tpl-otp-minutes"
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        max={90}
-                        step={1}
-                        value={otpMinutes}
-                        onChange={(e) => setOtpMinutes(e.target.value)}
-                        aria-invalid={otpProblems.minutes ? true : undefined}
-                        aria-describedby="tpl-otp-minutes-help"
-                        className="tabular-nums"
-                      />
-                      <p
-                        id="tpl-otp-minutes-help"
-                        className={otpProblems.minutes ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
-                      >
-                        {otpProblems.minutes ?? "De 1 a 90. Vacío: no dice cuándo caduca."}
-                      </p>
-                    </div>
-                  </div>
-                  <label htmlFor="tpl-otp-security" className="flex min-h-6 items-center gap-2 text-sm">
-                    <input
-                      id="tpl-otp-security"
-                      type="checkbox"
-                      checked={otpSecurity}
-                      onChange={(e) => setOtpSecurity(e.target.checked)}
-                      className="size-4 shrink-0 accent-primary"
-                    />
-                    Aviso de seguridad
-                  </label>
-                </fieldset>
-                {isSpanishTemplate(language) ? (
-                  <figure className="grid min-w-0 content-start gap-2">
-                    <figcaption className="text-xs text-muted-foreground">Vista previa en español</figcaption>
-                    <div lang="es" className="flex flex-col gap-1 rounded-md bg-muted p-3" data-slot="otp-preview">
-                      <div className="rounded-md bg-background px-3 py-2 text-sm shadow-sm ring-1 ring-foreground/5">
-                        <p className="text-pretty break-words">
-                          <strong>{preview.body.split(" ")[0]}</strong>
-                          {preview.body.slice(preview.body.indexOf(" "))}
-                        </p>
-                        {preview.footer ? (
-                          <p className="mt-1 text-xs text-muted-foreground">{preview.footer}</p>
-                        ) : null}
-                      </div>
-                      <div className="rounded-md bg-background px-3 py-2 text-center text-sm font-medium text-primary-deep shadow-sm ring-1 ring-foreground/5">
-                        {preview.button}
-                      </div>
-                    </div>
-                  </figure>
-                ) : (
-                  <p className="text-xs text-pretty text-muted-foreground" data-slot="otp-preview-other">
-                    Meta pone el texto fijo en el idioma de la plantilla
-                    {language.trim() ? <> (<code className="font-mono">{language.trim()}</code>)</> : null}; aquí
-                    solo se previsualiza en español.
-                  </p>
-                )}
-              </div>
-            ) : (
-            <div className="grid gap-2">
-              <Label htmlFor="tpl-body">Texto del mensaje</Label>
-              <Textarea
-                id="tpl-body"
-                value={bodyText}
-                onChange={(e) => setBodyText(e.target.value)}
-                rows={3}
-                placeholder={
-                  "Hola {{nombre}}, te recordamos tu cita de mañana a las {{hora}}. Responde CONFIRMAR o CANCELAR."
-                }
-              />
-            </div>
-            )}
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowForm(false)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" size="sm" disabled={creating}>
-                {creating ? "Enviando a Meta…" : "Enviar a revisión"}
-              </Button>
-            </div>
-          </form>
-        ) : null}
 
         <Separator />
 
@@ -408,7 +240,7 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm">{tpl.name}</span>
+                      <span className="min-w-0 font-mono text-sm break-all">{tpl.name}</span>
                       <Badge variant="outline" className="font-mono text-[10px]">
                         {tpl.language}
                       </Badge>
@@ -429,21 +261,237 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
                         {bodyTextOf(tpl)}
                       </p>
                     ) : null}
+                    {tpl.edit_blocker ? (
+                      // 3.2 · One line: which part keeps it out, and where it is edited.
+                      <p className="mt-1 text-xs text-pretty text-muted-foreground" data-slot="edit-blocker">
+                        {blockerSentence(tpl.edit_blocker)}
+                      </p>
+                    ) : null}
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Borrar plantilla ${tpl.name}`}
-                    disabled={deleting === tpl.name}
-                    onClick={() => void onDelete(tpl.name)}
-                  >
-                    <Trash2 className="size-4 text-muted-foreground" />
-                  </Button>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {canEditTemplate(tpl) ? (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Editar plantilla ${tpl.name} (${languageLabel(tpl.language)})`}
+                        onClick={() => openEditor(tpl)}
+                      >
+                        <Pencil className="size-4 text-muted-foreground" />
+                      </Button>
+                    ) : null}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Borrar plantilla ${tpl.name}`}
+                      disabled={deleting === tpl.name}
+                      onClick={() => void onDelete(tpl.name)}
+                    >
+                      <Trash2 className="size-4 text-muted-foreground" />
+                    </Button>
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
+        <CreateTemplateDialog
+          key={creating.key}
+          tenantId={tenantId}
+          open={creating.open}
+          onClose={() => setCreating((c) => ({ ...c, open: false }))}
+          onCreated={onCreated}
+        />
+        {editing ? (
+          <EditTemplateDialog
+            key={editing.key}
+            tenantId={tenantId}
+            tpl={editing.tpl}
+            open={editing.open}
+            onClose={closeEditor}
+            onSaved={onEdited}
+            onReload={reloadEditing}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Spec 075 (10.5, 10.6): create a template with the console's editor, every
+ * category included, for any client (also a send-only one). The editor hands
+ * over the console's shape and the API builds what goes to Meta (9.3).
+ */
+function CreateTemplateDialog({
+  tenantId,
+  open,
+  onClose,
+  onCreated,
+}: {
+  tenantId: string;
+  open: boolean;
+  onClose: () => void;
+  onCreated: (name: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function create(draft: TemplateSubmission): Promise<TemplateEditorOutcome> {
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await createWhatsAppTemplateAction(tenantId, draft);
+      if (!res.ok) {
+        // What Meta or the API said, where the operator is looking; what was written stays.
+        setError(res.error);
+        return { kind: "failed" };
+      }
+      onCreated(res.data.name);
+      return { kind: "done" };
+    } catch {
+      setError(editFailureSentence({ kind: "unknown" }));
+      return { kind: "failed" };
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !busy && !next && onClose()}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Nueva plantilla</DialogTitle>
+          <DialogDescription>
+            Meta la revisa antes de que se pueda mandar, normalmente en minutos. El nombre y el idioma no se pueden
+            cambiar después.
+          </DialogDescription>
+        </DialogHeader>
+        <TemplateEditor
+          mode="create"
+          labels={TEMPLATE_EDITOR_LABELS_ES}
+          pending={busy}
+          serverError={error}
+          onSubmit={create}
+          onCancel={onClose}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Spec 075 (9.1, 9.2): edit one language of a template, with the console's
+ * editor. It starts from what the API split (`draft`) and saves with the
+ * fingerprint the list gave (`version`): a change made meanwhile is never
+ * overwritten (7.1).
+ */
+function EditTemplateDialog({
+  tenantId,
+  tpl,
+  open,
+  onClose,
+  onSaved,
+  onReload,
+}: {
+  tenantId: string;
+  tpl: WhatsAppTemplate;
+  open: boolean;
+  onClose: () => void;
+  onSaved: (result: WhatsAppTemplateEditResult) => void;
+  /** The list again; on success the caller reopens the editor, on failure it says why. */
+  onReload: () => Promise<string | null>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [error, setError] = useState<{ text: string; reload: boolean } | null>(null);
+
+  async function reload() {
+    setReloading(true);
+    try {
+      const problem = await onReload();
+      if (problem) setError({ text: problem, reload: true });
+    } catch {
+      setError({ text: "No se pudo recargar la plantilla. Inténtalo de nuevo en un momento.", reload: true });
+    } finally {
+      setReloading(false);
+    }
+  }
+  const locked = (tpl.status ?? "").toUpperCase() === "APPROVED";
+  const initial = tpl.draft ? draftFromContent(tpl.name, tpl.language, tpl.draft) : null;
+
+  async function save(draft: TemplateSubmission, { confirm }: { confirm: boolean }): Promise<TemplateEditorOutcome> {
+    // The editor does not offer Authentication when editing (1.4, 3.2): nothing to send.
+    if (draft.category === "AUTHENTICATION") return { kind: "failed" };
+    setError(null);
+    setBusy(true);
+    try {
+      // The name and the language are the template's, in the path: never in the body.
+      const res = await editWhatsAppTemplateAction(tenantId, tpl.name, tpl.language, {
+        version: tpl.version ?? "",
+        confirm,
+        ...(locked ? {} : { category: draft.category }),
+        header_text: draft.header_text,
+        body_text: draft.body_text,
+        footer_text: draft.footer_text,
+        buttons: draft.buttons,
+        examples: draft.examples,
+      });
+      if (res.ok) {
+        onSaved(res.data);
+        return { kind: "done" };
+      }
+      const failure = templateEditFailure(res.code, res.info);
+      if (failure.kind === "confirmation_required") return failure;
+      setError({
+        // "invalid": the action refused it before the API, and says so itself.
+        text: res.code === "invalid" ? res.error : editFailureSentence(failure),
+        reload: failure.kind === "template_changed" || failure.kind === "not_editable" || failure.kind === "template_not_found",
+      });
+      return failure.kind === "system_variables" ? failure : { kind: "failed" };
+    } catch {
+      // The action itself failed (network): what was written stays.
+      setError({ text: editFailureSentence({ kind: "unknown" }), reload: false });
+      return { kind: "failed" };
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(next) => !busy && !next && onClose()}>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Editar plantilla</DialogTitle>
+          <DialogDescription>
+            Meta vuelve a revisar la plantilla con el mismo nombre. El nombre y el idioma no cambian. El resto se
+            manda entero, también lo que no toques.
+          </DialogDescription>
+        </DialogHeader>
+        {tpl.rejection_reason ? (
+          // 1.2 · What Meta said, in sight while editing.
+          <div className="grid min-w-0 gap-1 rounded-md border border-status-danger-border p-3 text-sm" data-slot="rejection">
+            <p className="font-medium">Motivo de Meta</p>
+            <p className="font-mono text-xs break-words">{tpl.rejection_reason}</p>
+          </div>
+        ) : null}
+        <TemplateEditor
+          mode="edit"
+          initial={initial}
+          categoryLocked={locked}
+          systemVariables={tpl.system_variables ?? null}
+          labels={TEMPLATE_EDITOR_LABELS_ES}
+          pending={busy}
+          serverError={error?.text}
+          serverErrorAction={
+            error?.reload ? (
+              <Button type="button" variant="outline" size="sm" onClick={() => void reload()} loading={reloading}>
+                Recargar
+              </Button>
+            ) : undefined
+          }
+          onSubmit={save}
+          onCancel={onClose}
+        />
       </DialogContent>
     </Dialog>
   );
