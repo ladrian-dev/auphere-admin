@@ -54,7 +54,11 @@ xcrun simctl openurl booted "exp+auphere-customers://expo-development-client/?ur
 - La app está en español por idioma de app. Para verla en inglés: Ajustes → Apps → Customers Dev → Idioma.
 - **Si deslizar una fila desde la derecha no responde**, es el botón flotante «Tools» del cliente de desarrollo, que tapa el borde: escóndelo desde el menú de desarrollo (⌃⌘Z en el simulador).
 
-## 4. Helvena (cuando confirmes la licencia)
+## 4. Helvena
+
+Desde el 2026-11-21 (licencia confirmada) va en todos los builds: los tres TTF están versionados en `apps/mobile/assets/fonts/helvena/`. Tras cambiar de rama o regenerar, si `ios/` o `android/` ya existían, hay que volver a generarlos (`npx expo prebuild`) para que el build la incruste. Lo que sigue es el procedimiento antiguo, por si hiciera falta medir sin ella (`APP_HELVENA=0`).
+
+### Antes de la licencia
 
 1. Copia los tres archivos al proyecto:
 

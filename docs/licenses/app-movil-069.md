@@ -17,6 +17,7 @@ Ninguna es AGPL ni una «Apache modificada», y ninguna limita el uso multi-tena
 - **El motor de Skia** que trae `@shopify/react-native-skia` es BSD-3-Clause (Google), según su documentación. Permite redistribuir en binario con el aviso de copyright.
 - **Los logos de WhatsApp, Instagram y Messenger** salen de Simple Icons 15.22.0, CC0 1.0: los mismos trazados que `apps/admin/src/components/brand/brand-marks.ts` (ver `simple-icons-CC0.txt`). Las marcas son de sus dueños y solo nombran el canal.
 - **La «G» de Google** es la de `apps/console/public/third-party/google-g.svg`, para el botón «Continuar con Google» como pide su guía de marca.
-- **Helvena** (Zippie Letras) es comercial, «All rights reserved», y **no entra en ningún build**.
-  - Su licencia de uso en apps no se ha leído: el zip de `~/Downloads` no trae texto de licencia.
-  - El interruptor `APP_HELVENA=1` solo la incrusta si los archivos están en `assets/fonts/helvena/`, que git ignora.
+- **Helvena** (Zippie Letras) es comercial, «All rights reserved».
+  - **Luis confirmó la licencia de uso en apps el 2026-11-21** y la guarda él; el texto no está en el repositorio.
+  - Desde entonces **va en todos los builds**: `Helvena-Regular.ttf`, `Helvena-Medium.ttf` y `Helvena-Semibold.ttf`, versionados en `apps/mobile/assets/fonts/helvena/` e incrustados por el plugin de `expo-font`.
+  - La consola ya la llevaba desde la spec 068 (`apps/console/public/fonts/Helvena-Variable.woff2`).

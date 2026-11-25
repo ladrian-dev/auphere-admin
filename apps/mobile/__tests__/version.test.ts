@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -36,19 +36,28 @@ describe("the builds (R19.2)", () => {
     expect(eas.submit.staging?.android?.track).toBe("internal");
   });
 
-  it("no store build carries the example data of Reservas (R18.2) or of the whole app (069 R23.2), nor Helvena", () => {
-    // What a profile inherits counts too (`extends`, /cso L3).
-    const envOf = (p: string): Record<string, string> => {
-      const b = eas.build[p];
-      return b ? { ...(b.extends ? envOf(b.extends) : {}), ...(b.env ?? {}) } : {};
-    };
+  // What a profile inherits counts too (`extends`, /cso L3).
+  const envOf = (p: string): Record<string, string> => {
+    const b = eas.build[p];
+    return b ? { ...(b.extends ? envOf(b.extends) : {}), ...(b.env ?? {}) } : {};
+  };
+
+  it("no store build carries the example data of Reservas (R18.2) or of the whole app (069 R23.2)", () => {
     for (const p of ["preview", "staging", "production"]) {
       const env = envOf(p);
       expect(env.EXPO_PUBLIC_RESERVAS_DEMO).toBeUndefined();
       expect(env.EXPO_PUBLIC_DEMO).toBeUndefined();
-      // The font's licence is not confirmed (spec 069, T004): no profile switches it on.
-      expect(env.APP_HELVENA).toBeUndefined();
     }
+  });
+
+  it("every build carries Helvena (069 R1.4–R1.5, licence confirmed by Luis on 2026-11-21): its three faces are versioned and nothing switches it off", () => {
+    for (const face of ["Regular", "Medium", "Semibold"]) {
+      expect(existsSync(join(ROOT, `assets/fonts/helvena/Helvena-${face}.ttf`))).toBe(true);
+    }
+    for (const p of ["development", "preview", "staging", "production"]) expect(envOf(p).APP_HELVENA).toBeUndefined();
+    // On unless a local build asks for the system font by hand (`APP_HELVENA=0`, to measure it).
+    expect(read("app.config.ts")).toMatch(/process\.env\.APP_HELVENA !== "0"/);
+    expect(read(".gitignore")).not.toMatch(/assets\/fonts\/helvena/);
   });
 });
 

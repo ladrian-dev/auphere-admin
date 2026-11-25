@@ -179,7 +179,7 @@ export type Seed = {
   lines: Line[];
 };
 
-export const LUCIA_REASON = "Pide que le devuelvan la seña de 20 €. Ava no puede hacer devoluciones.";
+export const LUCIA_REASON = "Pide que le devuelvan la seña de 20 dólares. Ava no puede hacer devoluciones.";
 /** The one who waits for a person; Reservas' example has her next booking too. */
 export const LUCIA = { name: "Lucía Fernández", handle: "+34 600 000 001" } as const;
 
@@ -200,10 +200,10 @@ export function seeds(now: number): Seed[] {
       state: "waiting",
       unread: true,
       waiting: { code: "escalated", reason: LUCIA_REASON },
-      summary: "Quiere cancelar su blanqueamiento y que le devuelvan la seña de 20 €.",
+      summary: "Quiere cancelar su blanqueamiento y que le devuelvan la seña de 20 dólares.",
       history: { conversations: 3, firstDaysAgo: 128 },
       lines: [
-        { at: min(41), from: "contact", text: "Hola, buenos días. El martes pagué una seña de 20 € para el blanqueamiento, pero al final no voy a poder ir." },
+        { at: min(41), from: "contact", text: "Hola, buenos días. El martes pagué una seña de 20 dólares para el blanqueamiento, pero al final no voy a poder ir." },
         { at: min(40), from: "agent", text: "Hola, Lucía. Siento que no puedas venir. ¿Quieres que te busque otro día para el blanqueamiento?", delivery: "read" },
         { at: min(31), from: "contact", text: "No, prefiero cancelarla. ¿Me podéis devolver la seña?" },
         { at: min(30), from: "contact", text: "Os paso el justificante", media: { kind: "image", filename: "justificante-pago.jpg", transcript: null } },
@@ -269,7 +269,7 @@ export function seeds(now: number): Seed[] {
           from: "contact",
           media: { kind: "audio", filename: null, transcript: "Hola, quería saber cuánto cuesta una endodoncia, que me han dicho que necesito una." },
         },
-        { at: day(1, 18, 3), from: "agent", text: "Hola, Valentina. La endodoncia cuesta entre 180 y 250 € según la pieza. Si quieres, te doy cita para valorarla.", delivery: "read" },
+        { at: day(1, 18, 3), from: "agent", text: "Hola, Valentina. La endodoncia cuesta entre 180 y 250 dólares según la pieza. Si quieres, te doy cita para valorarla.", delivery: "read" },
         { at: day(1, 18, 9), from: "contact", text: "Lo pienso y te digo." },
         { at: day(1, 18, 10), from: "agent", text: "¡Claro! Aquí estoy cuando lo decidas.", delivery: "read" },
       ],
@@ -294,7 +294,7 @@ export function seeds(now: number): Seed[] {
           },
         },
         { at: day(1, 12, 16), from: "agent", text: "¡Hola, Marta! Te escribimos por privado con los precios.", comment: true, delivery: "sent" },
-        { at: day(1, 12, 16), from: "agent", text: "El blanqueamiento cuesta 290 € e incluye la revisión. ¿Quieres que te busque cita?", delivery: "read" },
+        { at: day(1, 12, 16), from: "agent", text: "El blanqueamiento cuesta 290 dólares e incluye la revisión. ¿Quieres que te busque cita?", delivery: "read" },
         { at: day(1, 12, 40), from: "contact", text: "Gracias, lo miro con calma." },
         { at: day(1, 12, 41), from: "agent", text: "¡Perfecto! Cualquier duda, me escribes por aquí.", delivery: "read" },
       ],

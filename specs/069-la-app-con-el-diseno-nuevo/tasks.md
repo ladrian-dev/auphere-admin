@@ -13,7 +13,7 @@
 - [x] T001 Rama y worktree `069-la-app-con-el-diseno-nuevo` desde `origin/develop` (70d8da81); base en verde: 38 suites, 442 tests. _Requisitos: 20.2_
 - [x] T002 Comprobar que no se añade ninguna ruta de API: `openapi.json` igual al de `develop` al cerrar. _Requisitos: encabezado (aislamiento)_
 - [x] T003 Dependencias con su licencia leída: `react-native-svg` 15.16.0 (MIT), `@shopify/react-native-skia` 2.14.0 (MIT) y `lucide-react-native` 1.77.0 (ISC). Nota en `docs/licenses/`. _Requisitos: 1.3, 5.1_
-- [x] T004 Interruptor de Helvena (`APP_HELVENA=1` y TTF en `assets/fonts/helvena/`, ignorados por git). **Apagado en todos los builds** hasta leer la licencia. _Requisitos: 1.4, 1.5_
+- [x] T004 Interruptor de Helvena (`APP_HELVENA=1` y TTF en `assets/fonts/helvena/`, ignorados por git). **Apagado en todos los builds** hasta leer la licencia. **Encendida en todos los builds el 2026-11-21**, con la licencia confirmada por Luis: los TTF se versionan y `APP_HELVENA=0` solo sirve para medir en local (test `version`). _Requisitos: 1.4, 1.5_
 - [x] T005 Versión 1.3.0 y su test. _Requisitos: 22.1_
 
 ## Fase 2 — Sistema (bloquea las pantallas)
@@ -137,7 +137,7 @@
   - la pestaña de búsqueda nativa de iOS 26, con expo-router 58.0.26 o posterior (de T032). Sigue sin probar: el simulador de la mañana del 2026-11-21 tiene expo-router 58.0.25;
   - fijar `lucide-react-native` a `1.77.0` exacta (`cso.md`, L1);
   - teléfonos y cuentas del negocio de ejemplo claramente inventados antes de hacer capturas de tienda: hoy tienen formato de móvil real (`cso.md`, L4; R23.3);
-  - que `app.config.ts` falle si Helvena se enciende fuera de desarrollo mientras no haya licencia (`cso.md`, I2);
+  - que `app.config.ts` falle si Helvena se enciende fuera de desarrollo mientras no haya licencia (`cso.md`, I2): **ya no aplica**, la licencia está confirmada; ahora falla si falta uno de sus archivos;
   - los 26 avisos de `pnpm audit` en herramientas de build, anteriores a la 069, en una tarea aparte (`cso.md`, I3).
 
   _Requisitos: 3, 10.2, 23.3_

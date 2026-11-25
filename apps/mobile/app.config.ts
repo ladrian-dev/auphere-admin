@@ -31,11 +31,12 @@ const variant = process.env.APP_VARIANT ?? "production";
 const dev = variant === "development";
 
 /**
- * Spec 069 (D3, R1.4–R1.5): Helvena, the brand's face, in titles and figures —
- * only when a build asks for it (`APP_HELVENA=1`) AND its static faces are in
- * `assets/fonts/helvena/` (not versioned). No build carries it until its app
- * licence is confirmed; without it the titles use the system font. Embedded by
- * the expo-font plugin at build time: nothing loads at run time.
+ * Spec 069 (D3, R1.4–R1.5): Helvena, the brand's face, in titles and figures.
+ * Its app licence was confirmed by Luis on 2026-11-21, so every build embeds
+ * its three static faces from `assets/fonts/helvena/` (versioned). A local
+ * build can ask for the system font with `APP_HELVENA=0`, to measure it
+ * (R22). Embedded by the expo-font plugin at build time: nothing loads at run
+ * time. A missing face stops the build rather than shipping without the brand.
  */
 const HELVENA_DIR = "./assets/fonts/helvena";
 const HELVENA_FACES = [
@@ -43,8 +44,9 @@ const HELVENA_FACES = [
   { file: "Helvena-Medium.ttf", weight: 500 },
   { file: "Helvena-Semibold.ttf", weight: 600 },
 ] as const;
-const helvena =
-  process.env.APP_HELVENA === "1" && HELVENA_FACES.every((f) => existsSync(`${__dirname}/assets/fonts/helvena/${f.file}`));
+const helvena = process.env.APP_HELVENA !== "0";
+const missingFace = HELVENA_FACES.find((f) => !existsSync(`${__dirname}/assets/fonts/helvena/${f.file}`));
+if (helvena && missingFace) throw new Error(`Helvena: ${HELVENA_DIR}/${missingFace.file} is missing (spec 069, R1.4).`);
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
