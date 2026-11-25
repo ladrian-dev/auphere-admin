@@ -16,6 +16,7 @@ import { fullDateTime, relativeTime } from "@/lib/format";
 
 import { AgentToggle } from "./agent-toggle";
 import { LiveIndicator } from "./live-indicator";
+import { requireOperator } from "@/lib/session";
 
 const STATUS_TONE = { open: "info", closed: "muted", escalated: "danger" } as const;
 const STATUS_LABEL = { open: "Abierta", closed: "Resuelta", escalated: "Escalada" } as const;
@@ -26,6 +27,7 @@ const STATUS_LABEL = { open: "Abierta", closed: "Resuelta", escalated: "Escalada
  * said in words.
  */
 export default async function ConversationsPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireOperator();
   const { id } = await params;
   const [tenant, page] = await Promise.all([backend.getTenant(id), backend.listConversations(id, undefined, 50)]);
   if (!tenant) return null;

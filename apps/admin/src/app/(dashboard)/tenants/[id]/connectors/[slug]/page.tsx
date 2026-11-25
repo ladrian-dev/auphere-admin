@@ -20,6 +20,7 @@ import {
 import { WooCommerceSetupDialog } from "../../_integrations/setup-wizards";
 import { CustomerAccounts, type CustomerAccountsState } from "./customer-accounts";
 import { ToolOverrides } from "./tool-overrides";
+import { requireOperator } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export const dynamic = "force-dynamic";
  * agent may do with each of its tools.
  */
 export default async function TenantConnectorPage({ params }: { params: Promise<{ id: string; slug: string }> }) {
+  await requireOperator();
   const { id, slug: rawSlug } = await params;
   const slug = decodeURIComponent(rawSlug);
   const [connector, tenant, installed, tools, overrides, accounts] = await Promise.all([

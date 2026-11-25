@@ -7,6 +7,7 @@ import { backend } from "@/lib/backend";
 import { relativeTime, statusLabel } from "@/lib/format";
 
 import { TakeoverPanel } from "./takeover-panel";
+import { requireOperator } from "@/lib/session";
 
 const STATUS_TONE = {
   open: "info",
@@ -30,6 +31,7 @@ export default async function ConversationDetailPage({
 }: {
   params: Promise<{ id: string; conv_id: string }>;
 }) {
+  await requireOperator();
   const { id, conv_id } = await params;
   const [tenant, conversation, messages] = await Promise.all([
     backend.getTenant(id),

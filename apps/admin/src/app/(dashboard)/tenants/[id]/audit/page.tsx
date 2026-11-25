@@ -5,6 +5,7 @@ import { AuditRow } from "@/components/audit/audit-row";
 import { backend } from "@/lib/backend";
 
 import { AuditFilters } from "./filters";
+import { requireOperator } from "@/lib/session";
 
 type SearchParams = {
   cursor?: string;
@@ -33,6 +34,7 @@ export default async function AuditPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<SearchParams>;
 }) {
+  await requireOperator();
   const { id } = await params;
   const filters = await searchParams;
   const [tenant, page, actions] = await Promise.all([

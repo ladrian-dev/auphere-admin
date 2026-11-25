@@ -3,10 +3,12 @@ import { PageHeader } from "@nexus/ui";
 import { backend } from "@/lib/backend";
 
 import { NewTenantWizard } from "./wizard-form";
+import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "Nuevo tenant" };
 
 export default async function NewTenantPage() {
+  await requireOperator();
   // Spec 077 (T024): a send-only client may hang from a partner. A failed read
   // is said (and blocks a send-only client), never taken for «no partners».
   const partners = await backend.listPartners().catch(() => null);

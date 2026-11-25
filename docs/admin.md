@@ -10,6 +10,27 @@ altas, tickets, conectores, canales propios, Playground QA y estado de la instan
 Solo lo usan operadores; la identidad vive en la API (`/admin/auth/*`, ADR-034) y el
 panel no tiene base de datos.
 
+## Quién puede operar (spec 078)
+
+El panel llama a la API con el token de servicio, así que la API no sabe qué operador
+pide cada cosa: quien decide si se obedece es el panel, con `requireOperator()`
+(`src/lib/session.ts`).
+
+- **Toda Server Action empieza por ella**, directamente o devolviendo una función del
+  mismo archivo que empiece por ella; nunca dentro de un `try`, que se traga la
+  redirección. Solo `loginAction` y `logoutAction` no la llaman.
+- **Toda página y layout de servidor de `app/(dashboard)` empieza por ella**, y también
+  su `generateMetadata` si lee la API. Next no vuelve a ejecutar un layout al navegar,
+  así que la guarda del layout raíz no protege las lecturas de cada página.
+- `src/__tests__/server-actions-require-operator.test.ts` lee el código y falla con el
+  nombre de la acción o la página que no empiece por la guarda.
+- **No mira el rol**: un `viewer` puede hacer lo mismo que un `admin`. Está fuera de la
+  spec 078.
+- **Una cuenta deshabilitada** (`access: "disabled"`) entra con su contraseña, pero
+  `requireOperator()` la lleva a `/sin-acceso`, que solo deja cerrar sesión. Las rutas
+  de `app/api` le contestan 403.
+- El middleware solo mira que exista la cookie: no protege nada por sí mismo.
+
 ## Sistema de diseño
 
 Desde la spec 031 el panel usa **`@nexus/ui`** como la consola de partners:

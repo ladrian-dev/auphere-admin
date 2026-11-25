@@ -6,6 +6,7 @@ import { loginBetaBackend } from "@/lib/backend-whatsapp-beta";
 import { CatalogGrid } from "./catalog-grid";
 import { ChannelsTable } from "./channels-table";
 import { ChannelsTabs } from "./channels-tabs";
+import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "Canales" };
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
  * client's own Canales tab, where the wizard knows whose number it is.
  */
 export default async function ChannelsPage() {
+  await requireOperator();
   const [catalog, all, beta] = await Promise.all([
     backend.getChannelCatalog().catch(() => null),
     backend.listAllChannels().catch(() => null),

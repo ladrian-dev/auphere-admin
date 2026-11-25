@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DRIFT, POLICY, SOL, row } from "./fixtures";
 
+// Spec 078: pages start with the operator guard; here the operator is signed in.
+vi.mock("@/lib/session", () => ({ requireOperator: async () => ({ id: "op-1", access: "ok", role: "admin" }) }));
 vi.mock("@/lib/router-panel", () => ({ ROUTER_PANEL_VISIBLE: false }));
 
 // Spec 065: the page also reads Auphere's default model for the agents.

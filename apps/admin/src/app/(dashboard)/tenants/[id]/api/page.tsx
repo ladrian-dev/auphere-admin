@@ -7,6 +7,7 @@ import { backend, type TemplateMessageRowOut } from "@/lib/backend";
 import { FAILURE_LABEL, templateMessageStatus } from "@/lib/send-only";
 
 import { ApiKeysPanel } from "./keys-panel";
+import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "Envío por API" };
 
@@ -21,6 +22,7 @@ const TIME = new Intl.DateTimeFormat("es", { dateStyle: "short", timeStyle: "med
  * code. Each block reads on its own: one failing does not hide the others.
  */
 export default async function TenantApiPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireOperator();
   const { id } = await params;
   const [tenant, keys, sends] = await Promise.all([
     backend.getTenant(id),

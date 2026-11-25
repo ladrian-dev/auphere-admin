@@ -10,6 +10,7 @@ import { MissingLabels } from "./missing-labels";
 import { SectionError } from "./section-error";
 import { parseLimit } from "./sector-guides";
 import { AuphereGuidesSkeleton, MissingLabelsSkeleton } from "./skeletons";
+import { requireOperator } from "@/lib/session";
 
 export const metadata = { title: "Sectores sin guía" };
 export const dynamic = "force-dynamic";
@@ -22,6 +23,7 @@ export const dynamic = "force-dynamic";
  * one that fails does not take the other with it.
  */
 export default async function SectorGuidesPage({ searchParams }: { searchParams: Promise<{ limit?: string | string[] }> }) {
+  await requireOperator();
   const { limit: raw } = await searchParams;
   const limit = parseLimit(raw);
   return (

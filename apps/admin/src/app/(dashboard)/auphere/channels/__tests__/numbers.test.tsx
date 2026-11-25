@@ -12,6 +12,8 @@ const h = vi.hoisted(() => ({
   success: vi.fn(),
   refresh: vi.fn(),
 }));
+// Spec 078: pages start with the operator guard; here the operator is signed in.
+vi.mock("@/lib/session", () => ({ requireOperator: async () => ({ id: "op-1", access: "ok", role: "admin" }) }));
 vi.mock("@/lib/backend", () => ({ backend: { listAuphereChannels: (...a: unknown[]) => h.list(...a) } }));
 vi.mock("../actions", () => ({
   createNumberAction: (...a: unknown[]) => h.create(...a),

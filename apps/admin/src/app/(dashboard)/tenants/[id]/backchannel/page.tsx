@@ -10,6 +10,7 @@ import {
 } from "./actions";
 import { OwnersTable } from "./owners-table";
 import { RegisterOwnerForm } from "./register-form";
+import { requireOperator } from "@/lib/session";
 
 /**
  * Per-tenant backchannel tab (Bloque D Fase 2 / D7).
@@ -34,6 +35,7 @@ export default async function BackchannelPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireOperator();
   const { id } = await params;
   const [tenant, owners, channels] = await Promise.all([
     backend.getTenant(id),

@@ -30,6 +30,10 @@ export async function GET(
   if (!operator) {
     return new Response("unauthorized", { status: 401 });
   }
+  // Spec 078, 2.3: a disabled account keeps its session but may not operate.
+  if (operator.access !== "ok") {
+    return new Response("forbidden", { status: 403 });
+  }
 
   const { conv_id } = await params;
   const tenantId = request.nextUrl.searchParams.get("tenant_id");

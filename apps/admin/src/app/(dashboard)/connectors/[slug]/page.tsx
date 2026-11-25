@@ -26,6 +26,7 @@ import { backend, type TenantConnectorStatus } from "@/lib/backend";
 import { connectorAccessBackend } from "@/lib/backend-connector-access";
 
 import { ConnectorAccessPanel } from "./connector-access-panel";
+import { requireOperator } from "@/lib/session";
 
 /** Spec 060 (1.5): de sistema, no de un agente; la disponibilidad por partner no se gestiona. */
 const SYSTEM_CONNECTORS = new Set(["googlecalendar"]);
@@ -35,6 +36,7 @@ export const dynamic = "force-dynamic";
 
 /** Spec 035 (R4): one connector of the catalog and the clients that use it. */
 export default async function ConnectorPage({ params }: { params: Promise<{ slug: string }> }) {
+  await requireOperator();
   const slug = decodeURIComponent((await params).slug);
   const [connector, installs, access, partners] = await Promise.all([
     backend.getConnector(slug),
