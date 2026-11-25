@@ -30,6 +30,18 @@ class TemplateMessageIn(BaseModel):
     # positional placeholders are rejected at resolve time with an
     # explicit message — see services/broadcasts._resolve_template.
     variables: dict[str, str] = Field(default_factory=dict)
+    # Spec 077: the one-time code for an AUTHENTICATION template. It goes in
+    # Meta's fixed body and in the copy-code button; it is never logged and is
+    # wiped from the stored message once the send ends. Only valid with an
+    # authentication template, and the only thing such a template takes.
+    code: str | None = Field(
+        default=None,
+        max_length=64,
+        description=(
+            "One-time code for an authentication template (1-15 characters, no "
+            "spaces or links). Leave it out for any other template."
+        ),
+    )
     idempotency_key: str | None = Field(
         default=None,
         max_length=80,

@@ -22,7 +22,12 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from nexus_api.schemas.whatsapp_authentication import (
+    DEFAULT_OTP_BUTTON_TEXT,
+    authentication_components,
+)
 
 from .schemas import ChannelOut, ClientHealthOut
 
@@ -259,12 +264,23 @@ class TemplateCreateIn(BaseModel):
     language: str = Field(default="es", min_length=2, max_length=15)
     category: TemplateCategory = "UTILITY"
     header_text: str | None = Field(default=None, max_length=60)
-    body_text: str = Field(min_length=1, max_length=1024)
+    #: Required except for AUTHENTICATION, whose body Meta fixes (spec 077).
+    body_text: str = Field(default="", max_length=1024)
     footer_text: str | None = Field(default=None, max_length=60)
     buttons: list[TemplateButtonIn] = Field(default_factory=list, max_length=3)
     #: Example value per body variable (``{"nombre": "Camila"}`` or
     #: ``{"1": "Camila"}``). Meta needs one for every variable to review it.
     examples: dict[str, str] = Field(default_factory=dict, max_length=20)
+    #: Spec 077: what an AUTHENTICATION template lets us choose.
+    otp_button_text: str = Field(default=DEFAULT_OTP_BUTTON_TEXT, min_length=1, max_length=25)
+    otp_expiration_minutes: int | None = Field(default=None, ge=1, le=90)
+    otp_security_recommendation: bool = True
+
+    @model_validator(mode="after")
+    def _body_unless_authentication(self) -> TemplateCreateIn:
+        if self.category != "AUTHENTICATION" and not self.body_text.strip():
+            raise ValueError("body_text is required")
+        return self
 
     @field_validator("examples")
     @classmethod
@@ -284,6 +300,8 @@ class TemplateCreateIn(BaseModel):
         return out
 
     def parameter_format(self) -> str | None:
+        if self.category == "AUTHENTICATION":
+            return None
         names = self.variables()
         if names and not all(n.isdigit() for n in names):
             return "NAMED"
@@ -299,6 +317,13 @@ class TemplateCreateIn(BaseModel):
         return v
 
     def to_components(self) -> list[dict[str, Any]]:
+        if self.category == "AUTHENTICATION":
+            # Spec 077: Meta's shape, never free text (it rejects that).
+            return authentication_components(
+                button_text=self.otp_button_text,
+                code_expiration_minutes=self.otp_expiration_minutes,
+                add_security_recommendation=self.otp_security_recommendation,
+            )
         components: list[dict[str, Any]] = []
         if self.header_text:
             components.append({"type": "HEADER", "format": "TEXT", "text": self.header_text})

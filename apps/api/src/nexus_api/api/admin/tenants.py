@@ -20,10 +20,11 @@ from typing import Any
 
 import sqlalchemy as sa
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nexus_api.api.admin.operator import operator_actor, operator_from_header
 from nexus_api.api.deps import get_db_session, scoped_session_from_path
 from nexus_api.core.security import require_admin_token
 from nexus_api.core.tenant_context import (
@@ -153,10 +154,13 @@ async def create_tenant(
     body: TenantCreateIn,
     session: AsyncSession = Depends(get_db_session),
     actor: str = Depends(require_admin_token),
+    x_operator_id: str | None = Header(default=None, alias="X-Operator-Id"),
 ) -> TenantOut:
     """Create a tenant with ACTIVE status. The audit_log row is written
     inside RLS scope under the new tenant's id."""
     repo = TenantRepository(session)
+    # Spec 077: the panel names the operator; the audit says who created it.
+    operator = await operator_from_header(x_operator_id)
     async with session.begin():
         if await repo.slug_taken(body.slug):
             raise HTTPException(
@@ -175,6 +179,7 @@ async def create_tenant(
             owner_phone=body.owner_phone,
             business_hours=body.business_hours,
             cost_alert_threshold_usd_per_day=body.cost_alert_threshold_usd_per_day,
+            send_only=body.send_only,
         )
         try:
             await repo.create(tenant)
@@ -195,7 +200,7 @@ async def create_tenant(
             if body.business_hours is not None:
                 await _write_hours(session, tenant, body.business_hours, actor=actor)
             await AuditRepository(session).record(
-                actor=f"admin:{actor[:8]}",
+                actor=operator_actor(operator) if operator else f"admin:{actor[:8]}",
                 action="tenant.create",
                 target=f"tenant:{tenant.id}",
                 before=None,
@@ -547,7 +552,8 @@ async def update_tenant_billing(
     tenant_id: uuid.UUID,
     body: TenantBillingUpdateIn,
     session: AsyncSession = Depends(scoped_session_from_path),
-    _: str = Depends(require_admin_token),
+    actor: str = Depends(require_admin_token),
+    x_operator_id: str | None = Header(default=None, alias="X-Operator-Id"),
 ) -> TenantBillingOut:
     """Set a tenant's partner / plan / price override / start date. PATCH
     semantics — only fields present in the body change; send ``null`` to
@@ -557,6 +563,14 @@ async def update_tenant_billing(
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"tenant {tenant_id} not found")
 
     payload = body.model_dump(exclude_unset=True)
+    # Spec 077: the partner now also decides whose balance pays a membership,
+    # so the change is audited, with the operator when the panel names one.
+    operator = await operator_from_header(x_operator_id)
+    before = {
+        "partner_id": str(tenant.partner_id) if tenant.partner_id else None,
+        "billing_plan_id": str(tenant.billing_plan_id) if tenant.billing_plan_id else None,
+        "price_override_cents": tenant.price_override_cents,
+    }
 
     if "partner_id" in payload:
         pid = payload["partner_id"]
@@ -580,6 +594,23 @@ async def update_tenant_billing(
         tenant.billing_effective_from = payload["billing_effective_from"]
 
     await session.flush()
+    after = {
+        "partner_id": str(tenant.partner_id) if tenant.partner_id else None,
+        "billing_plan_id": str(tenant.billing_plan_id) if tenant.billing_plan_id else None,
+        "price_override_cents": tenant.price_override_cents,
+    }
+    if before != after:
+        session.add(
+            AuditLog(
+                tenant_id=tenant_id,
+                actor=operator_actor(operator) if operator else f"admin:{actor[:8]}",
+                action="tenant.billing_updated",
+                target=f"tenant:{tenant_id}",
+                before_json=before,
+                after_json=after,
+            )
+        )
+        await session.flush()
     log.info(
         "tenant.billing_updated",
         tenant_id=str(tenant_id),

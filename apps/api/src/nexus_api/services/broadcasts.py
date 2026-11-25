@@ -57,6 +57,7 @@ from nexus_api.services.channel_routing import (
     ChannelResolutionError,
     resolve_whatsapp_channel,
 )
+from nexus_api.services.membership_gate import require_active_membership
 from nexus_api.services.whatsapp_templates import TemplateOut, fetch_templates
 
 log = structlog.get_logger(__name__)
@@ -70,10 +71,31 @@ _NAMED_VAR_RE = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 _POSITIONAL_VAR_RE = re.compile(r"\{\{\s*\d+\s*\}\}")
 
 
+#: Spec 077: Meta's category for one-time-password templates.
+CATEGORY_AUTHENTICATION = "AUTHENTICATION"
+
+
 @dataclass(frozen=True)
 class _ResolvedTemplate:
     template: TemplateOut
     body_vars: frozenset[str]
+    #: Spec 077: an AUTHENTICATION template. Its body is Meta's fixed text with
+    #: one positional ``{{1}}`` (or no text at all), and the code goes in
+    #: ``code``, never in named variables.
+    is_authentication: bool = False
+    #: The template has a copy-code button. Meta stores the ``OTP`` button as
+    #: ``URL`` once created; either one takes the code as its parameter.
+    has_code_button: bool = False
+
+
+def _has_code_button(template: TemplateOut) -> bool:
+    for component in template.components:
+        if str(component.get("type", "")).upper() != "BUTTONS":
+            continue
+        for button in component.get("buttons") or []:
+            if isinstance(button, dict) and str(button.get("type", "")).upper() in {"OTP", "URL"}:
+                return True
+    return False
 
 
 def _template_body_vars(template: TemplateOut) -> frozenset[str]:
@@ -83,10 +105,21 @@ def _template_body_vars(template: TemplateOut) -> frozenset[str]:
     return frozenset()
 
 
-async def resolve_template(session: AsyncSession, *, name: str, language: str) -> _ResolvedTemplate:
+async def resolve_template(
+    session: AsyncSession,
+    *,
+    name: str,
+    language: str,
+    allow_authentication: bool = False,
+) -> _ResolvedTemplate:
     """Live lookup against Meta (source of truth). The caller listed
     templates through the same call moments earlier, so this also
-    catches a template paused in between."""
+    catches a template paused in between.
+
+    ``allow_authentication`` (spec 077) is the direct-message path's: there an
+    AUTHENTICATION template is sent with its ``code``. Everywhere else — a
+    broadcast — one is refused, as a positional template always was.
+    """
     templates, waba = await fetch_templates(session)
     match = next(
         (t for t in templates if t.name == name and t.language == language),
@@ -121,6 +154,21 @@ async def resolve_template(session: AsyncSession, *, name: str, language: str) -
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"template {name!r} ({language}) is {match.status}, not APPROVED",
+        )
+    if (match.category or "").upper() == CATEGORY_AUTHENTICATION:
+        if not allow_authentication:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"template {name!r} is an authentication template; send it one "
+                    "recipient at a time through POST /v1/messages/template with `code`"
+                ),
+            )
+        return _ResolvedTemplate(
+            template=match,
+            body_vars=frozenset(),
+            is_authentication=True,
+            has_code_button=_has_code_button(match),
         )
     body_text = next(
         (
@@ -230,6 +278,9 @@ async def create_broadcast(
                 f"{recipient_cap}); split it or ask Auphere to raise the limit"
             ),
         )
+
+    # Spec 077 (R9.1): a client whose membership is not active sends nothing.
+    await require_active_membership(session)
 
     if payload.idempotency_key:
         replay = await _existing_broadcast(

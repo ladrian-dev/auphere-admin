@@ -9,6 +9,10 @@ list with last use. Two console-specific rules:
 - **Partner-level scopes only.** A tenant-bound ``messages_send`` key is
   created from the client's page (later package), so a leaked
   provisioning key cannot message anyone's customers.
+- **A client's key is not the partner's to handle** (spec 077, R5.7): the
+  operator issues, rotates and revokes it from the panel. The console neither
+  lists it nor touches it — rotating it here would hand a partner member a
+  working secret that messages that client's customers.
 
 Every action leaves both an ``embed_audit_log`` event (the partner
 platform's own trail, keyed by ``api_key_id``) and an ``audit_log`` row
@@ -50,7 +54,7 @@ async def _own_key(
     session: AsyncSession, principal: ConsolePrincipal, key_id: uuid.UUID
 ) -> PartnerApiKey:
     key = await PartnerApiKeyRepository(session).get(key_id)
-    if key is None or key.partner_id != principal.partner.id:
+    if key is None or key.partner_id != principal.partner.id or key.tenant_id is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="key not found")
     return key
 
@@ -62,7 +66,7 @@ async def list_keys(
 ) -> list[ApiKeyOut]:
     async with session.begin():
         keys = await PartnerApiKeyRepository(session).list_for_partner(principal.partner.id)
-        return [ApiKeyOut.model_validate(k) for k in keys]
+        return [ApiKeyOut.model_validate(k) for k in keys if k.tenant_id is None]
 
 
 @router.post("", response_model=ApiKeyCreatedOut, status_code=status.HTTP_201_CREATED)

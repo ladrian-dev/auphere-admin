@@ -191,6 +191,36 @@ mano sigue. «Pedir ampliación» queda en `build_budget_requests` (una al día)
 - **Objetos de Stripe.** Desde stripe-python 13 no son `dict`: se leen con `billing.provider.field`, nunca con `.get` (así se perdieron en staging una compra de saldo y una recarga pagada, 2026-10-20).
 - **Webhook.** Usa los eventos que ya estaban suscritos: `checkout.session.completed`, `invoice.paid` e `invoice.payment_failed`. Las facturas de estos cobros se procesan aunque las membresías estén apagadas.
 
+## La membresía de un cliente y el cargo fijo mensual (spec 077)
+
+Un cliente puede tener una **membresía mensual** (Facturación del cliente →
+Membresía). Es opcional y convive con los cobros de siempre: el recibo del
+partner y los pagos directos anotados a mano no cambian. Si el cliente tiene
+membresía y no está activa, sus envíos por API y sus difusiones se cortan
+(`docs/envio-directo.md`).
+
+- **La paga el cliente, con tarjeta.** Una suscripción de Stripe con un cliente
+  de Stripe **propio del tenant** (nunca el del partner). Los objetos llevan
+  `metadata.kind = tenant_membership` y `tenant_id`, y **no** llevan
+  `client_reference_id` (el webhook lo leería como partner).
+  - El estado se copia siempre de la suscripción leída en Stripe. `past_due`, que
+    Stripe pone al primer cobro fallido, corta los envíos.
+  - Sus avisos no traen `partner_id`. `process_event.handle_entry` los resuelve
+    antes del camino de los partners y **no tocan ningún saldo**
+    (`test_no_external_debit` sigue en verde).
+- **Sale del saldo del partner.** Un asiento `fixed_fee` del cubo comprado, con
+  clave `fee:{motivo}:{tenant}:{inicio del periodo}`.
+  - **No es `debit`.** No cuenta como consumo de conversaciones, ni como gasto de
+    un agente, ni en la ganancia por consumo de la spec 039.
+  - `reconcile_purchased` lo resta como una caducidad, así que la conciliación
+    cuadra.
+  - No toca el pool semanal ni el tope del cliente. Puede usar la línea de
+    crédito.
+  - Es la segunda resta del sistema tras `debit_wallet`: la hacen solo el worker
+    (`service-memberships-cron`) y el operador, nunca un aviso externo.
+  - El motivo va en la clave, así que una regla futura (un consumo mínimo
+    mensual por agente que se cobre al partner) lo reutiliza sin cambiarlo.
+
 ## El reparto, en una frase
 
 **El proveedor cobra; el libro decide.** Stripe mueve dinero y nos avisa. Quién

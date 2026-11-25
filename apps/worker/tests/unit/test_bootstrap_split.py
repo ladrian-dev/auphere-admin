@@ -45,6 +45,8 @@ ALL_EXPECTED = {
     "partner-receipt-cron",
     # Spec 041: recarga automática y cobro del pospago el día 1.
     "partner-charges-cron",
+    # Spec 077: la membresía de los clientes.
+    "service-memberships-cron",
     "wallet-renewal-cron",
     # Spec 005: la caducidad del crédito comprado tras una baja.
     "expire-credit-cron",

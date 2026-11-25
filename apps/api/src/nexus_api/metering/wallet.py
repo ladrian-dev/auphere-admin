@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 import sqlalchemy as sa
 import structlog
@@ -32,6 +32,7 @@ from nexus_api.db.models.partner_wallet import (
     KIND_CREDIT_REVERSAL,
     KIND_DEBIT,
     KIND_EXPIRY,
+    KIND_FIXED_FEE,
     KIND_OPENING_CREDIT,
     KIND_OPENING_DEBIT,
     PartnerAllocation,
@@ -995,7 +996,14 @@ async def reconcile_purchased(partner_id: uuid.UUID) -> Reconciliation | None:
                     sa.func.coalesce(
                         sa.func.sum(UsageLedger.qty).filter(
                             UsageLedger.kind.in_(
-                                (KIND_EXPIRY, KIND_OPENING_DEBIT, KIND_CREDIT_REVERSAL)
+                                (
+                                    KIND_EXPIRY,
+                                    KIND_OPENING_DEBIT,
+                                    KIND_CREDIT_REVERSAL,
+                                    # Spec 077: a fixed monthly charge leaves
+                                    # the purchased balance like an expiry.
+                                    KIND_FIXED_FEE,
+                                )
                             )
                         ),
                         0,
@@ -1401,6 +1409,120 @@ async def _debit_locked(
             from_purchased=from_purchased,
             duplicate=False,
         )
+
+
+@dataclass(frozen=True)
+class FixedFeeResult:
+    """What a fixed monthly charge did.
+
+    ``charged``: taken now. ``duplicate``: the key was already in the book —
+    the period was charged before (a retry after a crash), which the caller
+    treats as paid. ``insufficient``: nothing taken; the purchased balance
+    plus the credit line did not cover it.
+    """
+
+    outcome: Literal["charged", "duplicate", "insufficient", "no_wallet"]
+    qty: int = 0
+
+
+def fixed_fee_key(*, reason: str, tenant_id: uuid.UUID, period_start: datetime) -> str:
+    """One key per reason, client and period: the book's unique index is what
+    stops a period from being charged twice (spec 077, R8.4)."""
+    return f"fee:{reason}:{tenant_id}:{period_start.astimezone(UTC).isoformat()}"
+
+
+async def charge_fixed_fee(
+    *,
+    partner_id: uuid.UUID,
+    tenant_id: uuid.UUID,
+    qty: int,
+    reason: str,
+    period_start: datetime,
+) -> FixedFeeResult:
+    """Spec 077 (R8): charge a fixed monthly amount to the partner's purchased
+    balance, **all or nothing, once per period**.
+
+    The second subtraction in the system (the first is ``debit_wallet`` on the
+    turn path). It is written as ``fixed_fee``, never ``debit``: it is not
+    conversation consumption nor an agent's spend, and a future minimum-spend
+    rule has to measure consumption without it. It only touches the purchased
+    pocket (down to ``-credit_limit``), never the weekly pool nor the client's
+    cap. Only the worker and an operator's action call it — no provider notice
+    can (spec 005, R3.4).
+
+    ``reason`` names the charge (``membership`` is the first); the key carries
+    it, so a later reason reuses this without changing it (R8.7).
+    """
+    if qty <= 0:
+        raise ValueError("a fixed fee is > 0")
+    key = fixed_fee_key(reason=reason, tenant_id=tenant_id, period_start=period_start)
+    sm = get_sessionmaker()
+    try:
+        async with sm() as session, session.begin():
+            await apply_partner_to_session(session, partner_id)
+            seen = await session.scalar(
+                sa.select(UsageLedger.id).where(UsageLedger.idempotency_key == key)
+            )
+            if seen is not None:
+                return FixedFeeResult(outcome="duplicate", qty=qty)
+            wallet = await _load_wallet_for_update(session, partner_id)
+            if wallet is None:
+                return FixedFeeResult(outcome="no_wallet")
+            if _snapshot(wallet).spendable_purchased < qty:
+                return FixedFeeResult(outcome="insufficient")
+            # From the stored value: a debt must not be forgiven (see debit).
+            wallet.purchased_remaining = _as_int(wallet.purchased_remaining) - qty
+            wallet.updated_at = _now()
+            session.add(
+                UsageLedger(
+                    partner_id=partner_id,
+                    tenant_id=tenant_id,
+                    qty=qty,
+                    bucket=BUCKET_PURCHASED,
+                    kind=KIND_FIXED_FEE,
+                    idempotency_key=key,
+                    fx=None,
+                )
+            )
+            await session.flush()
+    except IntegrityError as exc:
+        # Two runs racing on the same period: the loser sees the winner's key.
+        if "uq_usage_ledger_idempotency" in str(exc.orig):
+            return FixedFeeResult(outcome="duplicate", qty=qty)
+        raise
+    log.info(
+        "wallet.fixed_fee_charged",
+        partner_id=str(partner_id),
+        tenant_id=str(tenant_id),
+        reason=reason,
+        qty=qty,
+    )
+    return FixedFeeResult(outcome="charged", qty=qty)
+
+
+async def fixed_fees_for(
+    partner_id: uuid.UUID, *, reason: str, tenant_id: uuid.UUID
+) -> list[tuple[datetime, int]]:
+    """The client's charges of one reason, newest first: ``(created_at, qty)``."""
+    prefix = f"fee:{reason}:{tenant_id}:"
+    sm = get_sessionmaker()
+    async with sm() as session, session.begin():
+        await apply_partner_to_session(session, partner_id)
+        rows = (
+            await session.execute(
+                sa.select(UsageLedger.created_at, UsageLedger.qty, UsageLedger.idempotency_key)
+                .where(
+                    UsageLedger.partner_id == partner_id,
+                    UsageLedger.kind == KIND_FIXED_FEE,
+                    UsageLedger.idempotency_key.startswith(prefix),
+                )
+                .order_by(UsageLedger.created_at.desc())
+            )
+        ).all()
+    out: list[tuple[datetime, int]] = []
+    for _created, qty, key in rows:
+        out.append((datetime.fromisoformat(str(key)[len(prefix) :]), _as_int(qty)))
+    return out
 
 
 async def record_absorbed(

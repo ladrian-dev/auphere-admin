@@ -44,9 +44,12 @@ from nexus_api.api.admin import (
     screenshots,
     sector_guides,
     sector_tests,
+    send_only,
+    service_memberships,
     signups,
     skills,
     tenant_capabilities,
+    tenant_keys,
     tenant_payments,
     tenants,
     tenants_health,
@@ -69,6 +72,11 @@ router.include_router(client_access.router)
 # La mensualidad de un cliente cobrada fuera del proveedor de pagos.
 router.include_router(tenant_payments.router)
 router.include_router(unlimited_consumption.router)
+# Spec 077: las claves de envío de un cliente y los clientes de solo envío.
+router.include_router(tenant_keys.router)
+router.include_router(send_only.router)
+# Spec 077: la membresía mensual de un cliente.
+router.include_router(service_memberships.router)
 router.include_router(agent_configs.router)
 # Spec 030: los agentes de un cliente.
 # Spec 065: antes que ``agents`` para que ``…/agents/models`` no se lea como un agente.

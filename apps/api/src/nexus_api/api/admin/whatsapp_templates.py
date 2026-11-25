@@ -29,12 +29,16 @@ from typing import Any
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import MetaAPIError
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.api.deps import scoped_session_from_path
 from nexus_api.core.security import require_admin_token
 from nexus_api.db.models import AuditLog
+from nexus_api.schemas.whatsapp_authentication import (
+    DEFAULT_OTP_BUTTON_TEXT,
+    authentication_components,
+)
 from nexus_api.services.whatsapp_templates import (
     TemplateOut,
     fetch_templates,
@@ -64,18 +68,56 @@ class TemplateListOut(BaseModel):
     waba_id: str
 
 
+class OtpTemplateIn(BaseModel):
+    """Spec 077: the three things an authentication template lets us choose."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    button_text: str = Field(default=DEFAULT_OTP_BUTTON_TEXT, min_length=1, max_length=25)
+    code_expiration_minutes: int | None = Field(default=None, ge=1, le=90)
+    add_security_recommendation: bool = True
+
+
 class TemplateCreateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=512)
     language: str = Field(default="es", min_length=2, max_length=15)
     category: str = Field(default="UTILITY")
-    components: list[dict[str, Any]] = Field(
-        min_length=1,
+    components: list[dict[str, Any]] | None = Field(
+        default=None,
         description=(
-            'Cloud API native components — e.g. [{"type":"BODY","text":"Hola {{nombre}} ..."}]'
+            'Cloud API native components — e.g. [{"type":"BODY","text":"Hola {{nombre}} ..."}]. '
+            "Required unless the category is AUTHENTICATION."
         ),
     )
+    #: Spec 077: an AUTHENTICATION template is built here from these, never
+    #: from free text (Meta fixes its body and rejects anything else).
+    otp: OtpTemplateIn | None = None
+
+    @model_validator(mode="after")
+    def _components_or_otp(self) -> TemplateCreateIn:
+        if self.category == "AUTHENTICATION":
+            if self.components:
+                raise ValueError(
+                    "an AUTHENTICATION template is built from `otp`, not from `components`"
+                )
+            return self
+        if self.otp is not None:
+            raise ValueError("`otp` only goes with the AUTHENTICATION category")
+        if not self.components:
+            raise ValueError("components are required")
+        return self
+
+    def final_components(self) -> list[dict[str, Any]]:
+        if self.category == "AUTHENTICATION":
+            otp = self.otp or OtpTemplateIn()
+            return authentication_components(
+                button_text=otp.button_text,
+                code_expiration_minutes=otp.code_expiration_minutes,
+                add_security_recommendation=otp.add_security_recommendation,
+            )
+        return list(self.components or [])
 
     @field_validator("name")
     @classmethod
@@ -146,7 +188,7 @@ async def create_whatsapp_template(
                 name=body.name,
                 language=body.language,
                 category=body.category,
-                components=body.components,
+                components=body.final_components(),
             )
         except MetaAPIError as exc:
             raise _meta_error_to_http(exc, context="la creación de la plantilla") from exc
