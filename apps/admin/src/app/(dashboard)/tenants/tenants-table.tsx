@@ -283,6 +283,9 @@ export function TenantsTable({ tenants, health, partners, paidThisMonth, monthNa
                     {h ? (
                       h.agent_version !== null ? (
                         `Versión ${h.agent_version}`
+                      ) : t.send_only ? (
+                        // Spec 077 (1.3): no agent by design, not an agent to publish.
+                        <span className="text-muted-foreground">Solo envío</span>
                       ) : (
                         <span className="text-muted-foreground">Sin publicar</span>
                       )

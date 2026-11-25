@@ -206,6 +206,8 @@ export type Tenant = {
   billing_plan_id?: string | null;
   /** The partner this client belongs to; ``null`` = a direct Auphere client. */
   partner_id?: string | null;
+  /** Spec 077: a client with no agent that only sends through the API. Off for every client before it. */
+  send_only?: boolean;
   created_at: string;
   updated_at: string;
 };
@@ -220,6 +222,99 @@ export type TenantCreateInput = {
   owner_phone?: string | null;
   business_hours?: Record<string, unknown> | null;
   cost_alert_threshold_usd_per_day?: number;
+  /** Spec 077: born without an agent, sending only through the API. */
+  send_only?: boolean;
+};
+
+// ── Spec 077: send-only clients, their keys and their membership ────────────
+
+/** `GET /admin/tenants/{id}/send-readiness`: each step as the API reads it. */
+export type SendReadinessOut = {
+  channel: { ok: boolean; active_numbers: number };
+  /** AUTHENTICATION templates only. `unknown`: Meta did not answer. */
+  template: { ok: boolean; approved: number; pending: number; unknown: boolean };
+  /** `null`: the client has no membership, so the step does not exist. */
+  membership: { ok: boolean; status: MembershipStatus } | null;
+  keys: { ok: boolean; active: number };
+};
+
+/** A key bound to one client, whichever partner it hangs from. */
+export type TenantApiKeyOut = {
+  id: string;
+  partner_id: string;
+  tenant_id: string | null;
+  type: PartnerApiKeyType;
+  prefix_snippet: string;
+  scopes: string[];
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  grace_expires_at: string | null;
+  expires_at: string | null;
+  /** Who issued it, from the audit; null for keys issued outside the panel. */
+  created_by: string | null;
+};
+
+/** Create and rotate: the only time the whole key leaves the API. */
+export type TenantApiKeyCreatedOut = { key: TenantApiKeyOut; plaintext: string };
+
+/** One template send of the client: the recipient masked, never a code. */
+export type TemplateMessageRowOut = {
+  id: string;
+  created_at: string;
+  to_masked: string;
+  template: string | null;
+  status: string;
+  failure_code: string | null;
+};
+
+export type MembershipPayer = "stripe" | "partner_wallet";
+export type MembershipStatus = "pending" | "active" | "past_due" | "canceled";
+
+export type MembershipOut = {
+  tenant_id: string;
+  payer: MembershipPayer;
+  amount_cents: number;
+  /** Wallet: the new amount, charged from the next period. */
+  pending_amount_cents: number | null;
+  status: MembershipStatus;
+  /** What the sending gate reads: `active` and, for the wallet, a period not over. */
+  active: boolean;
+  current_period_end: string | null;
+  billing_email: string | null;
+  checkout_url: string | null;
+  checkout_expires_at: string | null;
+  last_synced_at: string | null;
+  last_failure: string | null;
+  partner_id: string | null;
+  partner_name: string | null;
+  /** A live Stripe subscription: amount and payer cannot change. */
+  has_subscription: boolean;
+};
+
+export type MembershipPutInput = {
+  payer: MembershipPayer;
+  amount_cents: number;
+  billing_email?: string | null;
+};
+
+export type MembershipCheckoutOut = { url: string; expires_at: string | null };
+
+export type MembershipChargeOut = {
+  period_start: string | null;
+  period_end: string | null;
+  amount_cents: number;
+  /** `paid`, `open`, `failed`, `void` (Stripe) or `paid` (wallet). */
+  status: string;
+  /** The Stripe invoice; `null` for the wallet. */
+  url: string | null;
+};
+
+/** Spec 077: what an AUTHENTICATION template lets us choose (Meta fixes the rest). */
+export type WhatsAppOtpTemplateInput = {
+  button_text: string;
+  code_expiration_minutes?: number | null;
+  add_security_recommendation: boolean;
 };
 
 export type TenantUpdateInput = Partial<{
@@ -303,12 +398,21 @@ export type WhatsAppTemplateList = {
   waba_id: string;
 };
 
-export type WhatsAppTemplateCreateInput = {
-  name: string;
-  language?: string;
-  category?: string;
-  components: Array<Record<string, unknown>>;
-};
+/** Spec 077: AUTHENTICATION goes with `otp` and without `components` (the API
+ *  builds Meta's fixed format and refuses both together); the rest, as before. */
+export type WhatsAppTemplateCreateInput =
+  | {
+      name: string;
+      language?: string;
+      category?: string;
+      components: Array<Record<string, unknown>>;
+    }
+  | {
+      name: string;
+      language?: string;
+      category: "AUTHENTICATION";
+      otp: WhatsAppOtpTemplateInput;
+    };
 
 export type WhatsAppTemplateCreateResult = {
   id: string | null;
@@ -1392,7 +1496,9 @@ export type LedgerKind =
   | "opening_debit"
   | "credit_manual"
   | "credit_reversal"
-  | "absorbed";
+  | "absorbed"
+  /** Spec 077: a fixed monthly charge to the partner's balance (the client's membership). */
+  | "fixed_fee";
 
 export type PartnerLedgerOut = {
   id: string;
@@ -2163,8 +2269,13 @@ export const backend = {
       `/admin/tenants/check-slug?slug=${encodeURIComponent(slug)}`,
     ),
 
-  createTenant: (body: TenantCreateInput) =>
-    call<Tenant>("/admin/tenants", { method: "POST", body }),
+  /** ``operatorId``: the API audits who created it (``X-Operator-Id``). */
+  createTenant: (body: TenantCreateInput, operatorId?: string) =>
+    call<Tenant>("/admin/tenants", {
+      method: "POST",
+      body,
+      ...(operatorId ? { headers: { "X-Operator-Id": operatorId } } : {}),
+    }),
 
   updateTenant: (tenantId: string, body: TenantUpdateInput) =>
     call<Tenant>(`/admin/tenants/${tenantId}`, { method: "PUT", body }),
@@ -2822,10 +2933,12 @@ export const backend = {
       optional: true,
     }),
 
-  updateTenantBilling: (tenantId: string, body: TenantBillingUpdateInput) =>
+  /** ``operatorId``: the API audits who changed it (``X-Operator-Id``). */
+  updateTenantBilling: (tenantId: string, body: TenantBillingUpdateInput, operatorId?: string) =>
     call<TenantBillingOut>(`/admin/tenants/${tenantId}/billing`, {
       method: "PUT",
       body,
+      ...(operatorId ? { headers: { "X-Operator-Id": operatorId } } : {}),
     }),
 
   // ── unlimited consumption (owner, 2026-10-20) ─────────────────────────
@@ -2898,4 +3011,89 @@ export const backend = {
       method: "POST",
       headers: { "X-Operator-Id": operatorId },
     }),
+
+  // ── Spec 077: send-only clients (contracts/admin-api.md) ───────────────
+  setSendOnly: (tenantId: string, sendOnly: boolean, operatorId: string) =>
+    call<Tenant>(`/admin/tenants/${tenantId}/send-only`, {
+      method: "PATCH",
+      body: { send_only: sendOnly },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  getSendReadiness: (tenantId: string) =>
+    call<SendReadinessOut>(`/admin/tenants/${tenantId}/send-readiness`),
+
+  /** Every key bound to this client, from any partner (New Air's too). */
+  listTenantApiKeys: (tenantId: string) =>
+    call<TenantApiKeyOut[]>(`/admin/tenants/${tenantId}/api-keys`).then((r) => r ?? []),
+
+  createTenantApiKey: (tenantId: string, operatorId: string) =>
+    call<TenantApiKeyCreatedOut>(`/admin/tenants/${tenantId}/api-keys`, {
+      method: "POST",
+      body: {},
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  rotateTenantApiKey: (tenantId: string, keyId: string, graceHours: number, operatorId: string) =>
+    call<TenantApiKeyCreatedOut>(`/admin/tenants/${tenantId}/api-keys/${keyId}/rotate`, {
+      method: "POST",
+      body: { grace_hours: graceHours },
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  revokeTenantApiKey: (tenantId: string, keyId: string, operatorId: string) =>
+    call<TenantApiKeyOut>(`/admin/tenants/${tenantId}/api-keys/${keyId}/revoke`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listTemplateMessages: (tenantId: string, limit = 50) =>
+    call<TemplateMessageRowOut[]>(`/admin/tenants/${tenantId}/template-messages?limit=${limit}`).then(
+      (r) => r ?? [],
+    ),
+
+  /** `null`: the client has no membership (404 `no_membership`). */
+  getMembership: (tenantId: string) =>
+    call<MembershipOut>(`/admin/tenants/${tenantId}/membership`, { optional: true }),
+
+  putMembership: (tenantId: string, body: MembershipPutInput, operatorId: string) =>
+    call<MembershipOut>(`/admin/tenants/${tenantId}/membership`, {
+      method: "PUT",
+      body,
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  /** 204: the row is archived, never deleted. */
+  archiveMembership: (tenantId: string, operatorId: string) =>
+    call<null>(`/admin/tenants/${tenantId}/membership/archive`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  membershipCheckout: (tenantId: string, operatorId: string) =>
+    call<MembershipCheckoutOut>(`/admin/tenants/${tenantId}/membership/checkout`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  refreshMembership: (tenantId: string, operatorId: string) =>
+    call<MembershipOut>(`/admin/tenants/${tenantId}/membership/refresh`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  chargeMembership: (tenantId: string, operatorId: string) =>
+    call<MembershipOut>(`/admin/tenants/${tenantId}/membership/charge`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  cancelMembership: (tenantId: string, operatorId: string) =>
+    call<MembershipOut>(`/admin/tenants/${tenantId}/membership/cancel`, {
+      method: "POST",
+      headers: { "X-Operator-Id": operatorId },
+    }),
+
+  listMembershipCharges: (tenantId: string) =>
+    call<MembershipChargeOut[]>(`/admin/tenants/${tenantId}/membership/charges`).then((r) => r ?? []),
 };

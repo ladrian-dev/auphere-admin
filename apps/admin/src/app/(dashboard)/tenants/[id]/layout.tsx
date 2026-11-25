@@ -3,13 +3,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { Badge, Button, StatusDot } from "@nexus/ui";
+import { Badge, Button, StatusBadge, StatusDot } from "@nexus/ui";
 
 import { ChannelLogo } from "@/components/brand/channel-logo";
 import { CrumbName } from "@/components/shell/crumb-names";
 import { TenantActionsMenu } from "@/components/tenants/tenant-actions-menu";
-import { backend } from "@/lib/backend";
+import { backend, type MembershipOut } from "@/lib/backend";
 import { planLabel, relativeTime, statusLabel } from "@/lib/format";
+import { headerMembershipPill } from "@/lib/send-only";
 
 import { TenantTabs } from "./tabs";
 
@@ -43,10 +44,23 @@ export default async function TenantLayout({
   const { id } = await params;
   const tenant = await backend.getTenant(id);
   if (!tenant) notFound();
-  const [partner, health] = await Promise.all([
+  // Spec 077: a send-only client has no agent; everything that differs hangs from this flag.
+  const sendOnly = tenant.send_only === true;
+  const [partner, health, membership, sendKeys] = await Promise.all([
     tenant.partner_id ? backend.getPartner(tenant.partner_id).catch(() => null) : null,
     backend.getTenantHealth(id).catch(() => null),
+    // `null` = no membership (404); a failed read is said, never taken for «none».
+    sendOnly
+      ? backend.getMembership(id).then(
+          (m) => m,
+          () => "error" as const,
+        )
+      : null,
+    // A client not marked send-only but with send keys (New Air) still
+    // reaches «Envío por API»; for anyone else the tabs are as they were.
+    sendOnly ? null : backend.listTenantApiKeys(id).catch(() => null),
   ]);
+  const hasSendKeys = (sendKeys?.length ?? 0) > 0;
   const base = `/tenants/${tenant.id}`;
   const channelTrouble = health ? health.channels_attention > 0 || health.channels_active === 0 : false;
 
@@ -62,6 +76,7 @@ export default async function TenantLayout({
                 <StatusDot tone={STATUS_TONE[tenant.status] ?? "muted"} />
                 {statusLabel(tenant.status)}
               </span>
+              {sendOnly ? <SendOnlyPills membership={membership} /> : null}
             </div>
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
               {/* Spec 031 (R5.3): whose client this is, one click away. */}
@@ -72,8 +87,13 @@ export default async function TenantLayout({
               ) : (
                 <span>Cliente directo de Auphere</span>
               )}
-              <span aria-hidden="true">·</span>
-              <Badge variant="outline">{planLabel(tenant.plan)}</Badge>
+              {/* Spec 077: a send-only client chose no agent plan; its tier would mislead. */}
+              {sendOnly ? null : (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <Badge variant="outline">{planLabel(tenant.plan)}</Badge>
+                </>
+              )}
               {tenant.market ? (
                 <>
                   <span aria-hidden="true">·</span>
@@ -85,10 +105,13 @@ export default async function TenantLayout({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <Button nativeButton={false} render={<Link href={`${base}/playground`} />}>
-              <FlaskConical aria-hidden="true" />
-              Probar agente
-            </Button>
+            {/* Spec 077 (1.3): a send-only client has no agent to try. */}
+            {sendOnly ? null : (
+              <Button nativeButton={false} render={<Link href={`${base}/playground`} />}>
+                <FlaskConical aria-hidden="true" />
+                Probar agente
+              </Button>
+            )}
             <TenantActionsMenu
               tenantId={tenant.id}
               slug={tenant.slug}
@@ -96,6 +119,7 @@ export default async function TenantLayout({
               status={tenant.status}
               variant="labelled"
               redirectAfterDeleteTo="/tenants"
+              sendOnly={sendOnly}
             />
           </div>
         </div>
@@ -114,6 +138,11 @@ export default async function TenantLayout({
               <span className="text-status-warning-text">{health ? "Sin canal · Añadir" : "—"}</span>
             )}
           </Fact>
+          {sendOnly ? (
+            <Fact term="Envío" href={`${base}/api`}>
+              Solo por API
+            </Fact>
+          ) : (
           <Fact term="Agente" href={`${base}/agent`}>
             {health ? (
               health.agent_version !== null ? (
@@ -125,6 +154,7 @@ export default async function TenantLayout({
               "—"
             )}
           </Fact>
+          )}
           <Fact term="Última conversación" href={`${base}/conversations`}>
             {health?.last_message_at ? relativeTime(health.last_message_at) : "Sin mensajes"}
           </Fact>
@@ -142,9 +172,31 @@ export default async function TenantLayout({
           </Fact>
         </ul>
       </header>
-      <TenantTabs tenantId={tenant.id} channelsMark={channelTrouble ? "incident" : undefined} />
+      <TenantTabs
+        tenantId={tenant.id}
+        channelsMark={channelTrouble ? "incident" : undefined}
+        sendOnly={sendOnly}
+        hasSendKeys={hasSendKeys}
+      />
       {children}
     </div>
+  );
+}
+
+/**
+ * Spec 077: what a send-only client is, next to its state — and, when it has
+ * one, whether its membership lets the API send. Without a membership there is
+ * no pill (the absence is designed); an unread one says «sin leer».
+ */
+function SendOnlyPills({ membership }: { membership: MembershipOut | null | "error" }) {
+  const pill = headerMembershipPill(membership);
+  return (
+    <>
+      <StatusBadge tone="muted" dot={false}>
+        Solo envío por API
+      </StatusBadge>
+      {pill ? <StatusBadge tone={pill.tone}>{pill.label}</StatusBadge> : null}
+    </>
   );
 }
 

@@ -24,6 +24,7 @@ import { toast } from "sonner";
 
 import {
   Button,
+  ConfirmDialog,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -44,6 +45,7 @@ import type { TenantStatus } from "@/lib/backend";
 
 import {
   deleteTenantAction,
+  setSendOnlyAction,
   setTenantStatusAction,
 } from "@/app/(dashboard)/tenants/actions";
 
@@ -59,6 +61,7 @@ export function TenantActionsMenu({
    *  page this should be "/tenants" so the operator doesn't sit on a 404;
    *  from the table row it stays where it is (the row revalidates away). */
   redirectAfterDeleteTo,
+  sendOnly,
 }: {
   tenantId: string;
   slug: string;
@@ -66,12 +69,29 @@ export function TenantActionsMenu({
   status: TenantStatus;
   variant?: Variant;
   redirectAfterDeleteTo?: string;
+  /** Spec 077 (1.5): given (the client's page), the menu offers to mark or unmark it. */
+  sendOnly?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [typedSlug, setTypedSlug] = useState("");
+  const [sendOnlyOpen, setSendOnlyOpen] = useState(false);
+  const [sendOnlyError, setSendOnlyError] = useState<string | null>(null);
+
+  async function onSendOnly() {
+    setSendOnlyError(null);
+    const next = !sendOnly;
+    const res = await setSendOnlyAction(tenantId, next);
+    if (!res.ok) {
+      setSendOnlyError(res.error);
+      return;
+    }
+    setSendOnlyOpen(false);
+    toast.success(next ? `${name} es ahora de solo envío` : `${name} ya no es de solo envío`);
+    router.refresh();
+  }
 
   function changeStatus(
     next: TenantStatus,
@@ -216,8 +236,42 @@ export function TenantActionsMenu({
               </>
             ) : null}
           </DropdownMenuGroup>
+          {sendOnly !== undefined ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Tipo de cliente
+                </DropdownMenuLabel>
+                <DropdownMenuItem disabled={pending} onClick={() => setSendOnlyOpen(true)}>
+                  {sendOnly ? "Quitar solo envío…" : "Marcar como solo envío…"}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {sendOnly !== undefined ? (
+        <ConfirmDialog
+          open={sendOnlyOpen}
+          onOpenChange={(open) => {
+            setSendOnlyOpen(open);
+            if (!open) setSendOnlyError(null);
+          }}
+          title={sendOnly ? `¿Quitar solo envío a ${name}?` : `¿Marcar ${name} como solo envío?`}
+          description={
+            sendOnly
+              ? "La ficha vuelve a mostrar Agente, Habilidades, Playground y Canal del dueño. Sus números siguen sin agente: para que responda uno, publícalo y asígnalo en Canales. Queda en Auditoría con tu nombre."
+              : "Sus números de WhatsApp dejan de responder: quedan sin agente, solo como línea de avisos. La ficha oculta Agente, Habilidades, Playground y Canal del dueño, y muestra «Envío por API». Queda en Auditoría con tu nombre."
+          }
+          confirmLabel={sendOnly ? "Quitar solo envío" : "Marcar como solo envío"}
+          // Marking it silences the client's numbers; unmarking changes nothing they answer.
+          destructive={!sendOnly}
+          onConfirm={onSendOnly}
+          error={sendOnlyError ?? undefined}
+        />
+      ) : null}
 
       <Dialog open={archiveOpen} onOpenChange={setArchiveOpen}>
         <DialogContent>
