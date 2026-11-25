@@ -230,13 +230,15 @@ export function WhatsAppTemplatesDialog({ tenantId }: { tenantId: string }) {
             iniciar conversaciones (solo responder).
           </p>
         ) : (
-          <ul className="grid max-h-80 gap-2 overflow-y-auto pr-1">
+          // One column as wide as the dialog: an `auto` track grows to the
+          // whole `truncate` line and pushes «Editar» and «Borrar» out of view.
+          <ul className="grid max-h-80 grid-cols-1 gap-2 overflow-y-auto pr-1">
             {templates.map((tpl) => {
               const status = (tpl.status ?? "").toUpperCase();
               return (
                 <li
                   key={`${tpl.name}:${tpl.language}`}
-                  className="flex items-start justify-between gap-3 rounded-md border border-border p-3"
+                  className="flex min-w-0 items-start justify-between gap-3 rounded-md border border-border p-3"
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">

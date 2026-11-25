@@ -91,6 +91,19 @@ describe("Editar una plantilla desde el panel (spec 075, 9.1–9.3)", () => {
     expect(blocked).toHaveTextContent("se edita en WhatsApp Manager");
   });
 
+  it("un texto largo no saca «Editar» ni «Borrar» del diálogo (visto en staging el 2026-11-25)", async () => {
+    // En staging, una línea de texto en `truncate` ensanchaba la lista a
+    // 1136 px dentro de un diálogo de 640: los botones quedaban fuera de vista.
+    // Una pista de rejilla `auto` crece hasta el texto entero; sin `min-w-0`
+    // en la fila y con una columna `minmax(0, 1fr)` se queda en el ancho.
+    await open();
+    const row = screen.getByText("recordatorio").closest("li") as HTMLElement;
+    const list = row.closest("ul") as HTMLElement;
+    expect(list.className).toContain("grid-cols-1");
+    expect(row.className).toContain("min-w-0");
+    expect(within(row).getByText(DRAFT.body_text).className).toContain("truncate");
+  });
+
   it("el editor es el de @nexus/ui en modo edición: el nombre y el idioma son el título", async () => {
     const user = await open();
     await user.click(screen.getByRole("button", { name: "Editar plantilla recordatorio (Español)" }));
