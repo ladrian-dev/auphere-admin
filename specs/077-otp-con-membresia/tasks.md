@@ -156,6 +156,7 @@ Orden de ejecución. Cada tarea de prueba se ve en **rojo** antes de su implemen
 ## Fase 10 — Cierre
 
 - [x] **T032** `docs/envio-directo.md`, `docs/billing.md`, `docs/admin.md` y `seed_tenant_direct.py`. _Requisitos: 12.1, 12.2_
+- [x] **T038** `tests/unit/v1_contract.json`: `POST /v1/messages/template` gana `code`, opcional. `/v1` está congelada; es un cambio aditivo y ninguna petición de hoy (Facelad, New Air) cambia. Solo se regeneró esa ruta. Lo encontró `ci` en el PR 58. _Requisitos: 4.1, 4.5, 11.1_
 - [x] **T033** Verificación (2026-11-24/25): `verify.sh lint` en verde; worker 1254 (con `lupa`), panel 748 y consola 2568 con tipos limpios, `next build` de las dos; recorrido en el navegador contra la API local; `/cso` sin HIGH ni CRITICAL (sus tres hallazgos, en la fase 9) y las cuatro puertas de UI sin rojos. La API, en local, llegó a 7200 de 8718 pruebas: dos fallaron por el orden de la suite y pasan solas (`test_064_context_cut`, `test_console_identity`), y `test_openapi_contract.py` se quedó colgado en rutas de la consola ajenas a la 077. Luis pidió cortar ahí y dejar el resto a la tubería. Lo que corre:
   - `./scripts/verify.sh lint`;
   - las pruebas tocadas de API y worker;

@@ -55,6 +55,8 @@ real (`GET /admin/tenants/{id}/send-readiness`).
   El código va en el cuerpo (`{{1}}`) y en el botón de copiar código (Meta lo
   exige dos veces).
 - Con una plantilla de variables con nombre (`variables`), todo es como antes.
+- `/v1` está congelada (`tests/unit/v1_contract.json`). `code` entró en el
+  contrato a propósito: es opcional, así que ninguna integración de hoy cambia.
 - Respuestas: `202` en cola; `402 membership_inactive`; `422 code_required`,
   `code_not_allowed`, `invalid_code`, `variables_not_allowed`; `409 opted_out` si
   la persona se dio de baja de todo (una baja solo de marketing no frena un código).

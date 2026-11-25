@@ -17,6 +17,17 @@
                     }
                   ]
                 },
+                "code": {
+                  "anyOf": [
+                    {
+                      "maxLength": 64,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "idempotency_key": {
                   "anyOf": [
                     {
