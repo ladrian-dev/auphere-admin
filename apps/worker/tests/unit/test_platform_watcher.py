@@ -317,12 +317,28 @@ async def test_meta_failure_burst_alert(delivered) -> None:
 async def test_cache_ratio_low_alert_with_volume(delivered) -> None:
     redis = fakeaioredis.FakeRedis()
     hour = int(time.time()) // 3600
-    await redis.set(f"nexus:alert:llmtok:input:{hour}", "90000")
+    # ``input`` (prompt_tokens) already includes the 20k read from cache: 17 %.
+    await redis.set(f"nexus:alert:llmtok:input:{hour}", "120000")
     await redis.set(f"nexus:alert:llmtok:cache_read:{hour}", "20000")
 
     out = await pw.process_tick(redis)
 
     assert [a.kind for a in out if a.kind == "cache_ratio_low"] == ["cache_ratio_low"]
+
+
+async def test_cache_ratio_counts_the_cache_once(delivered) -> None:
+    """Bug ``cache-ratio-cuenta-la-cache-dos-veces``: ``prompt_tokens`` already
+    includes the cached tokens, so the ratio is cache / input, not
+    cache / (input + cache). 25k cached of a 60k prompt reads 42 %, above the
+    threshold; the old formula said 29 % and paged."""
+    redis = fakeaioredis.FakeRedis()
+    hour = int(time.time()) // 3600
+    await redis.set(f"nexus:alert:llmtok:input:{hour}", "260000")
+    await redis.set(f"nexus:alert:llmtok:cache_read:{hour}", "109000")
+
+    out = await pw.process_tick(redis)
+
+    assert [a for a in out if a.kind == "cache_ratio_low"] == []
 
 
 async def test_cache_ratio_ignored_without_volume(delivered) -> None:

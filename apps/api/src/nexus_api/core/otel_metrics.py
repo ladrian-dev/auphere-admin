@@ -19,9 +19,10 @@ Instruments (labels):
 - ``meta_send_failures_total`` counter (code)
 
 ``llm_cache_read_ratio`` is deliberately NOT an instrument: it is derived in
-the dashboard as ``cache_read / (input + cache_read)`` over
-``llm_tokens_total`` — deriving it at query time keeps the raw counters
-usable for cost math too.
+the dashboard as ``cache_read / input`` over ``llm_tokens_total``. ``input`` is
+``prompt_tokens``, which already includes the cached tokens, so the cache is
+not added to the denominator again (bug ``cache-ratio-cuenta-la-cache-dos-veces``).
+Deriving it at query time keeps the raw counters usable for cost math too.
 """
 
 from __future__ import annotations
