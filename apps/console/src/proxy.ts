@@ -57,6 +57,10 @@ const PUBLIC = [
   // en la consola ni la va a tener: el enlace es toda su autorización, y la
   // API lo comprueba (un solo uso, caduca, se revoca).
   "/connect/",
+  // `/pago-recibido` (spec 077): donde Stripe devuelve a quien paga la
+  // membresía de un cliente. No tiene cuenta en la consola, y la página no lee
+  // ni escribe nada: el estado lo pone el aviso de Stripe a la API.
+  "/pago-recibido",
 ];
 
 export function proxy(request: NextRequest) {

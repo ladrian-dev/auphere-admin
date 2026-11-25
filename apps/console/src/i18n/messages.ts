@@ -40,6 +40,7 @@ import { inboxMessages } from "./lanes/inbox";
 import { inboxCorrectMessages } from "./lanes/inbox-correct";
 import { liteMessages } from "./lanes/lite";
 import { membershipMessages } from "./lanes/membership";
+import { paymentReturnMessages } from "./lanes/payment-return";
 import { moneyMessages } from "./lanes/money";
 import { noticesMessages } from "./lanes/notices";
 import { onboardingMessages } from "./lanes/onboarding";
@@ -634,6 +635,8 @@ const messages = {
   ...authAltaMessages,
   // Spec 071: lo que te necesita.
   ...attentionMessages,
+  // Spec 077: la página pública a la que vuelve quien paga en Stripe.
+  ...paymentReturnMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

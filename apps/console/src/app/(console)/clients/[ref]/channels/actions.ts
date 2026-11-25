@@ -128,29 +128,48 @@ export async function listTemplatesAction(raw: unknown): Promise<ActionResult<Te
   return res;
 }
 
+const templateBase = { ref, name: z.string().regex(/^[a-z0-9_]{1,512}$/), language: z.string().min(2).max(15) };
+
+/**
+ * Spec 077 (3.4): AUTHENTICATION is Meta's fixed format — only the button,
+ * the expiry and the security notice travel, never a body. The other two
+ * categories are exactly what they were.
+ */
+const templateInput = z.discriminatedUnion("category", [
+  z.object({
+    ...templateBase,
+    category: z.enum(["MARKETING", "UTILITY"]),
+    header_text: z.string().max(60).optional(),
+    body_text: z.string().min(1).max(1024),
+    footer_text: z.string().max(60).optional(),
+    buttons: z.array(button).max(3).default([]),
+    examples: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.string().min(1).max(200)).default({}),
+  }),
+  z.object({
+    ...templateBase,
+    category: z.literal("AUTHENTICATION"),
+    otp_button_text: z.string().trim().min(1).max(25),
+    otp_expiration_minutes: z.number().int().min(1).max(90).optional(),
+    otp_security_recommendation: z.boolean(),
+  }),
+]);
+
 export async function createTemplateAction(raw: unknown): Promise<ActionResult<TemplateCreated>> {
-  const body = z
-    .object({
-      ref,
-      name: z.string().regex(/^[a-z0-9_]{1,512}$/),
-      language: z.string().min(2).max(15),
-      category: z.enum(["MARKETING", "UTILITY", "AUTHENTICATION"]),
-      header_text: z.string().max(60).optional(),
-      body_text: z.string().min(1).max(1024),
-      footer_text: z.string().max(60).optional(),
-      buttons: z.array(button).max(3).default([]),
-      examples: z.record(z.string().regex(/^[a-z0-9_]{1,40}$/), z.string().min(1).max(200)).default({}),
-    })
-    .parse(raw);
+  const body = templateInput.parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "channels:write")) return forbidden();
   const { ref: r, ...tpl } = body;
   const res = await run(() =>
-    backendFor(principal).createTemplate(r, {
-      ...tpl,
-      header_text: tpl.header_text || undefined,
-      footer_text: tpl.footer_text || undefined,
-    }),
+    backendFor(principal).createTemplate(
+      r,
+      tpl.category === "AUTHENTICATION"
+        ? tpl
+        : {
+            ...tpl,
+            header_text: tpl.header_text || undefined,
+            footer_text: tpl.footer_text || undefined,
+          },
+    ),
   );
   if (res.ok) revalidatePath(`/clients/${encodeURIComponent(r)}`, "layout");
   return res;

@@ -402,6 +402,39 @@ export const channelsMessages = {
     es: "Códigos de verificación para entrar a una cuenta.",
     en: "Verification codes to sign in to an account.",
   },
+  // Spec 077 (3.1, 3.4): an authentication template is Meta's fixed text.
+  "tpl.otp.legend": { es: "Código de verificación", en: "Verification code" },
+  "tpl.otp.intro": {
+    es: "Meta fija el texto de las plantillas de autenticación. Solo se eligen el botón, la caducidad y el aviso de seguridad.",
+    en: "Meta fixes the text of authentication templates. Only the button, the expiry and the security notice are chosen.",
+  },
+  "tpl.otp.button": { es: "Texto del botón", en: "Button text" },
+  "tpl.otp.button.default": { es: "Copiar código", en: "Copy code" },
+  "tpl.otp.button.help": {
+    es: "Hasta 25 caracteres. Al tocarlo, copia el código.",
+    en: "Up to 25 characters. Tapping it copies the code.",
+  },
+  "tpl.otp.minutes": { es: "Caduca en (min)", en: "Expires in (min)" },
+  "tpl.otp.minutes.help": {
+    es: "De 1 a 90. Vacío: no dice cuándo caduca.",
+    en: "From 1 to 90. Empty: it does not say when it expires.",
+  },
+  "tpl.otp.security": { es: "Aviso de seguridad", en: "Security notice" },
+  "tpl.otp.security.help": {
+    es: "Añade «Por tu seguridad, no lo compartas.»",
+    en: "Adds “For your security, do not share this code.”",
+  },
+  "tpl.otp.preview.es": { es: "Vista previa en español", en: "Preview in Spanish" },
+  "tpl.otp.preview.other": {
+    es: "Meta pone el texto fijo en {lang}, el idioma de la plantilla. Aquí solo se previsualiza en español.",
+    en: "Meta writes the fixed text in {lang}, the template's language. The preview here is only in Spanish.",
+  },
+  "tpl.otp.preview.body": { es: "{code} es tu código de verificación.", en: "{code} is your verification code." },
+  "tpl.otp.preview.security": { es: "Por tu seguridad, no lo compartas.", en: "For your security, do not share this code." },
+  "tpl.otp.preview.expiry": { es: "Este código caduca en {n} minutos.", en: "This code expires in {n} minutes." },
+  "tpl.otp.preview.expiry.one": { es: "Este código caduca en 1 minuto.", en: "This code expires in 1 minute." },
+  "tpl.missing.otp_button": { es: "el texto del botón (hasta 25 caracteres)", en: "the button text (up to 25 characters)" },
+  "tpl.missing.otp_minutes": { es: "una caducidad de 1 a 90 minutos", en: "an expiry from 1 to 90 minutes" },
 
   // ── diagnostics ──────────────────────────────────────────────────
   "diag.title": { es: "Diagnóstico del canal", en: "Channel diagnostics" },

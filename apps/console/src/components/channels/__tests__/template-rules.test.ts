@@ -98,3 +98,39 @@ describe("draftFromComponents (QA 2026-10-30)", () => {
     expect(languageLabel("xx")).toBe("xx");
   });
 });
+
+describe("authentication templates (spec 077, 3.1 and 3.4)", () => {
+  it("only the name, the button and a valid expiry are missing", async () => {
+    const { missingOtpPieces, otpMinutes } = await import("../template-rules");
+    expect(missingOtpPieces({ name: "codigo", otp: { buttonText: "Copiar código", minutes: "10", security: true } })).toEqual([]);
+    expect(missingOtpPieces({ name: "", otp: { buttonText: " ", minutes: "91", security: true } })).toEqual([
+      "name",
+      "otp_button",
+      "otp_minutes",
+    ]);
+    expect(otpMinutes("")).toBeNull();
+    expect(otpMinutes("1")).toBe(1);
+    expect(otpMinutes("2.5")).toBe("invalid");
+  });
+
+  it("a rejected one comes back as what can be chosen, never as free text", async () => {
+    const { draftFromComponents } = await import("../template-rules");
+    const draft = draftFromComponents({
+      name: "codigo",
+      language: "es",
+      category: "AUTHENTICATION",
+      components: [
+        { type: "BODY", text: "*{{1}}* es tu código de verificación. Por tu seguridad, no lo compartas." },
+        { type: "FOOTER", text: "Este código caduca en 5 minutos.", code_expiration_minutes: 5 },
+        { type: "BUTTONS", buttons: [{ type: "URL", text: "Copiar", url: "https://www.whatsapp.com/otp/code/?otp_type=COPY_CODE&code=otp{{1}}" }] },
+      ],
+    });
+    expect(draft).toMatchObject({
+      name: "codigo_v2",
+      category: "AUTHENTICATION",
+      body: "",
+      buttons: [],
+      otp: { buttonText: "Copiar", minutes: "5", security: true },
+    });
+  });
+});
