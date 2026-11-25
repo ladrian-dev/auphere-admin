@@ -432,7 +432,7 @@ No hay dependencias nuevas ni estructura que crear. La rama `075-editar-plantill
   - La prueba está en `whatsapp-templates-dialog-edit.test.tsx`, vista en rojo.
 
   _Requisitos: 9.1, 1.1_
-- [ ] T047 Quickstart «En staging» (consola 1–7, panel 1–3, 8 y 9). Lo hecho hasta ahora, solo en lectura y en el panel:
+- [x] T047 Quickstart «En staging» (consola 1–7, panel 1–3, 8 y 9). Se cerró el 2026-11-25 con lo que se pudo hacer: todo en lectura y en el panel, sin mandar nada a Meta. Lo que escribe en Meta **no se ha probado en staging**. Lo hecho:
   - Sobre las `reserva_*` aprobadas de Meta Review Demo, sin guardar nada:
     - salen «Editar» (9.1) y el editor en modo edición;
     - el nombre y el idioma son el título, y no se ofrece la categoría (1.3, 2.3);
@@ -442,11 +442,12 @@ No hay dependencias nuevas ni estructura que crear. La rama `075-editar-plantill
     - tres categorías y la lista de seis idiomas;
     - con Autenticación, el botón, la caducidad, el aviso y el texto fijo de Meta;
     - en inglés, dice que Meta pone el texto en ese idioma (10.3).
-  - Pendiente:
+  - Saltado, sin probar en staging contra Meta:
+    - **Panel 1, 2 y 8: por decisión de Luis** («No, sáltalo», 2026-11-25). El único número de Meta activo en staging es el de Meta Review Demo, la cuenta real de App Review, y en su WABA no se crea ni se edita nada.
     - **Consola 1–7: sin dónde.** Ningún cliente de Demo (staging) tiene WhatsApp conectado y la consola no cambia de partner.
     - **Panel 9: sin dónde.** No hay ningún cliente de solo envío.
     - **Panel 3: sin dónde.** No hay ninguna plantilla con imagen, y el editor no la crea.
-    - **Panel 1, 2 y 8: esperan.** El único número de Meta activo es el de Meta Review Demo (la cuenta de App Review). Escribir en su WABA espera el permiso de Luis.
+  - Para probarlo hace falta conectar un número de la cuenta de pruebas de Meta a un cliente de staging.
 
   _Requisitos: todas_
 
