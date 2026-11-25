@@ -420,6 +420,39 @@ No hay dependencias nuevas ni estructura que crear. La rama `075-editar-plantill
 
 ---
 
+## Phase 8: Quickstart en staging (2026-11-25)
+
+**Base**: `develop` `3871e25c` (PR 63), desplegado en staging con `deploy-staging` y la `ci` en verde.
+
+- [x] T046 Panel: la lista de plantillas no se sale del diálogo.
+  - En staging, la línea del texto (`truncate`) ensanchaba la lista a 1136 px dentro de un diálogo de 640. «Editar» y «Borrar» quedaban fuera de la vista. Al volver de «Editar», la lista quedaba desplazada y escondía el nombre y el estado.
+  - La causa: una pista de rejilla `auto` crece hasta el texto entero.
+  - El arreglo: `grid-cols-1` en la `<ul>` y `min-w-0` en cada `<li>`. Se comprobó en la página de staging: la lista mide 640 y los dos botones se ven.
+  - El fallo ya estaba antes de la 075, solo con «Borrar»; la 075 lo hizo visible.
+  - La prueba está en `whatsapp-templates-dialog-edit.test.tsx`, vista en rojo.
+
+  _Requisitos: 9.1, 1.1_
+- [x] T047 Quickstart «En staging» (consola 1–7, panel 1–3, 8 y 9). Se cerró el 2026-11-25 con lo que se pudo hacer: todo en lectura y en el panel, sin mandar nada a Meta. Lo que escribe en Meta **no se ha probado en staging**. Lo hecho:
+  - Sobre las `reserva_*` aprobadas de Meta Review Demo, sin guardar nada:
+    - salen «Editar» (9.1) y el editor en modo edición;
+    - el nombre y el idioma son el título, y no se ofrece la categoría (1.3, 2.3);
+    - se ve el aviso de las variables de Reservas;
+    - sin `{{nombre}}`, el editor dice «Falta {{nombre}}.» y no deja mandar (4.1).
+  - «Nueva plantilla» abre el editor compartido (10.5):
+    - tres categorías y la lista de seis idiomas;
+    - con Autenticación, el botón, la caducidad, el aviso y el texto fijo de Meta;
+    - en inglés, dice que Meta pone el texto en ese idioma (10.3).
+  - Saltado, sin probar en staging contra Meta:
+    - **Panel 1, 2 y 8: por decisión de Luis** («No, sáltalo», 2026-11-25). El único número de Meta activo en staging es el de Meta Review Demo, la cuenta real de App Review, y en su WABA no se crea ni se edita nada.
+    - **Consola 1–7: sin dónde.** Ningún cliente de Demo (staging) tiene WhatsApp conectado y la consola no cambia de partner.
+    - **Panel 9: sin dónde.** No hay ningún cliente de solo envío.
+    - **Panel 3: sin dónde.** No hay ninguna plantilla con imagen, y el editor no la crea.
+  - Para probarlo hace falta conectar un número de la cuenta de pruebas de Meta a un cliente de staging.
+
+  _Requisitos: todas_
+
+---
+
 ## Dependencies & Execution Order
 
 - **Fase 2**:
