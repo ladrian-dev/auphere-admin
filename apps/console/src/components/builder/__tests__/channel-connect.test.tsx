@@ -24,7 +24,15 @@ vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({
   metaSocialConnectAction: sdk.metaSocialConnectAction,
   metaSocialCompleteAction: vi.fn(),
 }));
-vi.mock("@/lib/meta-fb-sdk", () => ({ loginWithMeta: sdk.loginWithMeta, loginForCode: sdk.loginForCode, SignupError: class extends Error {} }));
+vi.mock("@/lib/meta-fb-sdk", () => ({
+  loginWithMeta: sdk.loginWithMeta,
+  loginForCode: sdk.loginForCode,
+  SignupError: class extends Error {
+    constructor(public readonly code: string) {
+      super(code);
+    }
+  },
+}));
 
 const { AgentChannelsPanel } = await import("../agent-channels");
 const { ChannelConfigPage } = await import("../channel-page");
@@ -227,10 +235,25 @@ describe("Conectar WhatsApp (§10.1)", () => {
     expect(await axeViolations(baseElement)).toEqual([]);
     await user.click(within(inUse).getByRole("button", { name: "Intentar de nuevo" }));
     expect(signup).toHaveBeenCalledTimes(2);
+    // «Intentar de nuevo» se fue con el foco dentro: el foco sigue en el velo.
+    await waitFor(() => expect(document.querySelector("[data-slot=meta-veil]")?.contains(document.activeElement)).toBe(true));
     expect(signup).toHaveBeenLastCalledWith(expect.objectContaining({ mode: "coexistence" }));
     const closed = await screen.findByRole("dialog", { name: "Se cerró la ventana de Meta" });
     expect(within(closed).getByText("No se conectó nada. Puedes volver a intentarlo cuando quieras.")).toBeVisible();
     await user.click(within(closed).getByRole("button", { name: "Cerrar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("si la ventana de Meta se cerró, el velo también se cierra con la ×", async () => {
+    const user = userEvent.setup();
+    const signup = vi.fn(async () => ({ ok: false as const, code: "cancelled", text: "Se cerró la ventana de Meta." }));
+    panel(empty(), { connect: { signup, move: vi.fn(), catalogs: vi.fn() } });
+    await user.click(screen.getByRole("button", { name: "Conectar WhatsApp" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Conectar" }));
+    const closed = await screen.findByRole("dialog", { name: "Se cerró la ventana de Meta" });
+    // La × de Lucide del diálogo de @nexus/ui, además de «Cerrar».
+    expect(within(closed).getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
+    await user.click(closed.querySelector("[data-slot=dialog-close]") as HTMLElement);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
@@ -273,6 +296,123 @@ describe("Conectar WhatsApp (§10.1)", () => {
     await user.click(within(await screen.findByRole("dialog", { name: "¿Revocar el enlace?" })).getByRole("button", { name: "Revocar" }));
     expect(actions.ownerLink!.revoke).toHaveBeenCalledWith({ ref: REF, agent: RECEPCION, link: LINK });
     await waitFor(() => expect(screen.queryByRole("region", { name: "Enlace enviado al cliente · WhatsApp" })).toBeNull());
+  });
+});
+
+/**
+ * Spec 047 (30.4, T101) y spec 049 (7.2, enmienda del 2026-11-26): el velo de
+ * la ventana de Meta se puede cancelar, con «Cancelar», Escape o la ×, como en
+ * Instagram y Messenger. Lo que Meta devuelva a un intento cancelado no conecta
+ * nada. Mientras se canjea el código con la API, no se cancela.
+ */
+describe("el velo de Meta se puede cancelar (047 30.4; 049 7.2)", () => {
+  type Signup = NonNullable<Actions["connect"]>["signup"];
+  type Outcome = Awaited<ReturnType<Signup>>;
+  type Body = Parameters<Signup>[0];
+
+  /** Un alta que se queda esperando a Meta; `late` es lo que Meta devuelve después. */
+  function waiting() {
+    const seen: Body[] = [];
+    const late: Array<(v: Outcome) => void> = [];
+    const signup = vi.fn((body: Body) => {
+      seen.push(body);
+      return new Promise<Outcome>((resolve) => late.push(resolve));
+    });
+    return { signup, seen, late };
+  }
+
+  async function openVeil(signup: Signup, move = vi.fn(async () => ok(fresh))) {
+    const user = userEvent.setup();
+    const view = panel(empty(), { connect: { signup, move, catalogs: vi.fn(async () => fail(409)) } });
+    await user.click(screen.getByRole("button", { name: "Conectar WhatsApp" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Conectar" }));
+    return { user, move, ...view };
+  }
+
+  it("mientras Meta está abierto ofrece «Cancelar»; cancelar vuelve a «Elegir canal» y lo que Meta mande tarde no conecta", async () => {
+    const { signup, seen, late } = waiting();
+    const { user, move, baseElement } = await openVeil(signup);
+    const veil = await screen.findByRole("dialog", { name: "Continúa en la ventana de Meta" });
+    expect(steps()[1]).toHaveAttribute("aria-current", "step");
+    const cancel = within(veil).getByRole("button", { name: "Cancelar" });
+    await waitFor(() => expect(cancel).toHaveFocus());
+    // La × de Lucide del diálogo, también.
+    expect(veil.querySelector("[data-slot=dialog-close]")).not.toBeNull();
+    expect(await axeViolations(baseElement)).toEqual([]);
+
+    await user.click(cancel);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(seen[0]!.signal?.aborted).toBe(true);
+    expect(steps()[0]).toHaveAttribute("aria-current", "step");
+
+    late[0]!({ ok: true, data: SIGNED });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(move).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Escape cancela la espera", async () => {
+    const { signup, seen } = waiting();
+    const { user } = await openVeil(signup);
+    await screen.findByRole("dialog", { name: "Continúa en la ventana de Meta" });
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(seen[0]!.signal?.aborted).toBe(true);
+    expect(steps()[0]).toHaveAttribute("aria-current", "step");
+  });
+
+  it("la × cancela la espera", async () => {
+    const { signup, seen } = waiting();
+    const { user } = await openVeil(signup);
+    const veil = await screen.findByRole("dialog", { name: "Continúa en la ventana de Meta" });
+    await user.click(veil.querySelector("[data-slot=dialog-close]") as HTMLElement);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(seen[0]!.signal?.aborted).toBe(true);
+  });
+
+  it("un clic fuera del velo no cancela: quien vuelve a la consola no pierde lo hecho en Meta", async () => {
+    const { signup, seen } = waiting();
+    const { user } = await openVeil(signup);
+    await screen.findByRole("dialog", { name: "Continúa en la ventana de Meta" });
+    await user.click(document.querySelector("[data-slot=dialog-overlay]") as HTMLElement);
+    expect(screen.getByRole("dialog", { name: "Continúa en la ventana de Meta" })).toBeInTheDocument();
+    expect(seen[0]!.signal?.aborted).toBe(false);
+  });
+
+  it("intentar de nuevo tras cancelar abre otro intento, y solo cuenta el último", async () => {
+    const { signup, seen, late } = waiting();
+    const { user, move } = await openVeil(signup);
+    await user.click(within(await screen.findByRole("dialog", { name: "Continúa en la ventana de Meta" })).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(screen.getByRole("button", { name: "Conectar WhatsApp" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Conectar" }));
+    await screen.findByRole("dialog", { name: "Continúa en la ventana de Meta" });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]!.signal?.aborted).toBe(false);
+    late[0]!({ ok: true, data: { ...SIGNED, channel_id: "old" } as WhatsAppSignupResult });
+    late[1]!({ ok: true, data: SIGNED });
+    await waitFor(() => expect(move).toHaveBeenCalledWith({ ref: REF, channel: CH3, to: RECEPCION }));
+    expect(move).toHaveBeenCalledTimes(1);
+  });
+
+  it("mientras se canjea el código con la API no se cancela: «Conectando…», sin «Cancelar» ni ×, y Escape no lo cierra", async () => {
+    let finish: (v: Outcome) => void = () => {};
+    const signup = vi.fn((body: Body) => {
+      body.onMetaDone?.();
+      return new Promise<Outcome>((resolve) => (finish = resolve));
+    });
+    const { user } = await openVeil(signup);
+    const veil = await screen.findByRole("dialog", { name: "Conectando…" });
+    expect(within(veil).queryByRole("button")).toBeNull();
+    // «Cancelar» se fue con el foco dentro: el foco queda en el velo, no en la página.
+    await waitFor(() => expect(veil).toHaveFocus());
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Conectando…" })).toBeInTheDocument();
+    expect(signup.mock.calls[0]![0].signal?.aborted).toBe(false);
+    finish({ ok: true, data: SIGNED });
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/clients/${REF}/agents/${RECEPCION}?canal=${CH3}`));
   });
 });
 
@@ -338,6 +478,39 @@ describe("el alta de Meta que ya tiene la consola, con el modo elegido", () => {
     expect(sdk.loginWithMeta).toHaveBeenCalledWith({ appId: "123", version: "v22.0", configId: "cfg-coex", mode: "coexistence" });
     expect(sdk.whatsappSignupAction).toHaveBeenCalledWith({ ref: REF, mode: "coexistence", code: "c0de", waba_id: "w1", phone_number_id: "p1" });
     expect(out).toEqual({ ok: true, data: SIGNED });
+  });
+
+  it("si se canceló mientras Meta estaba abierto, no llama a la API con lo que Meta devuelva tarde (049 7.2)", async () => {
+    let late: (v: { code: string; waba_id: string }) => void = () => {};
+    sdk.loginWithMeta.mockImplementationOnce(() => new Promise((resolve) => (late = resolve)));
+    const controller = new AbortController();
+    const onMetaDone = vi.fn();
+    const out = runWhatsAppSignup({ refId: REF, meta: META, mode: "cloud_api", t, signal: controller.signal, onMetaDone });
+    expect(sdk.loginWithMeta).toHaveBeenLastCalledWith(expect.objectContaining({ configId: "cfg-cloud", signal: controller.signal }));
+    controller.abort();
+    late({ code: "LATE", waba_id: "w-late" });
+    await expect(out).resolves.toMatchObject({ ok: false, code: "cancelled" });
+    expect(sdk.whatsappSignupAction).not.toHaveBeenCalledWith(expect.objectContaining({ code: "LATE" }));
+    expect(onMetaDone).not.toHaveBeenCalled();
+  });
+
+  it("cuando Meta devuelve, avisa antes de llamar a la API, que ya no se cancela", async () => {
+    const order: string[] = [];
+    sdk.loginWithMeta.mockResolvedValueOnce({ code: "c0de", waba_id: "w1" });
+    sdk.whatsappSignupAction.mockImplementationOnce(async () => {
+      order.push("api");
+      return ok(SIGNED);
+    });
+    const out = await runWhatsAppSignup({ refId: REF, meta: META, mode: "coexistence", t, signal: new AbortController().signal, onMetaDone: () => order.push("metaDone") });
+    expect(order).toEqual(["metaDone", "api"]);
+    expect(out).toEqual({ ok: true, data: SIGNED });
+  });
+
+  it("cerrar la ventana de Meta se dice «Se cerró la ventana de Meta», no como un error de Meta", async () => {
+    const { SignupError } = await import("@/lib/meta-fb-sdk");
+    sdk.loginWithMeta.mockRejectedValueOnce(new SignupError("cancelled"));
+    const out = await runWhatsAppSignup({ refId: REF, meta: META, mode: "cloud_api", t });
+    expect(out).toEqual({ ok: false, code: "cancelled", text: "Se cerró la ventana de Meta. No se conectó nada. Puedes volver a intentarlo cuando quieras." });
   });
 
   it("el cupo lleno no enseña el texto en inglés de la API", async () => {

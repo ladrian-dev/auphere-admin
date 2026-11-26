@@ -12,7 +12,7 @@ import { listCatalogsAction } from "@/app/(console)/clients/[ref]/channels/actio
 import { BrandLogo } from "@/components/brand-logo";
 import { CatalogPicker, offerCatalogAfterSignup } from "@/components/channels/catalog-picker";
 import { metaIsConfigured } from "@/components/channels/connect-choice";
-import { runWhatsAppSignup, type MetaSignupConfig, type WhatsAppSignupOutcome } from "@/components/channels/whatsapp-connect";
+import { runWhatsAppSignup, type MetaSignupConfig, type SignupWait, type WhatsAppSignupOutcome } from "@/components/channels/whatsapp-connect";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { ChannelPage, PendingOwnerLink } from "@/lib/backend/channel-config-types";
@@ -27,8 +27,12 @@ type T = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 /** Lo que hace falta para conectar un número desde el agente. Sin ellas, las de servidor. */
 export type ConnectActions = {
-  /** El alta de Meta de la consola (`runWhatsAppSignup`): la ventana de Meta y luego la API. */
-  signup: (body: { refId: string; meta: MetaSignupConfig; mode: SignupMode; t: T }) => Promise<WhatsAppSignupOutcome>;
+  /**
+   * El alta de Meta de la consola (`runWhatsAppSignup`): la ventana de Meta y luego la API.
+   * `signal` cancela la espera de la ventana; `onMetaDone` avisa de que Meta ya
+   * contestó y empieza el canje con la API, que no se cancela (049, 7.2).
+   */
+  signup: (body: { refId: string; meta: MetaSignupConfig; mode: SignupMode; t: T } & SignupWait) => Promise<WhatsAppSignupOutcome>;
   /** El alta deja el número en el cliente: se pasa a este agente (34.2). */
   move: (body: { ref: string; channel: string; to: string }) => Promise<Result<ChannelPage>>;
   catalogs: (body: { ref: string; channelId: string }) => Promise<Result<CatalogList>>;
@@ -49,7 +53,11 @@ export type Placed = "here" | "elsewhere";
 const MODES = ["coexistence", "cloud_api"] as const satisfies readonly SignupMode[];
 const IN_USE = new Set(["number_in_use", "number_held_by_previous_owner"]);
 
-type Veil = { mode: SignupMode; failure: { code: string; text: string } | null };
+/**
+ * El velo de Meta: esperando a la ventana (se cancela), canjeando el código con
+ * la API (`saving`, no se cancela) o con el fallo y «Intentar de nuevo».
+ */
+type Veil = { mode: SignupMode; saving: boolean; failure: { code: string; text: string } | null };
 
 /**
  * «Conectar WhatsApp» como el prototipo aprobado (`agente.md` §10.1, §10.2,
@@ -62,10 +70,12 @@ type Veil = { mode: SignupMode; failure: { code: string; text: string } | null }
  *   se dice quién lo conecta (spec 016, R1.3).
  * - Paso «enlace» («Compartir un enlace»): el enlace del dueño de siempre
  *   (`OwnerLinkPanel`, requisito 31), en el modo elegido.
- * - Mientras Meta está abierto, el velo «Continúa en la ventana de Meta»; si
- *   no se conecta, dice por qué y deja intentarlo de nuevo. No ofrece
- *   «Cancelar» ni «Abrir la ventana otra vez»: la ventana de Meta no se puede
- *   cerrar ni reabrir desde aquí, y prometerlo sería mentir.
+ * - Mientras Meta está abierto, el velo «Continúa en la ventana de Meta», que
+ *   se cancela con «Cancelar», Escape o la × (047 30.4; 049 7.2, enmienda del
+ *   2026-11-26). Cancelar deja la espera, no cierra la ventana de Meta: lo que
+ *   Meta devuelva después no conecta nada. Un clic fuera no cancela. Al
+ *   canjear el código con la API, «Conectando…», sin cancelar. Si no se
+ *   conecta, dice por qué y deja intentarlo de nuevo.
  * - Al volver: `onConnected` lo deja en este agente; si tiene catálogo se
  *   ofrece (spec 022) y luego se abre la configuración del canal.
  */
@@ -104,6 +114,12 @@ export function ConnectWhatsApp({
   const available = (m: SignupMode) => configured && Boolean(m === "coexistence" ? meta?.configIdCoexistence : meta?.configIdCloudApi);
   const [mode, setMode] = React.useState<SignupMode>(() => (meta?.configIdCoexistence || !meta?.configIdCloudApi ? "coexistence" : "cloud_api"));
   const [veil, setVeil] = React.useState<Veil | null>(null);
+  // Cada intento lleva su número y su `AbortController`, como Instagram y
+  // Messenger (`meta-social-connect.tsx`): lo que llegue de uno cancelado se descarta.
+  const attempt = React.useRef(0);
+  const abort = React.useRef<AbortController | null>(null);
+  const veilRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => () => abort.current?.abort(), []);
   const [linkCreated, setLinkCreated] = React.useState(false);
   const [offer, setOffer] = React.useState<{ channelId: string; list: CatalogList } | null>(null);
   const name = clientName ?? t("channels.proto.veil.theBusiness");
@@ -124,9 +140,22 @@ export function ConnectWhatsApp({
 
   async function start(m: SignupMode) {
     if (!meta || !available(m)) return;
-    showVeil({ mode: m, failure: null });
-    const out = await actions.signup({ refId, meta, mode: m, t });
-    if (!out.ok) return showVeil({ mode: m, failure: { code: out.code, text: out.text } });
+    abort.current?.abort();
+    const mine = ++attempt.current;
+    const controller = new AbortController();
+    abort.current = controller;
+    showVeil({ mode: m, saving: false, failure: null });
+    const out = await actions.signup({
+      refId,
+      meta,
+      mode: m,
+      t,
+      signal: controller.signal,
+      onMetaDone: () => attempt.current === mine && setVeil((v) => (v ? { ...v, saving: true } : v)),
+    });
+    if (attempt.current !== mine) return;
+    abort.current = null;
+    if (!out.ok) return showVeil({ mode: m, saving: false, failure: { code: out.code, text: out.text } });
     showVeil(null);
     const placed = await onConnected(out.data);
     if (placed === "elsewhere") {
@@ -139,14 +168,36 @@ export function ConnectWhatsApp({
     else configure(out.data.channel_id);
   }
 
+  /** Deja la espera de Meta y vuelve a «Elegir canal», sin crear nada (049, 7.2). */
+  function cancelWait() {
+    attempt.current += 1;
+    abort.current?.abort();
+    abort.current = null;
+    showVeil(null);
+  }
+
   const failure = veil?.failure ?? null;
-  const veilTitle = !failure
-    ? t("channels.proto.veil.title")
-    : IN_USE.has(failure.code)
-      ? t("channels.proto.veil.inUse")
-      : failure.code === "cancelled"
-        ? t("channels.proto.veil.closed")
-        : t("channels.proto.veil.failed");
+  const saving = !failure && veil?.saving === true;
+  const waiting = veil !== null && !failure && !saving;
+  // Al cambiar de fase (esperando, canjeando, fallo) el botón que tenía el foco
+  // puede irse: «Cancelar» al empezar el canje, «Intentar de nuevo» al reintentar.
+  // Entonces el foco pasa al primer botón del velo, o al velo si no hay ninguno,
+  // en vez de caer en la página (WCAG 2.4.3; visto en la pasada viva).
+  const phase = veil === null ? null : failure ? "failed" : saving ? "saving" : "waiting";
+  React.useEffect(() => {
+    const root = veilRef.current;
+    if (!phase || !root || root.contains(document.activeElement)) return;
+    (root.querySelector<HTMLElement>("button") ?? root).focus();
+  }, [phase]);
+  const veilTitle = saving
+    ? t("ch.connect.working")
+    : !failure
+      ? t("channels.proto.veil.title")
+      : IN_USE.has(failure.code)
+        ? t("channels.proto.veil.inUse")
+        : failure.code === "cancelled"
+          ? t("channels.proto.veil.closed")
+          : t("channels.proto.veil.failed");
   const veilBody = !failure
     ? t(`channels.proto.veil.${veil?.mode ?? mode}` as MessageKey, { name })
     : failure.code === "cancelled"
@@ -272,18 +323,39 @@ export function ConnectWhatsApp({
         </DialogContent>
       </Dialog>
 
-      {/* El velo de Meta (§10.2): mientras espera no se cierra (Meta sigue abierto); con un fallo, sí. */}
-      <Dialog open={veil !== null} onOpenChange={(open) => !open && failure && showVeil(null)}>
-        <DialogContent showCloseButton={false} className="justify-items-center gap-4 p-8 text-center sm:max-w-120" data-slot="meta-veil">
+      {/* El velo de Meta (§10.2). Esperando a la ventana: «Cancelar», Escape o la × dejan la espera
+          (049, 7.2); un clic fuera no. Canjeando el código: no se cierra. Con un fallo: se cierra. */}
+      <Dialog
+        open={veil !== null}
+        disablePointerDismissal={!failure}
+        onOpenChange={(open) => {
+          if (open) return;
+          if (failure) showVeil(null);
+          else if (waiting) cancelWait();
+        }}
+      >
+        <DialogContent
+          ref={veilRef}
+          showCloseButton={!saving}
+          aria-busy={saving}
+          className="justify-items-center gap-4 p-8 text-center sm:max-w-120"
+          data-slot="meta-veil"
+        >
           {failure && failure.code !== "cancelled" ? (
             <CircleAlert aria-hidden="true" className="size-8 text-destructive" />
           ) : (
             <BrandLogo brand="whatsapp" size="xl" />
           )}
-          <DialogHeader className="items-center">
+          {/* aria-live: el paso de esperar a «Conectando…» o al fallo se anuncia sin mover el foco. */}
+          <DialogHeader className="items-center" aria-live="polite">
             <DialogTitle className="text-xl leading-tight font-semibold text-balance">{veilTitle}</DialogTitle>
-            <DialogDescription className="max-w-prose text-pretty">{veilBody}</DialogDescription>
+            {saving ? null : <DialogDescription className="max-w-prose text-pretty">{veilBody}</DialogDescription>}
           </DialogHeader>
+          {waiting ? (
+            <Button variant="outline" onClick={cancelWait}>
+              {t("common.cancel")}
+            </Button>
+          ) : null}
           {failure && veil ? (
             <div className="flex flex-wrap justify-center gap-2">
               <Button variant="ghost" onClick={() => showVeil(null)}>

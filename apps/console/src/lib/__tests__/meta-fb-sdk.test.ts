@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { centeredPopupFeatures, loginForCode, parseMetaSignupMessage, signupExtras, signupOutcome, withCenteredPopup } from "../meta-fb-sdk";
 
@@ -129,5 +129,167 @@ describe("prompt=login en la ventana de Meta (spec 049, requisito 8)", () => {
   it("sin pedirlo, no lo manda", async () => {
     await expect(loginForCode({ appId: "1", version: "v26.0", configId: "9" })).resolves.toBe("C");
     expect(login.mock.lastCall?.[1]).not.toHaveProperty("prompt");
+  });
+});
+
+/**
+ * Spec 047 (30.4, T101) y spec 049 (7.2, enmienda del 2026-11-26): la espera
+ * de la ventana de Meta del alta de WhatsApp siempre termina. `loginWithMeta`
+ * real, con el SDK simulado en `window.FB`; cada prueba carga el módulo de
+ * nuevo, porque el SDK se guarda en una variable del módulo.
+ */
+describe("loginWithMeta: la espera de la ventana de Meta siempre termina (047 T101; 049 7.2)", () => {
+  type LoginCb = (r: { status?: string; authResponse?: { code?: string } }) => void;
+  type Sdk = typeof import("../meta-fb-sdk");
+  const OPTS = { appId: "1", version: "v26.0", configId: "cfg", mode: "cloud_api" as const };
+  const FIVE_MIN = 5 * 60 * 1000;
+
+  let callbacks: LoginCb[];
+  let live: Set<EventListenerOrEventListenerObject>;
+
+  async function fresh(withSdk = true): Promise<Sdk> {
+    vi.resetModules();
+    callbacks = [];
+    if (withSdk) {
+      window.FB = { init: vi.fn(), login: vi.fn((cb: LoginCb) => void callbacks.push(cb)) } as unknown as NonNullable<typeof window.FB>;
+    } else {
+      delete window.FB;
+    }
+    return import("../meta-fb-sdk");
+  }
+
+  /** Lo que Meta manda desde la ventana al terminar el asistente. */
+  function finish(data: Record<string, unknown>) {
+    const payload = JSON.stringify({ type: "WA_EMBEDDED_SIGNUP", event: "FINISH", data });
+    window.dispatchEvent(new MessageEvent("message", { origin: "https://www.facebook.com", data: payload }));
+  }
+
+  /** Con qué SignupError termina la promesa, o «pending» si sigue esperando. */
+  async function settle(p: Promise<unknown>): Promise<string> {
+    let out = "pending";
+    p.then(
+      () => (out = "resolved"),
+      (err: { code?: string }) => (out = err?.code ?? "error"),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    return out;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    live = new Set();
+    const add = window.addEventListener.bind(window);
+    const remove = window.removeEventListener.bind(window);
+    vi.spyOn(window, "addEventListener").mockImplementation((type, fn, opts) => {
+      if (type === "message") live.add(fn);
+      add(type, fn, opts);
+    });
+    vi.spyOn(window, "removeEventListener").mockImplementation((type, fn, opts) => {
+      if (type === "message") live.delete(fn);
+      remove(type, fn, opts);
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  it("con el código y los ids de Meta resuelve, y no deja oyente ni plazo vivos", async () => {
+    const sdk = await fresh();
+    const p = sdk.loginWithMeta(OPTS);
+    await vi.advanceTimersByTimeAsync(0);
+    finish({ waba_id: "W1", phone_number_id: "P1" });
+    callbacks[0]!({ status: "connected", authResponse: { code: "C0DE" } });
+    await expect(p).resolves.toEqual({ code: "C0DE", waba_id: "W1", phone_number_id: "P1", business_id: undefined });
+    expect(live.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("si Meta no manda ninguna señal, a los 5 minutos termina con «timeout» y lo limpia todo", async () => {
+    const sdk = await fresh();
+    const p = sdk.loginWithMeta(OPTS);
+    expect(await settle(p)).toBe("pending");
+    expect(live.size).toBe(1);
+    await vi.advanceTimersByTimeAsync(FIVE_MIN);
+    await expect(p).rejects.toMatchObject({ code: "timeout" });
+    expect(live.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("si el SDK de Meta no llega a cargar, el plazo corre igual", async () => {
+    const sdk = await fresh(false);
+    const p = sdk.loginWithMeta(OPTS);
+    expect(await settle(p)).toBe("pending");
+    await vi.advanceTimersByTimeAsync(FIVE_MIN);
+    await expect(p).rejects.toMatchObject({ code: "timeout" });
+    expect(live.size).toBe(0);
+  });
+
+  it("cerrar la ventana sin código se dice «cancelled» (la ventana se cerró), no «no_code»", async () => {
+    const sdk = await fresh();
+    for (const status of ["unknown", "not_authorized", undefined]) {
+      const p = sdk.loginWithMeta(OPTS);
+      await vi.advanceTimersByTimeAsync(0);
+      callbacks.at(-1)!({ status });
+      await expect(p).rejects.toMatchObject({ code: "cancelled" });
+    }
+    // «Conectado» y sin código es la configuración, no la persona.
+    const p = sdk.loginWithMeta(OPTS);
+    await vi.advanceTimersByTimeAsync(0);
+    callbacks.at(-1)!({ status: "connected" });
+    await expect(p).rejects.toMatchObject({ code: "no_code" });
+    expect(live.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancelar termina la espera al momento y quita el oyente y el plazo; lo que Meta mande después no cuenta", async () => {
+    const sdk = await fresh();
+    const controller = new AbortController();
+    const p = sdk.loginWithMeta({ ...OPTS, signal: controller.signal });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
+    await expect(p).rejects.toMatchObject({ code: "cancelled" });
+    expect(live.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    // Meta devuelve tarde: nada lo recoge.
+    finish({ waba_id: "LATE" });
+    callbacks[0]!({ status: "connected", authResponse: { code: "LATE" } });
+  });
+
+  it("cancelado antes de empezar, ni siquiera abre la ventana", async () => {
+    const sdk = await fresh();
+    const controller = new AbortController();
+    controller.abort();
+    await expect(sdk.loginWithMeta({ ...OPTS, signal: controller.signal })).rejects.toMatchObject({ code: "cancelled" });
+    expect(window.FB!.login).not.toHaveBeenCalled();
+    expect(live.size).toBe(0);
+  });
+
+  it("si FB.login falla al abrir la ventana, termina al momento y lo limpia todo", async () => {
+    const sdk = await fresh();
+    (window.FB!.login as ReturnType<typeof vi.fn>).mockImplementationOnce(() => {
+      throw new Error("popup blocked");
+    });
+    const p = sdk.loginWithMeta(OPTS);
+    expect(await settle(p)).toBe("sdk_failed");
+    expect(live.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("un intento nuevo termina el anterior: su oyente y su plazo no siguen vivos", async () => {
+    const sdk = await fresh();
+    const first = sdk.loginWithMeta(OPTS);
+    await vi.advanceTimersByTimeAsync(0);
+    const second = sdk.loginWithMeta(OPTS);
+    await expect(first).rejects.toMatchObject({ code: "cancelled" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(live.size).toBe(1);
+    expect(vi.getTimerCount()).toBe(1);
+    finish({ waba_id: "W2" });
+    callbacks[1]!({ status: "connected", authResponse: { code: "SECOND" } });
+    await expect(second).resolves.toMatchObject({ code: "SECOND", waba_id: "W2" });
+    expect(live.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
