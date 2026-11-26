@@ -44,13 +44,14 @@ class FakeGraph:
         self.subscribe_error_only_with: str | None = None
         self.granular_scopes: list[dict[str, Any]] = []
         self.portfolio_instagram: list[dict[str, Any]] = []
+        self.token = "SUAT-1"
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/v26.0")
         params = dict(request.url.params)
         self.calls.append((request.method, path, params))
         if path == "/oauth/access_token":
-            return httpx.Response(200, json={"access_token": "SUAT-1", "token_type": "bearer"})
+            return httpx.Response(200, json={"access_token": self.token, "token_type": "bearer"})
         if path == "/me" and params.get("fields") == "client_business_id":
             return httpx.Response(
                 200,
@@ -126,12 +127,34 @@ async def test_overview_offers_the_enabled_channels(
     body = (await client.get(_url(a, "overview"), headers=a["headers"]())).json()
     # Spec 049, requisito 8: Instagram abre «Auphere Instagram», la
     # configuración que Meta marca como compatible con entrar con Instagram
-    # (solo la cuenta y los tres permisos de Instagram); Messenger no cambia.
+    # (solo la cuenta y los tres permisos de Instagram). Spec 081 (1.1):
+    # además, «Auphere Instagram + Página», que pide la Página vinculada y
+    # `pages_show_list` para que lleguen los DMs. Messenger no cambia.
     assert body["meta_social"]["channels"] == [
-        {"kind": "instagram", "config_id": "29353122964304011"},
-        {"kind": "messenger", "config_id": "2188508105420190"},
+        {
+            "kind": "instagram",
+            "config_id": "29353122964304011",
+            "page_config_id": "1468805387916611",
+        },
+        {"kind": "messenger", "config_id": "2188508105420190", "page_config_id": None},
     ]
     assert body["meta_social"]["app_id"] == "957213733862330"
+
+
+async def test_without_the_page_configuration_instagram_offers_one_way(
+    client, console_world, db_session, graph, monkeypatch
+) -> None:
+    """Spec 081 (1.1, 1.5): an environment without the Page configuration
+    keeps the single Instagram button of spec 049."""
+    from nexus_api.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "meta_config_id_instagram_page", "", raising=False)
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["instagram"])
+    body = (await client.get(_url(a, "overview"), headers=a["headers"]())).json()
+    assert body["meta_social"]["channels"] == [
+        {"kind": "instagram", "config_id": "29353122964304011", "page_config_id": None},
+    ]
 
 
 async def test_connect_instagram_end_to_end(client, console_world, db_session, graph) -> None:
@@ -171,6 +194,37 @@ async def test_connect_instagram_end_to_end(client, console_world, db_session, g
     # It does not take the WhatsApp number's slot.
     ov = (await client.get(_url(a, "overview"), headers=a["headers"]())).json()
     assert ov["used_channels"] == 0
+
+
+async def test_reconnecting_an_active_account_keeps_its_channel_and_takes_the_new_token(
+    client, console_world, db_session, graph
+) -> None:
+    """Spec 081 (2.2): the business that connected Instagram without its Page
+    connects again with it. Same channel, still active, with the new token
+    (the one that carries the Page)."""
+    a = console_world["a"]
+    await _beta(db_session, a["partner_id"], ["instagram"])
+    first = await client.post(
+        _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "C1"}
+    )
+    channel_id = first.json()["channel"]["id"]
+
+    graph.token = "SUAT-2"
+    again = await client.post(
+        _url(a, "instagram/connect"), headers=a["headers"](), json={"code": "C2"}
+    )
+
+    assert again.status_code == 200, again.text
+    assert again.json()["channel"]["id"] == channel_id
+    rows = (
+        (await db_session.execute(sa.select(Channel).where(Channel.provider_identifier == IG_ID)))
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 1
+    await db_session.refresh(rows[0])
+    assert rows[0].status is ChannelStatus.ACTIVE
+    assert SocialCredentials.from_payload(rows[0].config_encrypted).token == "SUAT-2"
 
 
 async def test_connect_messenger_uses_the_page_token(

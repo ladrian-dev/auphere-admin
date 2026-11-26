@@ -142,8 +142,9 @@ Spec 049. Meta aprobó los permisos el 2026-11-19 (solicitud del 2026-11-03).
   etiqueta `HUMAN_AGENT`. El agente sigue con 24 horas (`services/meta_window`).
   La leen la API y el worker que envía.
 - **Configuraciones de Facebook Login for Business** (`config.py`,
-  `meta_config_id_instagram` y `meta_config_id_messenger`). Las dos dan un
-  token de usuario del sistema que no caduca.
+  `meta_config_id_instagram`, `meta_config_id_instagram_page` y
+  `meta_config_id_messenger`). Las tres dan un token de usuario del sistema
+  que no caduca.
   - **Instagram: «Auphere Instagram» `29353122964304011`.** Solo pide la
     cuenta de Instagram y `instagram_basic`, `instagram_manage_messages` e
     `instagram_manage_comments`, y Meta la marca como compatible con el inicio
@@ -155,6 +156,20 @@ Spec 049. Meta aprobó los permisos el 2026-11-19 (solicitud del 2026-11-03).
     Páginas, y una configuración que las pide deja de ser compatible. Le pasó
     a la anterior, `1157578836735566`, cuando se le añadieron por INC-53
     (2026-11-01). Las cuentas conectadas con ella siguen funcionando.
+  - **Instagram con su Página: «Auphere Instagram + Página»
+    `1468805387916611`** (spec 081). Pide la Página y la cuenta de Instagram
+    como activos obligatorios, los tres permisos de Instagram y
+    `pages_show_list`. Solo se entra con Facebook, sin `prompt=login`.
+    - **Por qué existe.** Si el negocio comparte la cuenta de Instagram pero
+      no la Página de Facebook vinculada, Meta no manda `messages`. Los
+      comentarios sí llegan (guía «Set up Instagram Webhooks» de Meta, parte
+      de Unified Login). Le pasó a Gali Artist en producción el 2026-11-26.
+    - **Qué hace la consola.** Si la oferta trae `page_config_id`, al pulsar
+      «Conectar Instagram» pregunta cómo se entra: «Con Facebook y tu Página»
+      (esta configuración) o «Con Instagram» (la de arriba, para cuentas sin
+      Página vinculada).
+    - **No se suscribe la Página:** basta con que el token lleve la Página
+      concedida. La de Auphere no tiene ninguna app suscrita y recibe DMs.
   - **Messenger: «Auphere Messenger» `2188508105420190`** (7 permisos). Solo
     se entra con Facebook, sin `prompt=login`.
 - **Webhooks:** Meta admite **una sola URL por app** para los objetos `page` e

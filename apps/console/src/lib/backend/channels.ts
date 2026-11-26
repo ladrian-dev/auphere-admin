@@ -62,7 +62,9 @@ export type MetaSocialKind = "instagram" | "messenger";
 export type MetaSocialOffer = {
   app_id: string;
   graph_version: string;
-  channels: { kind: MetaSocialKind; config_id: string }[];
+  /** Spec 081: `page_config_id` (Instagram only) also asks for the linked
+   *  Facebook Page, so the account's direct messages reach the agent. */
+  channels: { kind: MetaSocialKind; config_id: string; page_config_id?: string | null }[];
 };
 export type MetaSocialAccount = { id: string; name: string; username: string | null; picture_url: string | null };
 export type MetaSocialConnectResult = {
