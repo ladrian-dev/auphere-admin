@@ -17,6 +17,29 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
   está, el de `cloud_api`).
 - Un número nuevo empieza **en prueba**: «Solo mi equipo» con el teléfono del
   dueño, para que nadie de fuera hable con un agente a medio hacer.
+- **La espera de la ventana de Meta se puede cancelar** (047, 30.4; 049, 7.2,
+  enmienda del 2026-11-26). Vale para WhatsApp, Instagram y Messenger.
+  - **Dónde.** En WhatsApp, en las cuatro superficies que abren el alta: el
+    velo de «Conectar WhatsApp» del agente (`connect-whatsapp-dialog.tsx`), el
+    de la página Canales del cliente (`whatsapp-connect.tsx`), «Volver a
+    conectar» de la medición de anuncios (`ad-measurement-section.tsx`) y el
+    diálogo del panel (`meta-signup-dialog.tsx`).
+  - **Cómo.** Con «Cancelar», Escape o la ×. Un clic fuera no cancela, para no
+    perder lo hecho en la ventana de Meta al volver a la consola. Cancelar
+    deja la espera, no cierra la ventana de Meta.
+  - **Lo tardío se descarta.** Cada intento lleva su número y su
+    `AbortController`. Lo que Meta devuelva a uno cancelado no llega a la API:
+    `runWhatsAppSignup` no la llama.
+  - **El canje no se cancela.** Cuando Meta devuelve, el velo pasa a
+    «Conectando…» sin «Cancelar» (`onMetaDone`).
+  - **`loginWithMeta`** (consola y panel) sale por un único sitio que quita el
+    oyente y el plazo.
+    - El plazo de 5 minutos arranca antes de cargar el SDK.
+    - Un intento nuevo cierra el anterior.
+    - Cerrar la ventana sin código se dice «Se cerró la ventana de Meta».
+  - **Queda fuera** la página del dueño (`/connect/whatsapp`), sin velo ni
+    «Cancelar»: al cerrar la ventana, su botón vuelve a estar listo y no
+    muestra ningún error.
 
 ### Llegar a la configuración del número (spec 063, requisito 2)
 
@@ -90,9 +113,9 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
     canal se anonimiza a los 30 días (`meta_social_retention`, requisito 5.3).
     Volver a conectarlo antes lo cancela. El diálogo de «Desconectar» y el
     aviso de canal desconectado lo dicen.
-  - **Conectar se puede cancelar:** mientras la ventana de Meta está abierta, la
-    consola ofrece «Cancelar» (y Escape). Lo que Meta devuelva después a un
-    intento cancelado se descarta (`meta-social-connect.tsx`, requisito 7.2).
+  - **Conectar se puede cancelar,** como en WhatsApp (sección 1): «Cancelar» y
+    Escape mientras la ventana de Meta está abierta, y lo que Meta devuelva a
+    un intento cancelado se descarta (`meta-social-connect.tsx`, requisito 7.2).
   - **Pasar a otro agente** dice «Pasar el canal».
   - **Comentarios** (Instagram y Messenger): responder sí o no y la respuesta
     pública bajo el comentario (`_COMMENT_CHANNELS` en

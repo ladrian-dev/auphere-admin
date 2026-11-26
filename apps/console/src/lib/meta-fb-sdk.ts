@@ -257,46 +257,95 @@ export function withCenteredPopup<T>(fn: () => T): T {
   }
 }
 
-export async function loginWithMeta(opts: {
+/**
+ * Pure: why an `FB.login` answer without a code ended. Closing Meta's window
+ * (or declining) leaves no code and a status other than `connected`, and it
+ * is said as «Se cerró la ventana» (spec 049, 7.2, 2026-11-26). `connected`
+ * without a code is the configuration (`response_type`), not the person.
+ */
+export function noCodeReason(status: string | undefined): "cancelled" | "no_code" {
+  return status === "connected" ? "no_code" : "cancelled";
+}
+
+/** The attempt in flight; a new one ends it, so only one listener and one deadline live. */
+let endCurrentAttempt: (() => void) | null = null;
+
+/**
+ * Open Meta's Embedded Signup and wait for both halves: the OAuth `code`
+ * (from the `FB.login` callback) and the WABA ids (from the popup's
+ * `postMessage`). Spec 047 (30.4, T101) and 049 (7.2, 2026-11-26): the wait
+ * always ends, and every way out removes the listener and the deadline.
+ *
+ * - One deadline (5 min) starts before the SDK loads, so an SDK that never
+ *   arrives ends too.
+ * - `signal` cancels it at once (`cancelled`); whatever Meta sends after that
+ *   is dropped.
+ * - A new call ends the previous attempt the same way.
+ */
+export function loginWithMeta(opts: {
   appId: string;
   version: string;
   configId: string;
   mode: SignupMode;
   signupVersion?: SignupVersion;
+  signal?: AbortSignal;
 }): Promise<MetaSignupEnvelope> {
-  const sdk = await loadFbSdk(opts.appId, opts.version);
+  endCurrentAttempt?.();
+  return new Promise<MetaSignupEnvelope>((resolve, reject) => {
+    let code: string | undefined;
+    let data: Omit<MetaSignupEnvelope, "code"> | undefined;
+    let settled = false;
+    const end = () => fail(new SignupError("cancelled"));
+    const timer = setTimeout(() => fail(new SignupError("timeout")), TIMEOUT_MS);
 
-  const dataPromise = new Promise<Omit<MetaSignupEnvelope, "code">>((resolve, reject) => {
-    const timer = setTimeout(() => {
+    function cleanup() {
+      settled = true;
+      clearTimeout(timer);
       window.removeEventListener("message", onMessage);
-      reject(new SignupError("timeout"));
-    }, TIMEOUT_MS);
+      opts.signal?.removeEventListener("abort", end);
+      if (endCurrentAttempt === end) endCurrentAttempt = null;
+    }
+    function fail(err: unknown) {
+      if (settled) return;
+      cleanup();
+      reject(err instanceof SignupError ? err : new SignupError("sdk_failed", String(err)));
+    }
+    function finishIfBoth() {
+      if (settled || code === undefined || data === undefined) return;
+      cleanup();
+      resolve({ code, ...data });
+    }
     function onMessage(event: MessageEvent) {
       if (typeof event.origin !== "string" || !META_ORIGINS.has(event.origin)) return;
       const outcome = signupOutcome(parseMetaSignupMessage(event.data));
       if (outcome === null) return;
-      window.removeEventListener("message", onMessage);
-      clearTimeout(timer);
-      if (outcome.kind === "failed") return reject(new SignupError(outcome.code, outcome.detail));
-      resolve({ waba_id: outcome.waba_id, phone_number_id: outcome.phone_number_id, business_id: outcome.business_id });
+      if (outcome.kind === "failed") return fail(new SignupError(outcome.code, outcome.detail));
+      data = { waba_id: outcome.waba_id, phone_number_id: outcome.phone_number_id, business_id: outcome.business_id };
+      finishIfBoth();
     }
+
+    if (opts.signal?.aborted) return end();
+    endCurrentAttempt = end;
+    opts.signal?.addEventListener("abort", end, { once: true });
+    // Listen before the popup opens: Meta can post before `FB.login` answers.
     window.addEventListener("message", onMessage);
+    // `.catch` after `.then`: a `FB.login` that throws (popup refused) ends the wait too.
+    loadFbSdk(opts.appId, opts.version)
+      .then((sdk) => {
+        if (settled) return;
+        withCenteredPopup(() =>
+          sdk.login(
+            (response) => {
+              if (!response.authResponse?.code) return fail(new SignupError(noCodeReason(response.status)));
+              code = response.authResponse.code;
+              finishIfBoth();
+            },
+            { config_id: opts.configId, response_type: "code", override_default_response_type: true, extras: signupExtras(opts.mode, opts.signupVersion) },
+          ),
+        );
+      })
+      .catch(fail);
   });
-
-  const codePromise = new Promise<string>((resolve, reject) => {
-    withCenteredPopup(() =>
-      sdk.login(
-        (response) => {
-          if (response.authResponse?.code) resolve(response.authResponse.code);
-          else reject(new SignupError(response.status === "not_authorized" ? "cancelled" : "no_code"));
-        },
-        { config_id: opts.configId, response_type: "code", override_default_response_type: true, extras: signupExtras(opts.mode, opts.signupVersion) },
-      ),
-    );
-  });
-
-  const [code, data] = await Promise.all([codePromise, dataPromise]);
-  return { code, ...data };
 }
 
 /**
