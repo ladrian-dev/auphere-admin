@@ -176,7 +176,7 @@ Detalle en `plan.md` §«Enmienda del 2026-10-30».
 - Q: ¿Una promesa sin herramienta bloquea o avisa? → A: **Bloquea la publicación.** Enmienda la gravedad de ese caso en 16.5 y 22.1.
 - Q: ¿Se publica un agente estructurado sin ninguna prueba aplicable? → A: **No.** Requisito 65.9.
 - Q: ¿Se pueden usar las herramientas de Composio en agentes estructurados? → A: **Fuera de esta enmienda.** El AgentSpec no admite sus nombres. El constructor deja de ofrecerlas hasta que una spec decida el formato.
-- Q: ¿Se toca el enrutado del turno por intenciones de vertical, que esconde herramientas a un turno clasificado como `fallback`? → A: **Fuera de esta enmienda.** Queda como seguimiento.
+- Q: ¿Se toca el enrutado del turno por intenciones de vertical, que esconde herramientas a un turno clasificado como `fallback`? → A: **Fuera de esta enmienda.** Queda como seguimiento. *(Resuelto para Reservas por la spec 080, requisito 2, el 2026-11-26: `fallback` y `escalate` conservan las `reservas.*` del agente.)*
 
 ### Session 2026-11-10 (enmienda: sin sugerencias semanales)
 

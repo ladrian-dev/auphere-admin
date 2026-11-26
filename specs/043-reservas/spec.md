@@ -598,6 +598,14 @@ cliente en un modo, para que su consola y su agente trabajen de esa forma.
 
 ### Requisito 6 — Herramientas del agente
 
+> **Enmendado por la spec 080** (2026-11-26) en dos puntos:
+>
+> - `reservas.find_slots` se puede llamar sin fecha y devuelve los primeros
+>   horarios libres desde ahora, cruzando días.
+> - La cancelación que hace el agente queda a su nombre en el historial.
+>
+> Ver `specs/080-agente-tras-el-traspaso/spec.md`, requisitos 3 y 4.
+
 #### Criterios de aceptación
 
 1. Ninguna herramienta `reservas.*` DEBE aceptar un campo de cliente
