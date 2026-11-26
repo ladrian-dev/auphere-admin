@@ -29,6 +29,11 @@ export const META_SOCIAL_REASONS: Record<string, MessageKey> = {
   pending_expired: "ch.social.reason.pending_expired",
 };
 
+/** Spec 081: how the business signs in — `page` is Instagram with its
+ *  linked Facebook Page (Facebook only); `default` is the channel's usual
+ *  configuration. */
+type Via = "default" | "page";
+
 const LOGIN_ERRORS = {
   sdk_failed: "ch.connect.sdkFailed",
   cancelled: "ch.connect.cancelled",
@@ -58,10 +63,13 @@ export function useMetaSocialConnect({
   const t = useT();
   const router = useRouter();
   const [working, setWorking] = React.useState(false);
-  const [choice, setChoice] = React.useState<{ kind: MetaSocialKind; nonce: string; accounts: MetaSocialAccount[] } | null>(null);
+  const [choice, setChoice] = React.useState<{ kind: MetaSocialKind; via: Via; nonce: string; accounts: MetaSocialAccount[] } | null>(null);
   // A failure stays on screen with «Intentar de nuevo», as WhatsApp's veil
-  // does, instead of a toast that goes away (QA 2026-10-30).
-  const [failure, setFailure] = React.useState<{ kind: MetaSocialKind; key: MessageKey } | null>(null);
+  // does, instead of a toast that goes away (QA 2026-10-30). It keeps the way
+  // in, so the retry opens the same window (spec 081, 1.6).
+  const [failure, setFailure] = React.useState<{ kind: MetaSocialKind; via: Via; key: MessageKey } | null>(null);
+  // Spec 081, 1.2: Instagram with both configurations asks how to sign in.
+  const [asking, setAsking] = React.useState(false);
   // Spec 049, 7.2: mientras la ventana de Meta está abierta se puede cancelar.
   // Cada intento lleva su número: lo que Meta devuelva a un intento cancelado
   // se descarta, sin conectar nada.
@@ -76,14 +84,28 @@ export function useMetaSocialConnect({
     router.refresh();
   }
 
-  function refused(kind: MetaSocialKind, code: string | null | undefined) {
+  function refused(kind: MetaSocialKind, via: Via, code: string | null | undefined) {
     const key = code ? META_SOCIAL_REASONS[code] : undefined;
-    setFailure({ kind, key: key ?? "common.error.backend" });
+    setFailure({ kind, via, key: key ?? "common.error.backend" });
   }
 
   async function start(kind: MetaSocialKind) {
-    const configId = offer?.channels.find((c) => c.kind === kind)?.config_id;
+    const entry = offer?.channels.find((c) => c.kind === kind);
+    if (!offer || !entry) return;
+    if (kind === "instagram" && entry.page_config_id) {
+      setFailure(null);
+      setAsking(true);
+      return;
+    }
+    await open(kind, "default");
+  }
+
+  async function open(kind: MetaSocialKind, via: Via) {
+    const entry = offer?.channels.find((c) => c.kind === kind);
+    // Spec 081, 1.3: with the Page, the Facebook-only configuration.
+    const configId = via === "page" ? entry?.page_config_id : entry?.config_id;
     if (!offer || !configId) return;
+    setAsking(false);
     const mine = ++attempt.current;
     setFailure(null);
     setWorking(true);
@@ -91,21 +113,22 @@ export function useMetaSocialConnect({
     try {
       // Spec 049, R8: Instagram's configuration lets the business sign in
       // with Instagram too; `prompt` keeps an open Facebook session from
-      // skipping that choice. Messenger only signs in with Facebook.
-      const prompt = kind === "instagram" ? { prompt: "login" as const } : {};
+      // skipping that choice. Messenger, and Instagram with its Page (spec
+      // 081), only sign in with Facebook.
+      const prompt = kind === "instagram" && via !== "page" ? { prompt: "login" as const } : {};
       const code = await loginForCode({ appId: offer.app_id, version: offer.graph_version, configId, ...prompt });
       if (attempt.current !== mine) return;
       setWaitingMeta(false);
       const res = await metaSocialConnectAction({ ref: refId, kind, code });
-      if (!res.ok) return void refused(kind, res.code);
+      if (!res.ok) return void refused(kind, via, res.code);
       if (res.data.status === "choose" && res.data.nonce) {
-        setChoice({ kind, nonce: res.data.nonce, accounts: res.data.accounts });
+        setChoice({ kind, via, nonce: res.data.nonce, accounts: res.data.accounts });
         return;
       }
       await done(res.data);
     } catch (err) {
       if (attempt.current !== mine) return;
-      setFailure({ kind, key: LOGIN_ERRORS[err instanceof SignupError ? err.code : "meta_error"] });
+      setFailure({ kind, via, key: LOGIN_ERRORS[err instanceof SignupError ? err.code : "meta_error"] });
     } finally {
       if (attempt.current === mine) {
         setWorking(false);
@@ -126,9 +149,9 @@ export function useMetaSocialConnect({
     try {
       const res = await metaSocialCompleteAction({ ref: refId, kind: choice.kind, nonce: choice.nonce, accountId: account.id });
       if (!res.ok) {
-        const kind = choice.kind;
+        const { kind, via } = choice;
         setChoice(null);
-        return void refused(kind, res.code);
+        return void refused(kind, via, res.code);
       }
       await done(res.data);
     } finally {
@@ -150,8 +173,40 @@ export function useMetaSocialConnect({
             <Button variant="ghost" onClick={() => setFailure(null)}>
               {t("common.close")}
             </Button>
-            <Button onClick={() => failure && void start(failure.kind)}>{t("channels.proto.veil.retry")}</Button>
+            <Button onClick={() => failure && void open(failure.kind, failure.via)}>{t("channels.proto.veil.retry")}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={asking} onOpenChange={(o) => !o && setAsking(false)}>
+        <DialogContent data-slot="meta-social-how">
+          <DialogHeader>
+            <DialogTitle>{t("ch.social.how.title")}</DialogTitle>
+            <DialogDescription className="text-pretty">{t("ch.social.how.body")}</DialogDescription>
+          </DialogHeader>
+          <ul className="flex flex-col gap-2">
+            {(
+              [
+                ["page", "ch.social.how.page", "ch.social.how.page.help"],
+                ["default", "ch.social.how.instagram", "ch.social.how.instagram.help"],
+              ] as const
+            ).map(([via, title, help]) => (
+              <li key={via}>
+                <Button
+                  variant="outline"
+                  className="h-auto w-full min-w-0 flex-col items-start gap-1 py-3 text-left whitespace-normal"
+                  onClick={() => void open("instagram", via)}
+                >
+                  <span className="font-medium">{t(title)}</span>
+                  <span className="text-xs font-normal text-pretty text-muted-foreground">{t(help)}</span>
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAsking(false)}>
+              {t("common.cancel")}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       <Dialog

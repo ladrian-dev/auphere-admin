@@ -578,6 +578,23 @@ export const channelsMessages = {
     es: "Quien administra la cuenta o la Página tiene que dar a Auphere acceso explícito a los activos del negocio en esa ventana.",
     en: "Whoever manages the account or Page must give Auphere explicit access to the business's assets in that window.",
   },
+  // Spec 081: an Instagram account linked to a Facebook Page only gets its
+  // direct messages if the Page is shared too, and only Facebook can share it.
+  "ch.social.how.title": { es: "¿Cómo entras a Meta?", en: "How do you sign in to Meta?" },
+  "ch.social.how.body": {
+    es: "Depende de si tu cuenta de Instagram está vinculada a una Página de Facebook.",
+    en: "It depends on whether your Instagram account is linked to a Facebook Page.",
+  },
+  "ch.social.how.page": { es: "Con Facebook y tu Página", en: "With Facebook and your Page" },
+  "ch.social.how.page.help": {
+    es: "Si tu Instagram está vinculado a una Página de Facebook. Elige la cuenta y también la Página: sin ella no llegan los mensajes directos.",
+    en: "If your Instagram is linked to a Facebook Page. Pick the account and the Page too: without it, direct messages don't arrive.",
+  },
+  "ch.social.how.instagram": { es: "Con Instagram", en: "With Instagram" },
+  "ch.social.how.instagram.help": {
+    es: "Si tu cuenta no está vinculada a ninguna Página de Facebook.",
+    en: "If your account isn't linked to any Facebook Page.",
+  },
   "ch.social.choose.instagram": { es: "¿Qué cuenta de Instagram conectas?", en: "Which Instagram account do you connect?" },
   "ch.social.choose.messenger": { es: "¿Qué Página de Facebook conectas?", en: "Which Facebook Page do you connect?" },
   "ch.social.choose.body": {

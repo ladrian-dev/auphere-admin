@@ -200,3 +200,95 @@ describe("qué pide cada canal a la ventana de Meta (spec 049, requisito 8)", ()
     expect(sdk.loginForCode).toHaveBeenLastCalledWith({ appId: "1", version: "v26.0", configId: "PAGE" });
   });
 });
+
+/**
+ * Spec 081: una cuenta de Instagram vinculada a una Página de Facebook solo
+ * recibe los mensajes directos si el negocio comparte también la Página, y
+ * eso solo se puede entrando con Facebook. Con las dos configuraciones en la
+ * oferta, la consola pregunta cómo entra antes de abrir la ventana de Meta.
+ */
+describe("cómo se entra a conectar Instagram (spec 081)", () => {
+  const TWO_WAYS: MetaSocialOffer = {
+    app_id: "1",
+    graph_version: "v26.0",
+    channels: [{ kind: "instagram", config_id: "IG", page_config_id: "IG_PAGE" }],
+  };
+
+  function TwoWays() {
+    const { start, dialog } = useMetaSocialConnect({ refId: "flor", offer: TWO_WAYS });
+    return (
+      <>
+        <button type="button" onClick={() => void start("instagram")}>
+          ig
+        </button>
+        {dialog}
+      </>
+    );
+  }
+
+  const mountTwoWays = () =>
+    render(
+      <LocaleProvider locale="es">
+        <TwoWays />
+      </LocaleProvider>,
+    );
+
+  it("pregunta cómo entrar antes de abrir la ventana de Meta (1.2)", async () => {
+    const user = userEvent.setup();
+    mountTwoWays();
+    await user.click(screen.getByRole("button", { name: "ig" }));
+    expect(await screen.findByRole("dialog", { name: "¿Cómo entras a Meta?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Con Facebook y tu Página/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Con Instagram/ })).toBeInTheDocument();
+    expect(sdk.loginForCode).not.toHaveBeenCalled();
+  });
+
+  it("«Con Facebook y tu Página» abre la configuración de la Página, sin prompt (1.3)", async () => {
+    const user = userEvent.setup();
+    actions.metaSocialConnectAction.mockResolvedValueOnce({ ok: false, status: 409, message: "x", code: "no_page" });
+    mountTwoWays();
+    await user.click(screen.getByRole("button", { name: "ig" }));
+    await user.click(await screen.findByRole("button", { name: /Con Facebook y tu Página/ }));
+    expect(sdk.loginForCode).toHaveBeenLastCalledWith({ appId: "1", version: "v26.0", configId: "IG_PAGE" });
+    expect(actions.metaSocialConnectAction).toHaveBeenCalledWith({ ref: "flor", kind: "instagram", code: "CODE" });
+  });
+
+  it("«Con Instagram» abre la de siempre, con prompt=login (1.4)", async () => {
+    const user = userEvent.setup();
+    actions.metaSocialConnectAction.mockResolvedValueOnce({ ok: false, status: 409, message: "x", code: "no_page" });
+    mountTwoWays();
+    await user.click(screen.getByRole("button", { name: "ig" }));
+    await user.click(await screen.findByRole("button", { name: /Con Instagram/ }));
+    expect(sdk.loginForCode).toHaveBeenLastCalledWith({ appId: "1", version: "v26.0", configId: "IG", prompt: "login" });
+  });
+
+  it("sin la configuración de la Página abre la ventana directamente (1.5)", async () => {
+    const user = userEvent.setup();
+    actions.metaSocialConnectAction.mockResolvedValueOnce({ ok: false, status: 409, message: "x", code: "no_page" });
+    mount();
+    await user.click(screen.getByRole("button", { name: "go" }));
+    expect(screen.queryByRole("dialog", { name: "¿Cómo entras a Meta?" })).toBeNull();
+    expect(sdk.loginForCode).toHaveBeenLastCalledWith({ appId: "1", version: "v26.0", configId: "9", prompt: "login" });
+  });
+
+  it("«Intentar de nuevo» repite la misma manera de entrar sin volver a preguntar (1.6)", async () => {
+    const user = userEvent.setup();
+    actions.metaSocialConnectAction.mockResolvedValue({ ok: false, status: 409, message: "x", code: "no_page" });
+    mountTwoWays();
+    await user.click(screen.getByRole("button", { name: "ig" }));
+    await user.click(await screen.findByRole("button", { name: /Con Facebook y tu Página/ }));
+    await user.click(await screen.findByRole("button", { name: "Intentar de nuevo" }));
+    await vi.waitFor(() => expect(sdk.loginForCode).toHaveBeenCalledTimes(2));
+    expect(sdk.loginForCode).toHaveBeenLastCalledWith({ appId: "1", version: "v26.0", configId: "IG_PAGE" });
+    expect(screen.queryByRole("dialog", { name: "¿Cómo entras a Meta?" })).toBeNull();
+  });
+
+  it("cerrar la pregunta no abre nada", async () => {
+    const user = userEvent.setup();
+    mountTwoWays();
+    await user.click(screen.getByRole("button", { name: "ig" }));
+    await user.click(await screen.findByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog", { name: "¿Cómo entras a Meta?" })).toBeNull();
+    expect(sdk.loginForCode).not.toHaveBeenCalled();
+  });
+});

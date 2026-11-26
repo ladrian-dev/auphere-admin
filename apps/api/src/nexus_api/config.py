@@ -195,6 +195,13 @@ class Settings(BaseSettings):
     # 1157578836735566, asks for Pages since INC-53 and only offers Facebook;
     # accounts connected with it keep working.
     meta_config_id_instagram: str = "29353122964304011"
+    # Spec 081: «Auphere Instagram + Página», for an Instagram account linked
+    # to a Facebook Page. It asks for that Page and `pages_show_list` on top
+    # of the three Instagram permissions; without the Page, Meta may never
+    # send `messages` (Unified Login, «Set up Instagram Webhooks»). Asking for
+    # a Page makes it Facebook-only, so it sits next to the one above instead
+    # of replacing it. Empty: the console offers only the one above.
+    meta_config_id_instagram_page: str = "1468805387916611"
     meta_config_id_messenger: str = "2188508105420190"
     # The version the Instagram and Page webhooks are subscribed at.
     meta_social_graph_api_version: str = "v26.0"

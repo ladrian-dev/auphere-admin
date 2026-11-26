@@ -42,6 +42,14 @@ def config_id(kind: Kind) -> str:
     )
 
 
+def page_config_id(kind: Kind) -> str | None:
+    """Spec 081: the Instagram configuration that also asks for the linked
+    Facebook Page. ``None`` for Messenger, or when the environment has none."""
+    if kind != "instagram":
+        return None
+    return get_settings().meta_config_id_instagram_page.strip() or None
+
+
 def offer(partner: Partner | None) -> dict[str, Any]:
     """What the console needs to draw the connect buttons: one entry per
     channel the partner has, with the Facebook Login for Business
@@ -51,7 +59,10 @@ def offer(partner: Partner | None) -> dict[str, Any]:
     return {
         "app_id": settings.meta_app_id,
         "graph_version": settings.meta_social_graph_api_version,
-        "channels": [{"kind": k, "config_id": config_id(k)} for k in kinds],
+        "channels": [
+            {"kind": k, "config_id": config_id(k), "page_config_id": page_config_id(k)}
+            for k in kinds
+        ],
     }
 
 

@@ -130,6 +130,9 @@ class ChannelDetailOut(ChannelOut):
 class MetaSocialChannelOfferOut(BaseModel):
     kind: Literal["instagram", "messenger"]
     config_id: str
+    #: Spec 081: Instagram only — the Facebook-only configuration that also
+    #: asks for the linked Page, so its direct messages reach the agent.
+    page_config_id: str | None = None
 
 
 class MetaSocialOfferOut(BaseModel):
