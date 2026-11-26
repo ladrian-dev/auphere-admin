@@ -376,6 +376,102 @@ async def test_the_turn_is_priced_component_by_component(monkeypatch) -> None:
     assert cost == pytest.approx(3 + 15 + 0.30 + 3.75)
 
 
+#: Bug ``copiloto-sin-tramos``: dos llamadas de un turno, una por debajo del tramo
+#: (100.000 tokens de prompt) y otra por encima.
+_SHORT = {"prompt": 50_000, "uncached": 50_000, "cache_read": 0, "cache_write": 0, "output": 1_000}
+_LONG = {"prompt": 150_000, "uncached": 150_000, "cache_read": 0, "cache_write": 0, "output": 1_000}
+
+
+def test_the_quota_applies_the_tier_call_by_call() -> None:
+    """Como el canal (spec 065, 5.9): x5 solo en la llamada que pasa el umbral, nunca
+    sobre el total del turno (que lo pasaría con dos llamadas cortas)."""
+    from decimal import Decimal
+
+    from nexus_api.api.console.companion import _turn_quota_units
+    from nexus_api.metering.pricing_policy import LaneWeights, PriceTier
+    from nexus_api.metering.quota import quota_tokens
+
+    lanes = LaneWeights(
+        input=Decimal("1"),
+        cache_read=Decimal("0.1"),
+        output=Decimal("5"),
+        cache_write=Decimal("1.25"),
+        tier=PriceTier(above_tokens=100_000, multiplier=Decimal("5")),
+    )
+    plain = replace_tier(lanes)
+
+    def one(call: dict[str, int], weights: LaneWeights) -> int:
+        return quota_tokens(
+            prompt_tokens=call["uncached"] + call["cache_read"],
+            cache_read=call["cache_read"],
+            output_tokens=call["output"],
+            cache_write=call["cache_write"],
+            weights=weights,
+        )
+
+    expected = one(_SHORT, plain) + one(_LONG, lanes.for_prompt(150_000))
+    got = _turn_quota_units(
+        uncached=200_000,
+        cache_read=0,
+        cache_write=0,
+        output=2_000,
+        lanes=lanes,
+        calls=[_SHORT, _LONG],
+    )
+    assert got == expected
+    assert got > _turn_quota_units(
+        uncached=200_000, cache_read=0, cache_write=0, output=2_000, lanes=lanes
+    ), "sin llamadas no hay tramo"
+
+    # Dos llamadas cortas que juntas pasan el umbral no pagan tramo.
+    short_twice = _turn_quota_units(
+        uncached=100_000,
+        cache_read=0,
+        cache_write=0,
+        output=2_000,
+        lanes=lanes,
+        calls=[_SHORT, _SHORT],
+    )
+    assert short_twice == 2 * one(_SHORT, plain)
+
+
+def replace_tier(lanes: object) -> object:
+    from dataclasses import replace
+
+    return replace(lanes, tier=None)
+
+
+async def test_the_cost_applies_the_tier_call_by_call(monkeypatch) -> None:
+    from decimal import Decimal
+
+    from nexus_api.api.console.companion import _turn_cost_usd
+
+    class _Row:
+        input_per_mtok = Decimal("1")
+        output_per_mtok = Decimal("5")
+        cache_read_per_mtok = Decimal("0.10")
+        cache_write_per_mtok = Decimal("1.25")
+        tier_above_tokens = 100_000
+        tier_multiplier = Decimal("5")
+
+    async def _catalog(*a, **k):
+        return {"anthropic/claude-haiku-5-5": _Row()}
+
+    monkeypatch.setattr("nexus_worker.metering.pricing.get_catalog", _catalog)
+
+    handle = SimpleNamespace(
+        model="anthropic/claude-haiku-5-5",
+        total_input_tokens=200_000,
+        total_output_tokens=2_000,
+        total_cache_read=0,
+        total_cache_write=0,
+        extras={"usage_calls": [_SHORT, _LONG]},
+    )
+    short = 50_000 * 1 / 1e6 + 1_000 * 5 / 1e6
+    long = (150_000 * 1 / 1e6 + 1_000 * 5 / 1e6) * 5
+    assert await _turn_cost_usd(handle) == pytest.approx(short + long)
+
+
 async def test_an_unpriced_model_reports_no_cost_instead_of_zero(monkeypatch) -> None:
     """``None`` y no cero: un cero es indistinguible de un turno gratis y se
     suma en silencio en cualquier panel de margen."""

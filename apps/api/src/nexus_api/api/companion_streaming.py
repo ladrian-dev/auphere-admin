@@ -191,8 +191,10 @@ COMPANION_EVENTS: dict[str, frozenset[str]] = {
     # y es el prefijo entero. El desglose de caché y las pasadas viajan aquí
     # porque son lo que permite valorar el turno en dólares y ver si el caché
     # está funcionando; sin ellos, el panel solo puede decir "gastó algo".
+    # ``calls``: cada llamada del turno (solo recuentos), para cobrar el tramo de
+    # precio llamada a llamada (bug ``copiloto-sin-tramos``).
     "cost.updated": frozenset(
-        {"input_tokens", "output_tokens", "cache_read", "cache_write", "steps", "model"}
+        {"input_tokens", "output_tokens", "cache_read", "cache_write", "steps", "model", "calls"}
     ),
     "context.updated": frozenset({"input_tokens", "max_context", "percent", "compacted", "model"}),
     "budget.updated": frozenset(

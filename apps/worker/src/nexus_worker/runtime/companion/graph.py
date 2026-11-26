@@ -275,6 +275,8 @@ def make_investigate(
         cache_read = 0
         cache_write = 0
         steps_used = 0
+        #: Bug ``copiloto-sin-tramos``: cada llamada, para el tramo de precio.
+        calls: list[dict[str, int]] = []
         #: Por qué paró el bucle: ``None`` = escribió la respuesta.
         exhausted: str | None = None
         #: La última nota de expediente puesta. Se vuelve a poner solo si
@@ -335,6 +337,7 @@ def make_investigate(
                     cache_read += int(usage.get("cache_read_input_tokens") or 0)
                     cache_write += int(usage.get("cache_creation_input_tokens") or 0)
                     steps_used += 1
+                    calls.append(_call_usage(usage))
 
             chunks.extend(step_text)
 
@@ -377,6 +380,7 @@ def make_investigate(
             cache_read += int(closing_usage.get("cache_read_input_tokens") or 0)
             cache_write += int(closing_usage.get("cache_creation_input_tokens") or 0)
             steps_used += 1
+            calls.append(_call_usage(closing_usage))
 
         return {
             # La fase REAL en la que terminó el bucle. Si nunca llegó a
@@ -396,6 +400,7 @@ def make_investigate(
             "total_cache_read": state.get("total_cache_read", 0) + cache_read,
             "total_cache_write": state.get("total_cache_write", 0) + cache_write,
             "total_steps": state.get("total_steps", 0) + steps_used,
+            "usage_calls": [*(state.get("usage_calls") or []), *calls],
         }
 
     return _investigate
@@ -495,6 +500,22 @@ def _usage(piece: str) -> dict[str, Any]:
     except ValueError:  # pragma: no cover - defensivo
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _call_usage(usage: dict[str, Any]) -> dict[str, int]:
+    """Lo que hace falta para cobrar UNA llamada con su tramo (bug ``copiloto-sin-tramos``).
+
+    ``prompt`` es el bruto, con las cachés dentro: es contra lo que se compara el umbral
+    del tramo (``LaneWeights.for_prompt``, ``pricing.tier_factor``). ``uncached`` es
+    :func:`_billable_input`, lo mismo que acumula ``total_input_tokens``, así que la suma
+    de las llamadas cuadra con los totales del turno."""
+    return {
+        "prompt": int(usage.get("prompt_tokens") or 0),
+        "uncached": _billable_input(usage),
+        "cache_read": int(usage.get("cache_read_input_tokens") or 0),
+        "cache_write": int(usage.get("cache_creation_input_tokens") or 0),
+        "output": int(usage.get("completion_tokens") or 0),
+    }
 
 
 def _billable_input(usage: dict[str, Any]) -> int:
@@ -733,6 +754,10 @@ def make_respond(
                 "cache_write": int(merged.get("total_cache_write") or 0),
                 "steps": int(merged.get("total_steps") or 0),
                 "model": model,
+                # Bug ``copiloto-sin-tramos``: el tramo de precio (Haiku 5.5, x5 por
+                # encima de 100.000 tokens de prompt) se decide por llamada, y con
+                # los totales no se puede. Solo recuentos, nunca contenido.
+                "calls": list(merged.get("usage_calls") or []),
             },
         )
         # Ventana de contexto honesta: el ``input_tokens`` de la ÚLTIMA
@@ -948,6 +973,7 @@ async def _answer_after_action(
         "total_cache_write": int(state.get("total_cache_write") or 0)
         + int(usage.get("cache_creation_input_tokens") or 0),
         "total_steps": int(state.get("total_steps") or 0) + 1,
+        "usage_calls": [*(state.get("usage_calls") or []), _call_usage(usage)],
     }
 
 
@@ -997,6 +1023,7 @@ async def _answer_without_tools(
         "total_cache_write": state.get("total_cache_write", 0)
         + int(usage.get("cache_creation_input_tokens") or 0),
         "total_steps": state.get("total_steps", 0) + 1,
+        "usage_calls": [*(state.get("usage_calls") or []), _call_usage(usage)],
     }
 
 

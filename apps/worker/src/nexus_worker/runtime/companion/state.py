@@ -206,6 +206,9 @@ class CompanionState(TypedDict, total=False):
     #: "cuánto trabajo costó esto" y lo que delata un turno que se atasca
     #: alternando dos lecturas.
     total_steps: int
+    #: Cada llamada al modelo del turno, ``{prompt, uncached, cache_read, cache_write,
+    #: output}``: el tramo de precio se decide por llamada (bug ``copiloto-sin-tramos``).
+    usage_calls: list[dict[str, int]]
 
     # ── CO-02 ──────────────────────────────────────────────────────────
     # Mensajes acumulados del bucle de herramientas: el mensaje del
@@ -275,6 +278,16 @@ RUN_SCOPED_DEFAULTS: dict[str, Any] = {
     "tool_messages": [],
     "answer": "",
     "unsupported": False,
+    # Bug ``copiloto-sin-tramos``: lo que se cobra es del turno. La entrada y la
+    # salida ya las ponía a cero cada driver; la caché, los pasos y las llamadas
+    # venían del checkpoint del hilo y se sumaban turno a turno, así que cada
+    # turno cobraba la caché de los anteriores. Aquí valen para todo driver.
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_cache_read": 0,
+    "total_cache_write": 0,
+    "total_steps": 0,
+    "usage_calls": [],
 }
 
 
