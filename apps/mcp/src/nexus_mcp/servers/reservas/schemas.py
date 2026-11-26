@@ -14,8 +14,9 @@ from __future__ import annotations
 import uuid
 from datetime import date as Date  # noqa: N812 - un campo se llama «date»
 from datetime import datetime
+from typing import Any
 
-from pydantic import Field
+from pydantic import Field, SerializerFunctionWrapHandler, model_serializer
 
 from nexus_mcp.base import InputModel, OutputModel
 
@@ -59,7 +60,8 @@ STAFF_NAME_HELP = (
 SERVICES_OPTIONS = "With unknown_service/ambiguous_service: the services to retry with."
 #: Spec 064 (requisito 1.6): what the agent does with a time it may not give.
 TOO_SOON_HELP = (
-    "Times that are free today but closer than the notice this business asks of you. "
+    "Times that are free today but closer than the notice this business asks of you "
+    "(as 'YYYY-MM-DD HH:MM' in a search without a date). "
     "Never offer or book them yourself. Tell the customer that the business confirms "
     "a time that soon itself, and offer to pass the conversation to a person."
 )
@@ -95,8 +97,29 @@ class ServicesOutput(OutputModel):
     max_party: int | None = None
 
 
+#: Spec 080 (requisito 3): how many free times a search without a date brings.
+FIRST_FREE_TOP = 6
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+
+
+def _drop_none(data: Any, keys: tuple[str, ...]) -> Any:
+    """Spec 080 (requisito 3.5): the fields that only a search without a date fills
+    are left out when empty, so a search with a date reads as it always did."""
+    if isinstance(data, dict):
+        for key in keys:
+            if data.get(key) is None:
+                data.pop(key, None)
+    return data
+
+
 class FindSlotsInput(InputModel):
-    date: Date = Field(description="Business-local day to search.")
+    date: Date | None = Field(
+        default=None,
+        description=(
+            "Business-local day to search. Omit it when the customer names no day or asks "
+            "for the earliest: you get the first free times from now on, across days."
+        ),
+    )
     service_id: uuid.UUID | None = Field(default=None, description="Services mode: the service.")
     service_name: str | None = Field(default=None, max_length=120, description=SERVICE_NAME_HELP)
     staff_id: uuid.UUID | None = Field(
@@ -107,13 +130,24 @@ class FindSlotsInput(InputModel):
 
 
 class SlotOut(OutputModel):
+    #: Spec 080: only in a search without a date, the day of this time and its name.
+    date: Date | None = None
+    weekday: str | None = None
     time: str
     staff: list[StaffRef] = Field(default_factory=list)
     left: int | None = None
 
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
+        return _drop_none(handler(self), ("date", "weekday"))
+
 
 class FindSlotsOutput(OutputModel):
-    date: Date
+    #: The day searched; ``None`` in a search without a date (each slot says its day).
+    date: Date | None
+    #: Spec 080: in a search without a date, the first and the last day looked at.
+    searched_from: Date | None = None
+    searched_to: Date | None = None
     closed: bool
     why_closed: str | None = None
     slots: list[SlotOut] = Field(default_factory=list)
@@ -123,6 +157,10 @@ class FindSlotsOutput(OutputModel):
     refused: str | None = Field(default=None, description=UNRESOLVED_HELP)
     services: list[ServiceRef] = Field(default_factory=list, description=SERVICES_OPTIONS)
     staff: list[StaffRef] = Field(default_factory=list, description=STAFF_OPTIONS)
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> Any:
+        return _drop_none(handler(self), ("searched_from", "searched_to"))
 
 
 class BookingBrief(OutputModel):

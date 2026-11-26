@@ -29,8 +29,10 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, time, timedelta
+from datetime import date as Date  # noqa: N812 - como en los esquemas
 from typing import Any
 
 import sqlalchemy as sa
@@ -83,6 +85,8 @@ from nexus_mcp.servers.reservas.names import (
     matches,
 )
 from nexus_mcp.servers.reservas.schemas import (
+    FIRST_FREE_TOP,
+    WEEKDAYS,
     AnswerOfferInput,
     AnswerOfferOutput,
     BookingBrief,
@@ -378,11 +382,17 @@ class Services(ToolBase):
 class FindSlots(ToolBase):
     name = "reservas.find_slots"
     description = (
-        "Free times on a day, only within the business's opening hours and its rules. "
+        "Free times, only within the business's opening hours and its rules. "
+        "Leave date out when the customer names no day or asks for the earliest: you get "
+        "the first free times from now on, in order and across days, each with its date "
+        "and weekday; offer them in that order, today's first. Pass date only when the "
+        "customer names a day. "
         "Services mode: pass the service (service_id, or service_name as the customer said "
         "it) and the team member (staff_id or staff_name, or omit both for anyone). Capacity "
         "mode: pass party_size. Offer only the times in slots; if closed or empty, say so "
-        "and suggest first_fit or another day. too_soon lists times that are free but closer "
+        "and suggest another day (in capacity mode, first_fit when it has one); "
+        "why_closed none_in_window means nothing is free in the days you may book. "
+        "too_soon lists times that are free but closer "
         "than the notice this business asks of you: do not offer or book them, and never say "
         "there is no availability while too_soon has times; say the business confirms a time "
         "that soon itself and offer to pass the conversation to a person. "
@@ -402,7 +412,7 @@ class FindSlots(ToolBase):
             ctx = await _ctx(session)
             if ctx.hours is None:
                 return FindSlotsOutput(date=payload.date, closed=True, why_closed="hours_missing")
-            if not ctx.day_ranges(payload.date):
+            if payload.date is not None and not ctx.day_ranges(payload.date):
                 return FindSlotsOutput(date=payload.date, closed=True, why_closed="closed")
             not_before = now + _notice(ctx)
             if ctx.mode == "services":
@@ -436,42 +446,60 @@ class FindSlots(ToolBase):
                     )
                 if not await staff_for_service(session, svc):
                     return FindSlotsOutput(date=payload.date, closed=True, why_closed=NO_STAFF)
-                # Spec 064 (1.5): one read from now on, split by the agent's notice.
-                free = await services_free(
-                    session,
-                    ctx,
-                    day=payload.date,
-                    service=svc,
-                    staff_ids=[picked.staff_id] if picked.staff_id else None,
-                    not_before=now,
-                )
                 names = {s.id: s.name for s in await staff_for_service(session, svc)}
-                mine = {t: ids for t, ids in free.items() if _at(ctx, payload, t) >= not_before}
-                return FindSlotsOutput(
-                    date=payload.date,
-                    closed=False,
-                    slots=[
+
+                async def services_day(day: Date) -> tuple[list[SlotOut], list[str]]:
+                    # Spec 064 (1.5): one read from now on, split by the agent's notice.
+                    free = await services_free(
+                        session,
+                        ctx,
+                        day=day,
+                        service=svc,
+                        staff_ids=[picked.staff_id] if picked.staff_id else None,
+                        not_before=now,
+                    )
+                    mine = {t: ids for t, ids in free.items() if _at(ctx, day, t) >= not_before}
+                    return [
                         SlotOut(time=t, staff=[StaffRef(id=i, name=names.get(i, "—")) for i in ids])
                         for t, ids in mine.items()
-                    ],
-                    too_soon=[t for t in free if t not in mine],
+                    ], [t for t in free if t not in mine]
+
+                if payload.date is None:
+                    return await _first_free(ctx, now, services_day)
+                slots, too_soon = await services_day(payload.date)
+                return FindSlotsOutput(
+                    date=payload.date, closed=False, slots=slots, too_soon=too_soon
                 )
             n = payload.party_size or 1
             if n > (ctx.settings.max_party or n):
                 return FindSlotsOutput(date=payload.date, closed=False, why_closed="too_large")
-            cap = await capacity_day(session, ctx, payload.date)
-            slots: list[SlotOut] = []
-            too_soon: list[str] = []
-            for s in cap.slots:
-                if s.at < now:
-                    continue
-                fit = capacity_fit(cap.slots, cap.blocked, cap.people, cap.rules, s.at, n, now=now)
-                if not fit.fits:
-                    continue
-                if s.at < not_before:
-                    too_soon.append(s.at.strftime("%H:%M"))
-                else:
-                    slots.append(SlotOut(time=s.at.strftime("%H:%M"), left=fit.left))
+
+            async def capacity_on(day: Date) -> tuple[list[SlotOut], list[str], Any]:
+                cap = await capacity_day(session, ctx, day)
+                slots: list[SlotOut] = []
+                too_soon: list[str] = []
+                for s in cap.slots:
+                    if s.at < now:
+                        continue
+                    fit = capacity_fit(
+                        cap.slots, cap.blocked, cap.people, cap.rules, s.at, n, now=now
+                    )
+                    if not fit.fits:
+                        continue
+                    if s.at < not_before:
+                        too_soon.append(s.at.strftime("%H:%M"))
+                    else:
+                        slots.append(SlotOut(time=s.at.strftime("%H:%M"), left=fit.left))
+                return slots, too_soon, cap
+
+            if payload.date is None:
+
+                async def capacity_day_slots(day: Date) -> tuple[list[SlotOut], list[str]]:
+                    slots, too_soon, _cap = await capacity_on(day)
+                    return slots, too_soon
+
+                return await _first_free(ctx, now, capacity_day_slots)
+            slots, too_soon, cap = await capacity_on(payload.date)
             nxt = first_fit(cap.slots, cap.blocked, cap.people, cap.rules, n, now=not_before)
             return FindSlotsOutput(
                 date=payload.date,
@@ -482,13 +510,54 @@ class FindSlots(ToolBase):
             )
 
 
+async def _first_free(
+    ctx: Ctx,
+    now: datetime,
+    on_day: Callable[[Date], Awaitable[tuple[list[SlotOut], list[str]]]],
+) -> FindSlotsOutput:
+    """Spec 080, requisito 3: a search without a date. Day by day from today (the
+    business's), skipping the days it is closed, until ``FIRST_FREE_TOP`` free times
+    or the end of the window the agent may book in (``agent_max_days_ahead``). Each
+    time says its date and weekday; ``too_soon`` says the day too."""
+    horizon = now + timedelta(days=ctx.settings.agent_max_days_ahead)
+    first = ctx.today(now)
+    last = ctx.local(horizon).date()
+    found: list[SlotOut] = []
+    too_soon: list[str] = []
+    day = first
+    while day <= last:
+        if ctx.day_ranges(day):
+            slots, soon = await on_day(day)
+            too_soon.extend(f"{day.isoformat()} {t}" for t in soon)
+            for slot in slots:
+                if _at(ctx, day, slot.time) > horizon:
+                    break
+                found.append(
+                    slot.model_copy(update={"date": day, "weekday": WEEKDAYS[day.weekday()]})
+                )
+            if len(found) >= FIRST_FREE_TOP:
+                break
+        if day == last:
+            break
+        day += timedelta(days=1)
+    return FindSlotsOutput(
+        date=None,
+        searched_from=first,
+        searched_to=day,
+        closed=False,
+        why_closed=None if found else "none_in_window",
+        slots=found[:FIRST_FREE_TOP],
+        too_soon=too_soon,
+    )
+
+
 def _notice(ctx: Ctx) -> timedelta:
     return timedelta(minutes=ctx.settings.agent_min_notice_minutes)
 
 
-def _at(ctx: Ctx, payload: FindSlotsInput, hhmm: str) -> datetime:
-    """A slot's ``HH:MM`` on the searched day, in the business's time zone."""
-    at: datetime = ctx.at(payload.date, time.fromisoformat(hhmm))
+def _at(ctx: Ctx, day: Date, hhmm: str) -> datetime:
+    """A slot's ``HH:MM`` on ``day``, in the business's time zone."""
+    at: datetime = ctx.at(day, time.fromisoformat(hhmm))
     return at
 
 
@@ -691,9 +760,22 @@ class Cancel(ToolBase):
         async with tool_session() as session:
             ctx = await _ctx(session)
             res = await _mine(session, payload.booking_id, customer_id)
+            # Spec 080, requisito 4: the customer decided (``by``, which the notices
+            # follow), the agent did it (``actor``, which the history shows).
+            agent_id = await _turn_agent(session)
+            agent_name = (
+                await session.scalar(sa.select(Agent.name).where(Agent.id == agent_id))
+                if agent_id
+                else None
+            )
             try:
                 await cancel_booking(
-                    session, ctx, res, by="customer", actor=Actor("customer"), now=now
+                    session,
+                    ctx,
+                    res,
+                    by="customer",
+                    actor=Actor("agent", str(agent_name) if agent_name else None),
+                    now=now,
                 )
             except ReservationError as exc:
                 raise ToolError(exc.code) from None

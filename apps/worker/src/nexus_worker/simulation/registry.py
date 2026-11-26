@@ -44,7 +44,9 @@ from nexus_mcp.base import OutputModel, make_envelope
 from nexus_mcp.servers.composio_proxy.proxy import ComposioProxyTool
 from nexus_mcp.servers.reservas.names import AMBIGUOUS_SERVICE, UNKNOWN_SERVICE, matches
 from nexus_mcp.servers.reservas.schemas import (
+    FIRST_FREE_TOP,
     HHMM,
+    WEEKDAYS,
     AnswerOfferOutput,
     BookingBrief,
     CancelOutput,
@@ -295,7 +297,10 @@ def _pick(
 
 def _find_slots(world: World, args: dict[str, Any]) -> dict[str, Any]:
     """``reservas.find_slots`` con su forma de verdad (``FindSlotsOutput``) y en su
-    orden: el horario, el día y después el servicio."""
+    orden: el horario, el día y después el servicio. Sin fecha (spec 080), lo
+    primero libre desde ahora, cruzando días, como la herramienta de verdad."""
+    if args.get("date") in (None, ""):
+        return _first_free(world, args)
     day = _date(args.get("date"), world)
     if day is None:
         raise ToolError("invalid_date")
@@ -310,6 +315,43 @@ def _find_slots(world: World, args: dict[str, Any]) -> dict[str, Any]:
         return _real(FindSlotsOutput(date=day, closed=True, why_closed="not_bookable"))
     slots = world.slots(day, svc.duration_min if svc else None)
     return _real(FindSlotsOutput(date=day, closed=False, slots=[SlotOut(time=t) for t in slots]))
+
+
+#: La ventana de la agenda simulada: la de un negocio con los ajustes por defecto.
+_SIMULATED_DAYS_AHEAD = 60
+
+
+def _first_free(world: World, args: dict[str, Any]) -> dict[str, Any]:
+    """Spec 080, requisito 3: sin fecha, día a día desde hoy (el del negocio)
+    hasta ``FIRST_FREE_TOP`` horarios o el final de la ventana. La agenda simulada
+    no tiene antelación: ``too_soon`` va vacío."""
+    if world.week is None and not world.specials:
+        return _real(FindSlotsOutput(date=None, closed=True, why_closed="hours_missing"))
+    svc, refused, options = _pick(world, args)
+    if refused is not None:
+        return _real(FindSlotsOutput(date=None, closed=False, refused=refused, services=options))
+    if svc is not None and not svc.bookable:
+        return _real(FindSlotsOutput(date=None, closed=True, why_closed="not_bookable"))
+    first = world.local_now().date()
+    last = first + timedelta(days=_SIMULATED_DAYS_AHEAD)
+    found: list[SlotOut] = []
+    day = first
+    while True:
+        for t in world.slots(day, svc.duration_min if svc else None):
+            found.append(SlotOut(date=day, weekday=WEEKDAYS[day.weekday()], time=t))
+        if len(found) >= FIRST_FREE_TOP or day == last:
+            break
+        day += timedelta(days=1)
+    return _real(
+        FindSlotsOutput(
+            date=None,
+            searched_from=first,
+            searched_to=day,
+            closed=False,
+            why_closed=None if found else "none_in_window",
+            slots=found[:FIRST_FREE_TOP],
+        )
+    )
 
 
 def _join_waitlist(world: World, args: dict[str, Any]) -> dict[str, Any]:
