@@ -133,8 +133,11 @@ export function loadFbSdk(): Promise<FbSdk> {
     script.defer = true;
     script.crossOrigin = "anonymous";
     script.src = "https://connect.facebook.net/en_US/sdk.js";
-    script.onerror = () =>
+    script.onerror = () => {
+      // Forget the failed load so the next attempt tries again (as the console does).
+      sdkPromise = null;
       reject(new Error("Failed to load Facebook SDK script"));
+    };
     document.body.appendChild(script);
   });
   return sdkPromise;
@@ -148,32 +151,71 @@ export function loadFbSdk(): Promise<FbSdk> {
  */
 export type SignupMode = "cloud_api" | "coexistence";
 
+/** What the operator reads when the wait ends without a number (spec 049, 7.2). */
+const WAIT_TEXT = {
+  closed: "Se cerró la ventana de Meta antes de terminar. No se conectó nada.",
+  declined: "El cliente no autorizó los permisos. No se conectó nada.",
+  noCode: "Meta no devolvió el código de autorización: revisa que la configuración pida response_type=code.",
+  cancelled: "Se canceló la espera de la ventana de Meta.",
+  timeout: "Meta no respondió a tiempo (5 minutos). Vuelve a intentarlo.",
+} as const;
+
+const TIMEOUT_MS = 5 * 60 * 1000;
+
+/** The attempt in flight; a new one ends it, so only one listener and one deadline live. */
+let endCurrentAttempt: (() => void) | null = null;
+
 /**
  * Open the Embedded Signup popup with the chosen configuration and
  * resolve with the data the backend needs to complete signup.
  *
  * Two channels of information arrive — the OAuth ``code`` comes through
  * the ``FB.login`` callback, and the WABA / phone / business IDs come
- * through a ``postMessage`` event from the popup. We race-wait for both
- * and reject after a generous 5 min timeout (the user can take their
- * time in the popup; if they bail entirely we time out cleanly).
+ * through a ``postMessage`` event from the popup. Both are needed.
+ *
+ * Spec 047 (30.4, T101) and 049 (7.2, 2026-11-26), same as the console:
+ * the wait always ends, and every way out removes the listener and the
+ * deadline.
+ *
+ *   - One 5 min deadline starts before the SDK loads, so an SDK that
+ *     never arrives ends too.
+ *   - ``signal`` cancels at once; whatever Meta sends after that is dropped.
+ *   - A new call ends the previous attempt the same way.
+ *   - ``FB.login`` without a code and not ``connected`` is the window
+ *     being closed (or the permissions declined), and is said so.
  */
-export async function loginWithMeta(
+export function loginWithMeta(
   configId: string,
   mode: SignupMode = "cloud_api",
   signupVersion: SignupVersion = META_SIGNUP_VERSION,
+  signal?: AbortSignal,
 ): Promise<MetaSignupEnvelope> {
-  const sdk = await loadFbSdk();
+  endCurrentAttempt?.();
+  return new Promise<MetaSignupEnvelope>((resolve, reject) => {
+    let code: string | undefined;
+    let data: Omit<MetaSignupEnvelope, "code"> | undefined;
+    let settled = false;
+    const end = () => fail(new Error(WAIT_TEXT.cancelled));
+    const timer = setTimeout(() => fail(new Error(WAIT_TEXT.timeout)), TIMEOUT_MS);
 
-  // Set up the postMessage listener BEFORE opening the popup so we can't
-  // miss the event (Meta sometimes fires it before the FB.login callback
-  // resolves).
-  const dataPromise = new Promise<{
-    waba_id: string;
-    phone_number_id?: string;
-    business_id?: string;
-  }>((resolve, reject) => {
-    const onMessage = (event: MessageEvent) => {
+    function cleanup() {
+      settled = true;
+      clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+      signal?.removeEventListener("abort", end);
+      if (endCurrentAttempt === end) endCurrentAttempt = null;
+    }
+    function fail(err: unknown) {
+      if (settled) return;
+      cleanup();
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
+    function finishIfBoth() {
+      if (settled || code === undefined || data === undefined) return;
+      cleanup();
+      resolve({ code, ...data });
+    }
+    function onMessage(event: MessageEvent) {
       // Origin guard: Meta's exact origins, never a suffix match
       // (``evilfacebook.com`` ends in ``facebook.com`` too).
       if (typeof event.origin !== "string" || !META_ORIGINS.has(event.origin)) {
@@ -195,64 +237,59 @@ export async function loginWithMeta(
       // FINISH_ONLY_WABA / FINISH_GRANT_ONLY_API_ACCESS say what is missing.
       const outcome = signupOutcome(msg);
       if (outcome === null) return;
-      window.removeEventListener("message", onMessage);
       if (outcome.kind === "failed") {
-        reject(new Error(FAILURE_TEXT[outcome.code](outcome.detail)));
+        fail(new Error(FAILURE_TEXT[outcome.code](outcome.detail)));
         return;
       }
-      resolve({
+      data = {
         waba_id: outcome.waba_id,
         phone_number_id: outcome.phone_number_id,
         business_id: outcome.business_id,
-      });
-    };
+      };
+      finishIfBoth();
+    }
+
+    if (signal?.aborted) return end();
+    endCurrentAttempt = end;
+    signal?.addEventListener("abort", end, { once: true });
+    // Listen BEFORE the popup opens: Meta sometimes posts before the
+    // FB.login callback resolves.
     window.addEventListener("message", onMessage);
-    // Timeout safety: 5 min — popup remains open while the user logs in,
-    // chooses business assets, etc. Anything longer is almost certainly
-    // abandonment.
-    setTimeout(
-      () => {
-        window.removeEventListener("message", onMessage);
-        reject(new Error("Timeout esperando que el cliente termine el flow."));
-      },
-      5 * 60 * 1000,
-    );
+    // ``.catch`` after ``.then``: a ``FB.login`` that throws (popup refused)
+    // ends the wait too.
+    loadFbSdk()
+      .then((sdk) => {
+        if (settled) return;
+        sdk.login(
+          (response) => {
+            if (!response.authResponse?.code) {
+              fail(
+                new Error(
+                  response.status === "connected"
+                    ? WAIT_TEXT.noCode
+                    : response.status === "not_authorized"
+                      ? WAIT_TEXT.declined
+                      : WAIT_TEXT.closed,
+                ),
+              );
+              return;
+            }
+            code = response.authResponse.code;
+            finishIfBoth();
+          },
+          {
+            config_id: configId,
+            response_type: "code",
+            override_default_response_type: true,
+            // ``featureType`` (v4) is THE differentiator between Cloud API and
+            // Coexistence: the configuration ID alone routes both to the same
+            // wizard. v5 turns coexistence on by default. See ``signupExtras``.
+            extras: signupExtras(mode, signupVersion),
+          },
+        );
+      })
+      .catch(fail);
   });
-
-  const codePromise = new Promise<string>((resolve, reject) => {
-    sdk.login(
-      (response) => {
-        if (response.authResponse?.code) {
-          resolve(response.authResponse.code);
-        } else {
-          reject(
-            new Error(
-              response.status === "not_authorized"
-                ? "El cliente no autorizó los permisos."
-                : "FB.login no devolvió code OAuth (¿popup cerrado a mitad?).",
-            ),
-          );
-        }
-      },
-      {
-        config_id: configId,
-        response_type: "code",
-        override_default_response_type: true,
-        // ``featureType`` (v4) is THE differentiator between Cloud API and
-        // Coexistence: the configuration ID alone routes both to the same
-        // wizard. v5 turns coexistence on by default. See ``signupExtras``.
-        extras: signupExtras(mode, signupVersion),
-      },
-    );
-  });
-
-  const [code, envelopeData] = await Promise.all([codePromise, dataPromise]);
-  return {
-    code,
-    waba_id: envelopeData.waba_id,
-    phone_number_id: envelopeData.phone_number_id,
-    business_id: envelopeData.business_id,
-  };
 }
 
 // ── postMessage shape ──────────────────────────────────────────────────────
