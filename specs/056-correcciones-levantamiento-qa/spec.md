@@ -169,6 +169,11 @@ La consola del cliente no enseña texto técnico, valida igual en todas partes, 
 
 ### Requisito 1 — El freno de citas
 
+> **Enmendado por la spec 080** (2026-11-26): el criterio 1.1 también da por
+> buena una reserva viva del cliente de la conversación creada o movida en el
+> ciclo actual, la haga quien la haga. Ver
+> `specs/080-agente-tras-el-traspaso/spec.md`, requisito 1.
+
 **Historia de usuario:** Como negocio, quiero que mi agente nunca le diga a un cliente que tiene una cita que no existe, para que nadie se presente a una hora que no está reservada.
 
 #### Criterios de aceptación

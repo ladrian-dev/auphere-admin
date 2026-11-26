@@ -56,7 +56,13 @@ import structlog
 from nexus_api.api.console.capability_names import TOOL_ACTIONS
 from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.base import get_sessionmaker
-from nexus_api.db.models import Conversation, Message, MessageDirection, Reservation
+from nexus_api.db.models import (
+    Conversation,
+    Message,
+    MessageDirection,
+    Reservation,
+    ReservationEvent,
+)
 from nexus_api.db.models.reservation import LIVE_STATUSES
 from nexus_api.repositories.audit import AuditRepository
 
@@ -296,21 +302,72 @@ async def load_conversation_backing(
     return any(history_backed(calls or []) for calls in rows)
 
 
+#: What a reservation's history says when it was made or moved (spec 080, R1.1).
+_MADE_OR_MOVED: Final = ("created", "moved")
+
+
+async def load_customer_backing(
+    session: AsyncSession, customer_id: uuid.UUID | None, since: datetime | None
+) -> bool:
+    """Spec 080, requisito 1: a live reservation of **this conversation's customer**
+    made or moved since ``since`` (the start of the current cycle), whoever made it —
+    the agent, a person of the business from the agenda, the customer.
+
+    The reservations a person books from the agenda carry no conversation, so
+    :func:`load_conversation_backing` never sees them; the customer they are linked
+    to does. ``customer_id`` is the conversation's own (garantía 8): read by the
+    server from the conversation row, never an argument of the turn. Another
+    customer's reservation, a cancelled one, or one made before the cycle and not
+    moved since does not back."""
+    if customer_id is None or since is None:
+        return False
+    found = await session.scalar(
+        sa.select(Reservation.id)
+        .join(
+            ReservationEvent,
+            sa.and_(
+                ReservationEvent.reservation_id == Reservation.id,
+                ReservationEvent.tenant_id == Reservation.tenant_id,
+            ),
+        )
+        .where(
+            Reservation.customer_id == customer_id,
+            Reservation.status.in_(LIVE_STATUSES),
+            ReservationEvent.kind.in_(_MADE_OR_MOVED),
+            ReservationEvent.created_at >= since,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
 async def conversation_backed(
     tenant_id: uuid.UUID, conversation_id: str | uuid.UUID | None
 ) -> bool:
-    """:func:`load_conversation_backing` in its own session. Without a
-    conversation, or when it cannot be read, nothing backs: the classifier
-    decides (the brake fails closed)."""
+    """:func:`load_conversation_backing` and :func:`load_customer_backing` in their
+    own session. Without a conversation, or when it cannot be read, nothing backs:
+    the classifier decides (the brake fails closed)."""
     if not conversation_id:
         return False
     try:
         conversation = uuid.UUID(str(conversation_id))
         async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
-            since = await session.scalar(
-                sa.select(Conversation.attended_at).where(Conversation.id == conversation)
-            )
-            return await load_conversation_backing(session, conversation, since)
+            row = (
+                await session.execute(
+                    sa.select(
+                        Conversation.attended_at,
+                        Conversation.context_from,
+                        Conversation.customer_id,
+                    ).where(Conversation.id == conversation)
+                )
+            ).one_or_none()
+            if row is None:
+                return False
+            attended_at, context_from, customer_id = row
+            if await load_conversation_backing(session, conversation, attended_at):
+                return True
+            # Spec 080: the cycle starts at the cut of the last reopening (spec 064).
+            return await load_customer_backing(session, customer_id, context_from or attended_at)
     except Exception as exc:
         log.warning(
             "booking_brake.history_unavailable",

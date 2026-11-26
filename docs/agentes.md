@@ -658,6 +658,17 @@ repite herramientas (`tool_once`).
    reserva y no salió, lo de antes no la cubre: la respuesta puede estar dando
    por hecha la nueva, y el clasificador recibe la pregunta estrecha (solo cuenta
    una cita hecha, confirmada o cambiada ahora).
+
+   **Spec 080:** también respalda una reserva viva **del cliente de la
+   conversación** con un evento `created` o `moved` desde que empezó el ciclo
+   (`coalesce(context_from, attended_at)`). La hace quien sea: el agente, una
+   persona desde la agenda o el cliente (`booking_brake.load_customer_backing`).
+   Es el caso de Jemma del 23-nov: una persona reservó desde la agenda, sin
+   conversación en la reserva, devolvió la conversación, y el «gracias» siguiente
+   se frenaba. El `customer_id` sale de la fila de la conversación, nunca del
+   turno (garantía 8, `tests/isolation/test_080_booking_brake_customer_cycle.py`).
+   La reserva de otro cliente, una cancelada o una de antes del ciclo sin moverse
+   no respaldan.
 4. **Una llamada `classify`**, solo con acierto y sin respaldo: «¿afirma o da a
    entender que hay una cita hecha, confirmada, cambiada o en pie? YES/NO». El
    borrador va como mensaje `user`, como dato (§III). Si la llamada falla, vuelve
@@ -705,9 +716,36 @@ de respaldo), `test_pipeline_booking_brake.py` (el reintento y el traspaso, en u
 agente legado y en uno estructurado), `apps/api/tests/integration/test_booking_brake_turn.py`
 (el turno de verdad: motivo, auditoría, cobro y pausa con Bandeja),
 `apps/api/tests/isolation/test_056_booking_brake_same_conversation.py` (garantía
-8: solo cuenta la conversación del turno) y la de punta a punta contra staging,
-`apps/api/tests/release/test_booking_brake_staging.py` (`manual_only`, no corre en
-CI).
+8: solo cuenta la conversación del turno), `test_080_booking_brake_customer_cycle.py`
+(garantía 8: del cliente, solo lo suyo y solo en el ciclo) y la de punta a punta
+contra staging, `apps/api/tests/release/test_booking_brake_staging.py`
+(`manual_only`, no corre en CI).
+
+### Herramientas por intención (spec 080, requisito 2)
+
+La etiqueta del clasificador elige qué herramientas recibe el turno
+(`pipeline._INTENT_CATEGORIES`). Desde la 080, **saludo o agradecimiento
+(`fallback`) y paso a persona (`escalate`) llevan también las nueve `reservas.*`**
+que tenga el agente: catálogo, disponibilidad, citas del cliente, reservar, mover,
+cancelar, confirmar, lista de espera y ofertas.
+
+Antes, un «gracias» justo después de que una persona reservara, o un «no me gusta
+cómo me atiende X» a mitad de reserva, dejaban al agente sin poder comprobar ni
+seguir, y solo podía pasar a una persona (Jemma, 2026-11-23). Ahora es la regla del
+negocio, leída por el modelo, la que decide si se pasa a una persona.
+
+Lo que no cambia:
+
+- La lista blanca del agente sigue siendo el techo (garantía 2).
+- Los conectores siguen fuera de `escalate`.
+- `info` sigue sin `find_slots`.
+
+**Coste:** no hay llamadas nuevas. Esos turnos llevan más definiciones de
+herramientas: en Jemma, unos 2.400 tokens de entrada más, casi todos en caché. Se
+cobran en la bolsa del cliente como cualquier turno.
+
+**Pruebas:** `apps/worker/tests/unit/test_intent_tool_filter.py`, con el barrido de
+`VALID_INTENTS` contra la lista blanca.
 
 ## 10. Una corrección para todos los agentes (spec 056, requisito 9)
 

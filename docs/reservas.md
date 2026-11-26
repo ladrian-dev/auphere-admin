@@ -318,6 +318,26 @@ dentro de la antelación. Con `too_soon` el agente no dice que no hay disponibil
 dice que esa hora la confirma el negocio y ofrece pasar la conversación. `create` y
 `reschedule` responden `too_soon` si se intenta.
 
+**Buscar sin fecha (spec 080, requisito 3).** Si el cliente no da día o pide «lo
+antes posible», el agente llama a `reservas.find_slots` sin `date`. La herramienta
+recorre los días desde hoy, en la zona del negocio y saltando los cerrados, hasta
+juntar 6 horarios (`FIRST_FREE_TOP`) o llegar al final de la ventana
+(`agent_max_days_ahead`). Cada horario trae su `date` y su `weekday`. La salida
+lleva `searched_from` y `searched_to`, y `too_soon` va con fecha
+(`YYYY-MM-DD HH:MM`). Sin nada libre en la ventana, `why_closed: none_in_window`.
+
+Con `date`, la forma es la de siempre: esos campos no aparecen. Lo trajo Jemma
+(2026-11-23): con Luna, el agente buscaba «mañana» habiendo huecos esa tarde; con
+Sol, recorría los días de uno en uno. La agenda simulada del Playground hace lo
+mismo (`simulation/registry._first_free`). Contrato:
+`specs/080-agente-tras-el-traspaso/contracts/reservas-find-slots.md`.
+
+**Quién canceló.** Cuando el agente cancela a petición del cliente, el historial
+registra al agente como autor (`actor_kind: agent`, con su nombre) y la decisión
+sigue siendo del cliente (`by: customer`, `cancelled_by: customer`), que es lo que
+deciden los avisos. Hasta la 080 se registraba como `customer`, y esas
+cancelaciones anteriores no se reescriben.
+
 **El teléfono es obligatorio al reservar a mano desde la consola**, en los dos
 modos: empieza por `+` y tiene de 8 a 15 dígitos (`model/phone.ts`, `validPhone`).
 Lo exigen el formulario y su acción de servidor (`createSchema`). Desde la enmienda

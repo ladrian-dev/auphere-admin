@@ -323,10 +323,19 @@ factor del tramo. Se decide **por llamada** y estrictamente por encima del umbra
 (`LaneWeights.for_prompt`, en el consumidor). `cost_usd`, lo que creemos que nos
 factura el proveedor, aplica el mismo recargo con el mismo criterio
 (`pricing.tier_factor`, desde `consumer._apply_costs`; enmienda del 2026-11-20,
-requisito 5.9), así que el margen de una llamada larga cuadra con la factura. Un límite
-conocido: el copiloto debita y valora con los totales del turno y no aplica tramos
-(sobre un total cobraría x5 a varias llamadas cortas). Hoy no importa, porque corre en
-Sol, que no tiene tramo; habría que resolverlo antes de pasarlo a Haiku 5.5. Las
+requisito 5.9), así que el margen de una llamada larga cuadra con la factura. **El
+copiloto también, desde el 2026-11-26** (bug `copiloto-sin-tramos`, en
+`.specify/bugs/`):
+
+- El grafo emite cada llamada del turno en `cost.updated` (`calls`, solo recuentos).
+- `_turn_quota_units` y `_turn_cost_usd` cobran cada una con su tramo.
+- Sin llamadas, con un run de antes, se cobra con los totales sin tramo, como hasta
+  entonces.
+
+El mismo arreglo cerró otro fallo: al empezar cada turno solo se ponían a cero la
+entrada y la salida. La caché, los pasos y las llamadas llegaban del checkpoint del
+hilo y se sumaban turno a turno, así que cada turno cobraba también la caché de los
+anteriores. Ahora la entrada los pone a cero. Las
 reprecificaciones con SQL (0072, 0076, 0114 y `reprice_cached_input_inc70.py`) son de
 antes de los tramos y no lo aplican.
 
