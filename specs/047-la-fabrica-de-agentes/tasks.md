@@ -1001,6 +1001,35 @@ efecto repetido. Llega a todos los partners, sin la consola nueva.
   - **Cupo lleno**: la tarjeta dice el cupo y no ofrece conectar otro (sin botones apagados, §V).
   - **Sin credenciales de Meta**: «El número lo conecta Auphere».
   _Requisitos: 30.1, 30.2, 30.3, 30.4, 30.5, 30.6, 30.7, 30.9, 30.10_
+  Avance (2026-11-26, beta de Jemma, P0): **el velo se puede cancelar** (30.4), con la enmienda de la spec 049 al requisito 7.2. Lo demás de T101 sigue pendiente, así que la tarea sigue abierta. El fichero de pytest no existe.
+  - **Fallo.** Tras pulsar «Conectar» y cancelar o cerrar la ventana de Meta, el velo no se cerraba:
+    - en el agente, solo se cerraba con un fallo;
+    - en la página Canales, en «Volver a conectar» y en el panel, no había forma de cerrarlo;
+    - `loginWithMeta` no tenía plazo si el SDK no cargaba, y la espera del código no tenía ninguno.
+  - **Arreglo.** Es el patrón de Instagram y Messenger (`meta-social-connect.tsx`): un contador de intentos, «Cancelar» con Escape mientras la ventana está abierta, y lo que llegue tarde se descarta.
+    - `runWhatsAppSignup` recibe `signal` y `onMetaDone`. Si el intento se canceló, no llama a la API.
+    - `loginWithMeta`, en la consola y en el panel, sale por un solo sitio que quita el oyente y el plazo. El plazo arranca antes de cargar el SDK.
+    - Si el `FB.login` llega sin código, sale como «cancelado».
+    - Un intento nuevo cierra el anterior.
+    - Toca `connect-whatsapp-dialog.tsx`, `whatsapp-connect.tsx`, `ad-measurement-section.tsx`, `channel-page.tsx` (solo reenvía la cancelación), los dos `meta-fb-sdk.ts` y `meta-signup-dialog.tsx`.
+  - **Decisiones**, en la enmienda de la 049:
+    - Un clic fuera no cancela.
+    - Durante el canje con la API no se cancela.
+    - La página del dueño y `loginForCode` quedan para después.
+  - **Pruebas en rojo primero:**
+    - `builder/__tests__/channel-connect.test.tsx`: el velo del agente con Cancelar, Escape y ×, y sin cancelar durante el canje;
+    - `runWhatsAppSignup` no llama a la API con un código tardío;
+    - `channels/__tests__/whatsapp-connect.test.tsx`;
+    - `builder/__tests__/ad-measurement-section.test.tsx`;
+    - `lib/__tests__/meta-fb-sdk.test.ts`: `loginWithMeta` real con el SDK simulado, Meta sin ninguna señal, el SDK sin cargar, cancelar y reintentar;
+    - el `meta-fb-sdk` del panel y su diálogo.
+  - **Pasada viva** (consola en dev, con una página temporal que no se fusiona):
+    - **Velo del agente.** «Cancelar», Escape y la × cancelan; un clic fuera, no. El foco entra en «Cancelar» y vuelve a quien abrió.
+    - **Canje.** Sin botones y Escape no cierra.
+    - **Página Canales y «Volver a conectar», con el SDK real.** La ventana quedó bloqueada y `FB.login` no contestó, que es el caso de la beta. «Cancelar» y Escape quitan el velo.
+    - **Medidas.** A 360 px, sin scroll horizontal. Temas claro y oscuro bien. Anillo de foco de 2 px.
+    - **Arreglado en la pasada.** Al empezar el canje, «Cancelar» desaparecía con el foco dentro y el foco caía en la página. Ahora pasa al velo, en los dos velos.
+    - **Queda en staging** el alta completa con Meta.
 - [X] T102 [P] [US10] Coexistencia (`T/integration/channels/test_coexistence_events.py`):
   - un eco guarda el mensaje como de una persona del negocio, pone `human_takeover`
     2 h y el agente calla;
