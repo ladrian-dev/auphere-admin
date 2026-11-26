@@ -235,3 +235,76 @@ async def test_a_claim_then_the_truth_sends_the_truth_and_nothing_waits(
     assert row.after_json["outcome"] == "retried"
     assert len(wire.brake_checks) == 1, "la respuesta sincera no pasa el filtro"
     assert len(_brake_usage(published, result["turn_id"])) == 1
+
+
+THANKS_DRAFT = "¡Con gusto! Te esperamos el sábado 28 a las 15:00 con Daybeth."
+
+
+class _LabelledWire(_Wire):
+    """Like :class:`_Wire`, with the graph's classifier saying ``label``."""
+
+    def __init__(self, drafts: list[str], label: str) -> None:
+        super().__init__(drafts)
+        self.label = label
+
+    async def __call__(self, _litellm: Any, kwargs: dict[str, Any]) -> dict[str, Any]:
+        out = await super().__call__(_litellm, kwargs)
+        if out["choices"][0]["message"]["content"] == "book":
+            out["choices"][0]["message"]["content"] = self.label
+        return out
+
+
+async def test_acrilicos_a_booking_made_by_hand_backs_the_thanks(db_session, monkeypatch) -> None:
+    """Spec 080, requisito 1 (CE-001): la persona reservó desde la agenda para el
+    cliente de la conversación —sin conversación en la reserva— y devolvió la
+    conversación. El «gracias» que la menciona sale al primer intento: ni nota del
+    freno, ni traspaso, ni fila del freno."""
+    from datetime import UTC, datetime, timedelta
+
+    from nexus_api.db.models import Reservation, ReservationEvent
+
+    world = await make_world(db_session)
+    _wire(monkeypatch, ["Hola, ¿en qué te ayudo?"])
+    await process_inbound(world.event("Hola"), pipeline=_pipeline())
+    conv = await conversation_of(world)
+
+    starts = datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)
+    async with get_sessionmaker()() as s, tenant_scoped_session(s, world.tenant_id):
+        res = Reservation(
+            tenant_id=world.tenant_id,
+            mode="capacity",
+            status="confirmed",
+            starts_at=starts,
+            ends_at=starts + timedelta(hours=2),
+            party_size=1,
+            customer_id=conv.customer_id,
+            conversation_id=None,
+            origin="person",
+            channel="phone",
+            created_by_kind="person",
+            version=1,
+        )
+        s.add(res)
+        await s.flush()
+        s.add(
+            ReservationEvent(
+                tenant_id=world.tenant_id,
+                reservation_id=res.id,
+                kind="created",
+                actor_kind="person",
+                data={},
+            )
+        )
+        await s.commit()
+
+    wire = _LabelledWire([THANKS_DRAFT, HONEST], "fallback")
+    monkeypatch.setattr(llm_mod, "_proxied_acompletion", wire)
+
+    result = await process_inbound(world.event("Excelente muchas gracias"), pipeline=_pipeline())
+
+    assert result["response"] == THANKS_DRAFT
+    assert result.get("turn_failure") is None
+    assert wire.brake_checks == [], "respaldada por la reserva: el freno no pregunta"
+    assert await _brake_rows(world.tenant_id) == []
+    conv = await conversation_of(world)
+    assert conv.waiting_reason is None

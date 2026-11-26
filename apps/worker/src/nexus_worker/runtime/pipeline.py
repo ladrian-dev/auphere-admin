@@ -631,6 +631,19 @@ _INTENT_CATEGORIES: dict[str, tuple[str, ...]] = {
     "fallback": (),
 }
 
+#: Spec 080, requisito 2: the agent's own agenda, on the turns where a label used to
+#: take it away. A «gracias» right after a person booked from the agenda
+#: (``fallback``), or «no me gusta como me atiende X» in the middle of a booking
+#: (``escalate``), left the agent with no way to check the booking or go on with
+#: another professional, so it could only hand over (Jemma, 2026-11-23). Whether to
+#: hand over is the business's rule, read by the model; the label no longer decides
+#: it by removing the tools. The whitelist is still the ceiling (garantía 2).
+_RESERVAS_TOOLS: tuple[str, ...] = tuple(
+    t for t in _INTENT_CATEGORIES["book"] if t.startswith("reservas.")
+)
+for _intent in ("fallback", "escalate"):
+    _INTENT_CATEGORIES[_intent] = _INTENT_CATEGORIES[_intent] + _RESERVAS_TOOLS
+
 
 # Notification tools usable from any intent. Phase 1 lets the booking /
 # queue / info / escalate handlers send native WhatsApp output (image of
