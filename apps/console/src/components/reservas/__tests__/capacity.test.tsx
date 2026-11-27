@@ -6,7 +6,7 @@ import type { Occupancy, OccupancyDay } from "@/lib/backend/reservas";
 
 import type { ReservasData } from "../context";
 import { TODAY, capacityBooking, capacitySettings, detail, occupancyDay, waitlistEntry } from "../model/__tests__/fixtures";
-import { ViewRef, a, renderView, resetMocks, router, toasts } from "./harness";
+import { ViewRef, a, renderView, resetMocks, toasts } from "./harness";
 
 vi.mock("@/app/(console)/reservas/actions", async () => (await import("./harness")).a);
 vi.mock("@/app/(console)/reservas/templates-actions", async () => (await import("./harness")).a);
@@ -121,7 +121,7 @@ describe("Aforo · map", () => {
     renderView(data({ occupancy: null }), { errors: ["occupancy"] });
     expect(screen.getByText(/Parte de la información no se pudo cargar/)).toBeInTheDocument();
     await userEvent.click(screen.getAllByRole("button", { name: "Reintentar" })[0]!);
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
   });
 });
 

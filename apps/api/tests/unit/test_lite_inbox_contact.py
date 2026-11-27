@@ -88,7 +88,8 @@ async def test_summary_and_reason_come_from_the_last_escalation(
     d = await _detail(client, inbox, c0)
     assert d["waiting_reason"] is None  # ya no espera
     assert d["waiting_since"] is None
-    assert d["summary"] == "Compró el lunes"
+    # Spec 082 (R4.1): resolved after the escalation, its summary no longer stands.
+    assert d["summary"] is None
     assert d["activity"][0]["kind"] == "resolved"
     assert d["activity"][0]["actor"]["is_me"] is True
 

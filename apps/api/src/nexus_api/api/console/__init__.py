@@ -53,6 +53,7 @@ from nexus_api.api.console import (
     client_access,
     client_bags,
     client_builder,
+    client_report,
     companion,
     conversations,
     diagnostics,
@@ -127,6 +128,8 @@ router.include_router(channel_config.router)
 router.include_router(conversations.router)
 # Spec 076 (requisito 3): el informe de anuncios del cliente.
 router.include_router(ads.router)
+# Spec 083: el informe del cliente.
+router.include_router(client_report.router)
 router.include_router(usage.router)
 # Spec 047 (T158): Consumo por partidas, junto a lo de hoy.
 router.include_router(usage_lines.router)
@@ -156,6 +159,8 @@ router.include_router(teammates.router)
 router.include_router(capabilities.router)
 router.include_router(support.router)
 router.include_router(whatsapp.router)
+# Spec 085: after WhatsApp's, which keeps ``/whatsapp/signup-link``.
+router.include_router(meta_social.link_router)
 router.include_router(templates.router)
 # lane agent-tools (CP-11/13/14/15/31)
 router.include_router(agent_settings.router)

@@ -38,7 +38,7 @@ durable en Redis, así que:
 from __future__ import annotations
 
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
@@ -1265,6 +1265,9 @@ def _make_driver(
             "environment": teammate_environment,
             "history": history,
             "user_message": user_message,
+            # El resto de lo que se cobra (caché, pasos, llamadas) lo pone a cero
+            # el nodo de entrada del grafo (``RUN_SCOPED_DEFAULTS``, bug
+            # ``copiloto-sin-tramos``). Una reanudación no pasa por él: sigue el turno.
             "total_input_tokens": 0,
             "total_output_tokens": 0,
         }
@@ -1329,6 +1332,11 @@ def _make_driver(
                             handle.total_cache_write += int(data.get("cache_write") or 0)
                             handle.total_steps += int(data.get("steps") or 0)
                             handle.model = data.get("model") or handle.model
+                            calls = data.get("calls")
+                            if isinstance(calls, list):
+                                handle.extras.setdefault("usage_calls", []).extend(
+                                    c for c in calls if isinstance(c, dict)
+                                )
                         if name == "context.updated":
                             handle.last_input_tokens = int(data.get("input_tokens") or 0)
                         if name == "text.delta":
@@ -1551,6 +1559,7 @@ def _make_on_complete(
                 cache_write=int(handle.total_cache_write),
                 output=int(handle.total_output_tokens),
                 lanes=await _lane_weights(handle.model),
+                calls=handle.extras.get("usage_calls"),
             )
         except UnweightedModel as exc:
             log.error(
@@ -1579,18 +1588,37 @@ def _make_on_complete(
 
 
 def _turn_quota_units(
-    *, uncached: int, cache_read: int, cache_write: int, output: int, lanes: LaneWeights
+    *,
+    uncached: int,
+    cache_read: int,
+    cache_write: int,
+    output: int,
+    lanes: LaneWeights,
+    calls: Sequence[Mapping[str, Any]] | None = None,
 ) -> int:
     """La cuota de un turno del copiloto: la misma fórmula que el canal (spec 007 y 065).
 
     ``uncached`` es lo que acumula el grafo, «prompt - lectura» de cada llamada, con lo
     escrito dentro; ``quota_tokens`` lo saca de la entrada si el modelo pesa la escritura.
 
-    **Sin tramo de precio.** El tramo (Haiku 5.5 por encima de 100.000 tokens) se decide por
-    llamada y aquí solo están los totales del turno: aplicarlo sobre el total cobraría x5 a
-    un turno de varias llamadas cortas. ``quota_tokens`` no lo aplica; el copiloto nunca
-    corre en un modelo con tramo hoy (``llm_companion_model``).
+    **El tramo de precio, llamada a llamada** (bug ``copiloto-sin-tramos``). El tramo
+    (Haiku 5.5 x5 por encima de 100.000 tokens de prompt) lo decide el prompt de UNA
+    llamada: con ``calls`` (cada llamada del turno, del evento ``cost.updated``) se cobra
+    cada una con ``lanes.for_prompt(prompt)``, como el canal. Sin ellas (un run de antes),
+    con los totales y sin tramo: aplicarlo sobre el total cobraría x5 a un turno de varias
+    llamadas cortas. Un teammate puede correr en Haiku (lista del partner, 0238).
     """
+    if calls:
+        return sum(
+            quota_tokens(
+                prompt_tokens=int(c.get("uncached") or 0) + int(c.get("cache_read") or 0),
+                cache_read=int(c.get("cache_read") or 0),
+                output_tokens=int(c.get("output") or 0),
+                cache_write=int(c.get("cache_write") or 0),
+                weights=lanes.for_prompt(int(c.get("prompt") or 0)),
+            )
+            for c in calls
+        )
     return quota_tokens(
         prompt_tokens=uncached + cache_read,
         cache_read=cache_read,
@@ -1645,28 +1673,41 @@ async def _turn_cost_usd(handle: streaming.CompanionRunHandle) -> float | None:
     if row is None:
         return None
 
-    # Spec 007: ``total_input_tokens`` ya es el uncached NATIVO, que es
-    # justo lo que el USD necesita. La reconstrucción que había aquí
-    # desaparece — valorar en dólares deja de depender de la política de
-    # cuota, que es como debió estar siempre: son dos preguntas distintas.
-    uncached = max(0, int(handle.total_input_tokens))
-    # Spec 065: lo escrito en caché va dentro de ese uncached y se valora en su fila, a su
-    # tarifa; contarlo además como entrada lo cobraba dos veces (INC-70, como el canal). Desde
-    # que GPT-5.6 informa de lo escrito, también pasaba con el copiloto en Sol.
-    if row.cache_write_per_mtok is not None:
-        uncached = max(0, uncached - int(handle.total_cache_write))
+    from nexus_worker.metering.pricing import tier_factor
+
+    # Bug ``copiloto-sin-tramos``: con cada llamada del turno, cada una con su tramo
+    # (como el canal, ``pricing.tier_factor``); sin ellas, los totales sin tramo.
+    extras = getattr(handle, "extras", None) or {}
+    calls = extras.get("usage_calls") or [
+        {
+            "prompt": None,
+            "uncached": handle.total_input_tokens,
+            "cache_read": handle.total_cache_read,
+            "cache_write": handle.total_cache_write,
+            "output": handle.total_output_tokens,
+        }
+    ]
     total = 0.0
     seen_any = False
-    for tokens, rate in (
-        (uncached, row.input_per_mtok),
-        (handle.total_output_tokens, row.output_per_mtok),
-        (handle.total_cache_read, row.cache_read_per_mtok),
-        (handle.total_cache_write, row.cache_write_per_mtok),
-    ):
-        if rate is None:
-            continue
-        seen_any = True
-        total += float(rate) * tokens / 1_000_000
+    for call in calls:
+        # Spec 007: ``uncached`` ya es el NATIVO, que es justo lo que el USD necesita.
+        uncached = max(0, int(call.get("uncached") or 0))
+        # Spec 065: lo escrito en caché va dentro de ese uncached y se valora en su fila,
+        # a su tarifa; contarlo además como entrada lo cobraba dos veces (INC-70).
+        if row.cache_write_per_mtok is not None:
+            uncached = max(0, uncached - int(call.get("cache_write") or 0))
+        prompt = call.get("prompt")
+        factor = 1.0 if prompt is None else float(tier_factor(row, int(prompt)))
+        for tokens, rate in (
+            (uncached, row.input_per_mtok),
+            (int(call.get("output") or 0), row.output_per_mtok),
+            (int(call.get("cache_read") or 0), row.cache_read_per_mtok),
+            (int(call.get("cache_write") or 0), row.cache_write_per_mtok),
+        ):
+            if rate is None:
+                continue
+            seen_any = True
+            total += float(rate) * tokens * factor / 1_000_000
     return total if seen_any else None
 
 

@@ -23,6 +23,7 @@ export function Thread({
   items,
   hasOlder,
   loadingOlder,
+  contactId,
   contactInitials,
   now,
   onOlder,
@@ -32,6 +33,8 @@ export function Thread({
   items: InboxThreadItem[];
   hasOlder: boolean;
   loadingOlder: boolean;
+  /** Spec 082 (5.1): the conversation id, which gives the contact their colour. */
+  contactId?: string;
   contactInitials: string;
   now: Date;
   onOlder: () => void;
@@ -88,6 +91,7 @@ export function Thread({
           <MessageBubble
             key={row.key}
             item={item}
+            contactId={contactId}
             contactInitials={contactInitials}
             loadCommentPost={loadCommentPost}
             onCorrect={onCorrect && item.direction === "outbound" && item.author?.kind === "agent" ? () => onCorrect(item) : undefined}

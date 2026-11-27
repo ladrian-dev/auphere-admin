@@ -185,3 +185,62 @@ class TestQuedateOnEveryIntent:
             assert "quedate.register_me" in result, intent
             assert "quedate.my_host" in result, intent
             assert set(result) <= tools, intent
+
+
+#: The nine Reservas tools of the ``book`` category (spec 080, research D3).
+_RESERVAS = (
+    "reservas.services",
+    "reservas.find_slots",
+    "reservas.create",
+    "reservas.list_mine",
+    "reservas.reschedule",
+    "reservas.cancel",
+    "reservas.confirm_attendance",
+    "reservas.join_waitlist",
+    "reservas.answer_offer",
+)
+
+
+class TestReservasSurviveThanksAndHandOff:
+    """Spec 080, requisito 2: a «gracias» (``fallback``) or a complaint
+    (``escalate``) in the middle of a booking keeps the agent's Reservas tools.
+    Seen in production (Jemma, 2026-11-23): without them the agent could neither
+    check the booking a person had just made nor go on with another professional,
+    and handed the conversation to a person again."""
+
+    def test_fallback_and_escalate_get_the_agents_reservas_tools(self) -> None:
+        bundle = _bundle({*_RESERVAS, "escalate.escalate_to_human"})
+        for intent in ("fallback", "escalate"):
+            result = set(_filter_tools_for_intent_with_composio(bundle, intent))
+            assert set(_RESERVAS) <= result, f"missing on {intent}: {set(_RESERVAS) - result}"
+            assert "escalate.escalate_to_human" in result, intent
+
+    def test_only_what_the_agent_has(self) -> None:
+        """Garantía 2: an agent with only part of Reservas gets only that part."""
+        bundle = _bundle({"reservas.services", "reservas.list_mine"})
+        for intent in ("fallback", "escalate"):
+            assert set(_filter_tools_for_intent_with_composio(bundle, intent)) == {
+                "reservas.services",
+                "reservas.list_mine",
+            }, intent
+
+    def test_an_agent_without_reservas_gets_none(self) -> None:
+        bundle = _bundle({"escalate.escalate_to_human", _CONNECTOR_TOOL})
+        for intent in ("fallback", "escalate"):
+            result = _filter_tools_for_intent_with_composio(bundle, intent)
+            assert not any(t.startswith("reservas.") for t in result), intent
+
+    def test_every_intent_stays_inside_the_whitelist(self) -> None:
+        """The sweep (constitution §I): every label of the classifier, with a
+        whitelist that holds part of Reservas and none of the rest."""
+        from nexus_worker.runtime.pipeline import VALID_INTENTS
+
+        whitelist = {"reservas.find_slots", "reservas.create", _CONNECTOR_TOOL}
+        bundle = _bundle(whitelist)
+        for intent in VALID_INTENTS:
+            result = set(_filter_tools_for_intent_with_composio(bundle, intent))
+            assert result <= whitelist, f"leak on {intent}: {result - whitelist}"
+
+    def test_connectors_still_stay_off_escalate(self) -> None:
+        bundle = _bundle({*_RESERVAS, _CONNECTOR_TOOL})
+        assert _CONNECTOR_TOOL not in _filter_tools_for_intent_with_composio(bundle, "escalate")

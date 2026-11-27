@@ -184,7 +184,9 @@ describe("the example source serves the new actions (R23, for the integrator)", 
     expect(slot).toBeTruthy();
     const moved = await run(demo.move(r!, { date: tomorrow, time: slot!.time, proId: r!.pro!.id, notify: true }));
     expect(moved).toMatchObject({ date: tomorrow, start: slot!.time });
-    expect(moved.events.at(-2)?.kind ?? moved.events.at(-1)?.kind).toBe("moved");
+    // "notified" only follows when the customer has a phone, and the demo draws that from
+    // the date: on some days the moved reservation has none and "created" sits second to last.
+    expect(moved.events.filter((e) => e.kind !== "notified").at(-1)?.kind).toBe("moved");
     await expect(run(demo.move(moved, { date: tomorrow, time: 0, notify: false }))).rejects.toBeInstanceOf(ApiError);
   });
 

@@ -17,6 +17,29 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
   está, el de `cloud_api`).
 - Un número nuevo empieza **en prueba**: «Solo mi equipo» con el teléfono del
   dueño, para que nadie de fuera hable con un agente a medio hacer.
+- **La espera de la ventana de Meta se puede cancelar** (047, 30.4; 049, 7.2,
+  enmienda del 2026-11-26). Vale para WhatsApp, Instagram y Messenger.
+  - **Dónde.** En WhatsApp, en las cuatro superficies que abren el alta: el
+    velo de «Conectar WhatsApp» del agente (`connect-whatsapp-dialog.tsx`), el
+    de la página Canales del cliente (`whatsapp-connect.tsx`), «Volver a
+    conectar» de la medición de anuncios (`ad-measurement-section.tsx`) y el
+    diálogo del panel (`meta-signup-dialog.tsx`).
+  - **Cómo.** Con «Cancelar», Escape o la ×. Un clic fuera no cancela, para no
+    perder lo hecho en la ventana de Meta al volver a la consola. Cancelar
+    deja la espera, no cierra la ventana de Meta.
+  - **Lo tardío se descarta.** Cada intento lleva su número y su
+    `AbortController`. Lo que Meta devuelva a uno cancelado no llega a la API:
+    `runWhatsAppSignup` no la llama.
+  - **El canje no se cancela.** Cuando Meta devuelve, el velo pasa a
+    «Conectando…» sin «Cancelar» (`onMetaDone`).
+  - **`loginWithMeta`** (consola y panel) sale por un único sitio que quita el
+    oyente y el plazo.
+    - El plazo de 5 minutos arranca antes de cargar el SDK.
+    - Un intento nuevo cierra el anterior.
+    - Cerrar la ventana sin código se dice «Se cerró la ventana de Meta».
+  - **Queda fuera** la página del dueño (`/connect/whatsapp`), sin velo ni
+    «Cancelar»: al cerrar la ventana, su botón vuelve a estar listo y no
+    muestra ningún error.
 
 ### Llegar a la configuración del número (spec 063, requisito 2)
 
@@ -90,9 +113,9 @@ conecta, cómo se configura y qué pasa cuando el negocio sigue usando su app.
     canal se anonimiza a los 30 días (`meta_social_retention`, requisito 5.3).
     Volver a conectarlo antes lo cancela. El diálogo de «Desconectar» y el
     aviso de canal desconectado lo dicen.
-  - **Conectar se puede cancelar:** mientras la ventana de Meta está abierta, la
-    consola ofrece «Cancelar» (y Escape). Lo que Meta devuelva después a un
-    intento cancelado se descarta (`meta-social-connect.tsx`, requisito 7.2).
+  - **Conectar se puede cancelar,** como en WhatsApp (sección 1): «Cancelar» y
+    Escape mientras la ventana de Meta está abierta, y lo que Meta devuelva a
+    un intento cancelado se descarta (`meta-social-connect.tsx`, requisito 7.2).
   - **Pasar a otro agente** dice «Pasar el canal».
   - **Comentarios** (Instagram y Messenger): responder sí o no y la respuesta
     pública bajo el comentario (`_COMMENT_CHANNELS` en
@@ -127,6 +150,66 @@ link_pending_exists`), el dueño conecta su número desde el móvil, el número 
 asignado a ese agente y empieza en prueba con el teléfono del dueño. Al conectar
 se avisa al partner (`channel.connected`). Revocar el enlace lo invalida al
 momento.
+
+### Un enlace por canal: también Instagram y Messenger (spec 085)
+
+El mismo enlace, no un flujo aparte. La tabla `channel_signup_links` lleva
+`channel` (`whatsapp`, `instagram` o `messenger`; migración `0244`).
+
+- **Los modos.** WhatsApp guarda uno de sus tres modos. Instagram y Messenger
+  guardan siempre `meta_login`: el partner no elige nada y el dueño decide en
+  su página cómo entra a Meta. Un CHECK liga cada canal a sus modos.
+- **Uno vivo por cliente y canal.** Crear un enlace sin agente anula los
+  vivos del cliente de ese canal, no los de los demás: uno de Instagram deja
+  vivo el de WhatsApp.
+- **Uno pendiente por agente y canal.** El índice
+  `uq_channel_signup_links_one_pending` va sobre `(tenant_id, agent_id,
+  channel)`. Antes de crear, se anulan los caducados de ese agente y canal (motivo
+  `expired`): el índice no puede mirar la hora, y un caducado sin anular hacía
+  fallar el siguiente con un 500.
+- **Dónde se crea.**
+  - En Canales del cliente, «Enviar enlace de Instagram al cliente» (y de
+    Messenger), con `POST /console/clients/{ref}/channels/{kind}/signup-link`.
+    Sale también en la app de escritorio.
+  - En el agente, con `POST …/agents/{id}/channels/owner-links` y `channel`.
+    `AgentChannelsOut` trae `pending_links` (uno por canal) y conserva
+    `pending_link` (el de WhatsApp).
+  - Pide `channels:write` y que el partner tenga el canal (`enabled_kinds`).
+    Sin el canal, la ruta da 404 y la consola no ofrece el botón.
+  - El panel de operador sigue solo con WhatsApp: su lista filtra
+    `channel = 'whatsapp'`.
+- **La página del dueño:** `/connect/instagram/{token}` y
+  `/connect/messenger/{token}` (`app/connect/[kind]/`). La ruta mueve el token a
+  la cookie de su canal (`nx_owner_link_instagram`, `nx_owner_link_messenger`) y
+  redirige a `/connect/{kind}`, que nunca lleva el token en la dirección.
+  - La página usa la conexión de la consola, `useMetaSocialConnect`, con las
+    acciones del enlace. Pregunta lo mismo («¿Cómo entras a Meta?», solo en
+    Instagram y si hay configuración con Página), usa el mismo diálogo para
+    elegir y da los mismos motivos.
+  - `GET /console/channel-signup/{token}` da `channel`, `meta_config_id` y
+    `meta_page_config_id` sacados de `meta_social_service.offer(partner)`.
+    Si el partner del cliente ya no tiene el canal, responde `state: unknown`.
+- **Conectar:** `POST …/{token}/meta-social` con `{code}` y
+  `POST …/{token}/meta-social/complete` con `{nonce, account_id}`.
+  - Corren bajo `tenant_scoped_session` del cliente del enlace, con el enlace
+    bloqueado (`FOR UPDATE`), como WhatsApp.
+  - Sin cuota de números (spec 049).
+  - Si el enlace viene de un agente, el canal pasa a él con
+    `channel_config.move_channel`, la misma función que «Mover» de la consola.
+    Si esa función lo rechazaría (un agente que ya no está publicado), el canal
+    se queda en el cliente.
+  - Auditan `channel.{kind}.connect` con el actor `link:{id}` y avisan al
+    partner con `channel.connected` y `via: owner_link`.
+  - Un motivo de Meta (409 `{code, help}`) o Meta sin responder (502) no
+    consumen el enlace.
+  - La ruta de WhatsApp responde 409 `link_channel_mismatch` a un enlace de
+    otro canal, sin consumirlo.
+- **La elección pendiente sabe de dónde viene.** En Redis, el valor cifrado de
+  `nexus:meta_social:pending:{tenant}:{nonce}` lleva `origin`: `console` o
+  `link:{id}`. `MetaSocialConnector.complete` responde `pending_expired` si no
+  coincide. Así, una elección iniciada en la consola no se completa desde un
+  enlace, ni la de un enlace desde otro. Un valor sin `origin` cuenta como
+  `console`.
 
 ## 5. Instagram y Messenger: quién los ve y por dónde llegan
 

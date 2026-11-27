@@ -5,7 +5,7 @@ import Link from "next/link";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Callout, Field, Input, StatusBadge, formatBytes, formatDateTime } from "@nexus/ui";
+import { Button, Callout, Field, Input, Skeleton, StatusBadge, formatBytes, formatDateTime } from "@nexus/ui";
 
 import {
   addAgentKnowledgeUrlAction,
@@ -27,6 +27,7 @@ import { KNOWLEDGE_MAX_UPLOAD_BYTES } from "@/lib/backend/agent-tools-types";
 import type { Result } from "./builder-model";
 import { businessKnowledgeHref, businessLineKey, formatClock, isWebAddress, sourceKindKey, visibleSources } from "./knowledge-model";
 import { TeachDialog } from "./teach-dialog";
+import { useAgentKnowledge } from "./use-agent-knowledge";
 
 type Ids = { ref: string; agent: string };
 export type AgentKnowledgeActions = {
@@ -52,6 +53,22 @@ export const KNOWLEDGE_ACTIONS: AgentKnowledgeActions = {
 const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdown,text/html";
 
 /**
+ * Spec 082 (R2.5): how long an upload, and a website, are waited for. A Server
+ * Action cannot be aborted: the console stops waiting, says so and reads the
+ * list again, in case the source did go in.
+ */
+export const UPLOAD_DEADLINE_MS = 120_000;
+export const URL_DEADLINE_MS = 60_000;
+const LATE = Symbol("late");
+function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | typeof LATE> {
+  let timer: number | undefined;
+  const late = new Promise<typeof LATE>((resolve) => {
+    timer = window.setTimeout(() => resolve(LATE), ms);
+  });
+  return Promise.race([work, late]).finally(() => window.clearTimeout(timer));
+}
+
+/**
  * La sección Conocimiento de un agente (spec 047, historia 22; T134, requisitos
  * 37.3 y 12.1): las fuentes propias de este agente —que no ve ningún otro, la
  * garantía 9— con su estado, su tamaño y cuándo se leyeron, y cuántas fuentes
@@ -61,6 +78,10 @@ const ACCEPT = ".pdf,.txt,.md,.html,.htm,application/pdf,text/plain,text/markdow
  * fuente (deja de usarse desde el siguiente mensaje y se puede deshacer durante
  * 10 minutos: la fila se queda con «Deshacer» mientras tanto) y «Enseña» algo
  * eligiendo siempre el alcance. Quien solo lee lo ve todo sin botones (§V).
+ *
+ * Spec 082 (Historia 2): la lista lee de `useAgentKnowledge`, la misma consulta
+ * que cuenta «Qué sabe». Añadir, quitar, restaurar, enseñar y olvidar la releen
+ * y avisan al resto de la pantalla con `onChanged` (R2.3; D2: antes `onTaught`).
  */
 export function AgentKnowledgePanel({
   refId,
@@ -68,7 +89,7 @@ export function AgentKnowledgePanel({
   agentName,
   knowledge: initial,
   canWrite,
-  onTaught,
+  onChanged,
   actions = KNOWLEDGE_ACTIONS,
 }: {
   refId: string;
@@ -77,24 +98,30 @@ export function AgentKnowledgePanel({
   /** `null` si no se pudo leer: se dice y se deja reintentar. */
   knowledge: AgentKnowledge | null;
   canWrite: boolean;
-  /** Se enseñó algo: las pruebas de los agentes que lo saben quedan desactualizadas. */
-  onTaught?: () => void;
+  /**
+   * Cambió lo que sabe (se añadió, quitó, restauró, enseñó u olvidó algo): el
+   * resto de la pantalla se vuelve a leer, y las pruebas que lo usan quedan
+   * desactualizadas.
+   */
+  onChanged?: () => void;
   actions?: AgentKnowledgeActions;
 }) {
   const t = useT();
   const locale = useLocale();
   const ids = React.useMemo(() => ({ ref: refId, agent: agentId }), [refId, agentId]);
-  const [data, setData] = React.useState(initial);
+  const known = useAgentKnowledge(ids, initial, actions.reload);
+  const data = known.data;
   const [adding, setAdding] = React.useState<"file" | "url" | null>(null);
   const [teaching, setTeaching] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [notice, setNotice] = React.useState<KnowledgeSource | null>(null);
 
-  const reload = React.useCallback(async () => {
-    const res = await actions.reload(ids);
-    if (res.ok) setData(res.data);
-    return res.ok;
-  }, [actions, ids]);
+  const reload = known.refresh;
+  /** A change went in: the list is read again and the rest of the screen hears it. */
+  const changed = async () => {
+    await reload();
+    onChanged?.();
+  };
 
   const fail = () => toast.error(t("builder.knowledge.error.generic"));
 
@@ -108,7 +135,7 @@ export function AgentKnowledgePanel({
       return;
     }
     toast.success(t("builder.knowledge.restored", { title: doc.title }));
-    await reload();
+    await changed();
   }
 
   async function remove(doc: KnowledgeSource) {
@@ -119,7 +146,7 @@ export function AgentKnowledgePanel({
     toast.success(t("builder.knowledge.removed", { title: doc.title }), {
       action: { label: t("builder.knowledge.undo"), onClick: () => void restore(doc) },
     });
-    await reload();
+    await changed();
   }
 
   async function forget(doc: KnowledgeSource, scope: TeachScope) {
@@ -127,7 +154,7 @@ export function AgentKnowledgePanel({
     if (!res.ok) return fail();
     setNotice(null);
     toast.success(t("builder.teach.undone"));
-    await reload();
+    await changed();
   }
 
   async function teach(body: { text: string; scope: TeachScope }): Promise<string | null> {
@@ -144,9 +171,18 @@ export function AgentKnowledgePanel({
     });
     // Lo enseñado al negocio no sale en esta lista: se dice aquí, con su deshacer.
     setNotice(body.scope === "business" ? doc : null);
-    await reload();
-    onTaught?.();
+    await changed();
     return null;
+  }
+
+  if (!data && known.loading && !known.failed) {
+    return (
+      <div role="status" aria-label={t("builder.knowledge.loading")} className="grid min-w-0 gap-3" data-slot="agent-knowledge-loading">
+        <Skeleton className="h-4 w-2/3" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-16 w-full" />
+      </div>
+    );
   }
 
   if (!data) {
@@ -200,10 +236,11 @@ export function AgentKnowledgePanel({
           ids={ids}
           upload={actions.upload}
           onCancel={() => setAdding(null)}
+          onLate={() => void reload()}
           onAdded={async (doc) => {
             setAdding(null);
             toast.success(doc.status === "failed" ? t("builder.knowledge.addedFailed", { title: doc.title }) : t("builder.knowledge.added", { title: doc.title }));
-            await reload();
+            await changed();
           }}
         />
       ) : null}
@@ -212,10 +249,11 @@ export function AgentKnowledgePanel({
           ids={ids}
           addUrl={actions.addUrl}
           onCancel={() => setAdding(null)}
+          onLate={() => void reload()}
           onAdded={async (doc) => {
             setAdding(null);
             toast.success(doc.status === "failed" ? t("builder.knowledge.addedFailed", { title: doc.title }) : t("builder.knowledge.added", { title: doc.title }));
-            await reload();
+            await changed();
           }}
         />
       ) : null}
@@ -352,11 +390,14 @@ function FileForm({
   ids,
   upload,
   onCancel,
+  onLate,
   onAdded,
 }: {
   ids: Ids;
   upload: AgentKnowledgeActions["upload"];
   onCancel: () => void;
+  /** It did not answer in time (R2.5): the list is read again, in case it went in. */
+  onLate: () => void;
   onAdded: (doc: KnowledgeSource) => void | Promise<void>;
 }) {
   const t = useT();
@@ -378,8 +419,12 @@ function FileForm({
     form.set("file", file, file.name);
     if (title.trim()) form.set("title", title.trim());
     setBusy(true);
-    const res = await upload(form);
+    const res = await withDeadline(upload(form), UPLOAD_DEADLINE_MS);
     setBusy(false);
+    if (res === LATE) {
+      setError(t("builder.knowledge.timeout"));
+      return onLate();
+    }
     if (!res.ok) return setError(res.status === 413 ? t("builder.knowledge.file.tooLarge") : t("builder.knowledge.error.generic"));
     await onAdded(res.data);
   }
@@ -408,11 +453,14 @@ function UrlForm({
   ids,
   addUrl,
   onCancel,
+  onLate,
   onAdded,
 }: {
   ids: Ids;
   addUrl: AgentKnowledgeActions["addUrl"];
   onCancel: () => void;
+  /** It did not answer in time (R2.5): the list is read again, in case it went in. */
+  onLate: () => void;
   onAdded: (doc: KnowledgeSource) => void | Promise<void>;
 }) {
   const t = useT();
@@ -426,8 +474,12 @@ function UrlForm({
     if (!isWebAddress(url)) return setError(t("builder.knowledge.url.invalid"));
     setError(null);
     setBusy(true);
-    const res = await addUrl({ ...ids, url: url.trim(), ...(title.trim() ? { title: title.trim() } : {}) });
+    const res = await withDeadline(addUrl({ ...ids, url: url.trim(), ...(title.trim() ? { title: title.trim() } : {}) }), URL_DEADLINE_MS);
     setBusy(false);
+    if (res === LATE) {
+      setError(t("builder.knowledge.timeout"));
+      return onLate();
+    }
     if (!res.ok) return setError(t("builder.knowledge.error.generic"));
     await onAdded(res.data);
   }

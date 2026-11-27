@@ -155,15 +155,21 @@ export type AgentChannel = { id: string; type: string; identifier: string; visib
 
 export type OwnerLinkMode = "coexistence" | "cloud_api" | "whatsapp_login";
 
+/** Spec 085: el canal que conecta un enlace del dueño. */
+export type OwnerLinkChannel = "whatsapp" | "instagram" | "messenger";
+
 /** El enlace del dueño pendiente: se ve su modo y su caducidad, nunca el enlace (31.7). */
-export type PendingOwnerLink = { id: string; mode: OwnerLinkMode | string; expires_at: string };
+export type PendingOwnerLink = { id: string; mode: OwnerLinkMode | string; expires_at: string; channel?: OwnerLinkChannel };
 
 export type AgentChannels = {
   channels: AgentChannel[];
+  /** El de WhatsApp. */
   pending_link: PendingOwnerLink | null;
+  /** Spec 085: uno por canal. */
+  pending_links?: PendingOwnerLink[];
   /** Spec 049: Instagram / Messenger this partner may connect, or none. */
   meta_social?: MetaSocialOffer | null;
 };
 
 /** El enlace recién creado: la URL va **solo** en esta respuesta (31.1). */
-export type OwnerLink = { id: string; url: string; mode: OwnerLinkMode | string; expires_at: string };
+export type OwnerLink = { id: string; url: string; mode: OwnerLinkMode | string; expires_at: string; channel?: OwnerLinkChannel };

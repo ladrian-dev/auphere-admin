@@ -30,7 +30,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, status
 from nexus_channels.whatsapp_meta import SignupIngressPayload
 from pydantic import BaseModel, ConfigDict
@@ -38,7 +37,8 @@ from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 
 from nexus_api.api.deps import get_redis
-from nexus_api.db.models import Channel, ChannelSignupLink, ChannelStatus, ChannelType
+from nexus_api.db.models import ChannelSignupLink
+from nexus_api.services.channel_quota import count_connected_channels, is_reconnect
 from nexus_api.services.channel_signup_links import (
     link_state,
     mint_link,
@@ -49,7 +49,6 @@ from nexus_api.services.console_notifications import record_client_activation_de
 from nexus_api.services.meta_signup_service import complete_meta_signup
 from nexus_api.services.partner_provisioning import activate_tenant_if_ready
 
-from .channels import count_connected_channels
 from .deps import ClientScope, client_health, client_scope, out_of_quota
 from .schemas_channels import WhatsAppSignupIn, WhatsAppSignupOut
 
@@ -85,7 +84,7 @@ async def whatsapp_signup(
     used = await count_connected_channels(scope.session)
     # Spec 076 (4.3): authorising again a number this client already has (to
     # grant the events permission) is not connecting another one.
-    if used >= limit and not await _is_reconnect(scope, body.phone_number_id):
+    if used >= limit and not await is_reconnect(scope.session, body.phone_number_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -188,6 +187,8 @@ async def whatsapp_signup_link(
 
 class _SignupLinkRow(BaseModel):
     id: uuid.UUID
+    #: Spec 085: ``whatsapp``, ``instagram`` or ``messenger``; one list for all.
+    channel: str
     mode: str
     #: ``valid``, ``used``, ``revoked`` or ``expired``.
     state: str
@@ -207,6 +208,7 @@ async def whatsapp_signup_links(
     return [
         _SignupLinkRow(
             id=r.id,
+            channel=r.channel,
             mode=r.mode,
             state=link_state(r),
             created_at=r.created_at,
@@ -226,20 +228,3 @@ async def revoke_whatsapp_signup_link(
     if link is None or link.tenant_id != scope.tenant.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown_link")
     await revoke_link(scope.session, link, actor=scope.principal.actor)
-
-
-async def _is_reconnect(scope: ClientScope, phone_number_id: str | None) -> bool:
-    """Whether ``phone_number_id`` is already a connected WhatsApp number of
-    this client (RLS: only its channels are visible)."""
-    if not phone_number_id:
-        return False
-    found = await scope.session.scalar(
-        sa.select(Channel.id)
-        .where(
-            Channel.type == ChannelType.WHATSAPP,
-            Channel.status != ChannelStatus.DISCONNECTED,
-            Channel.config["phone_number_id"].astext == phone_number_id,
-        )
-        .limit(1)
-    )
-    return found is not None

@@ -37,7 +37,7 @@ import { AgentChannelsPanel, type AgentChannelsActions } from "./agent-channels"
 import { AgentConnectorsPanel, type AgentConnectorsActions, type AgentConnectorsHandle } from "./agent-connectors";
 import { AgentHistory, type HistoryActions } from "./agent-history";
 import { AgentImprovementsPanel, type ImprovementsActions } from "./agent-improvements";
-import { AgentKnowledgePanel, type AgentKnowledgeActions } from "./agent-knowledge";
+import { AgentKnowledgePanel, KNOWLEDGE_ACTIONS, type AgentKnowledgeActions } from "./agent-knowledge";
 import { AgentMenu, type AgentLifeActions } from "./agent-menu";
 import { AgentModelSelect, type AgentModelActions } from "./agent-model-select";
 import { AgentPerformancePanel, type PerformanceActions } from "./agent-performance";
@@ -53,6 +53,7 @@ import { ChannelConfigPage, type ChannelBalance, type ChannelPageActions } from 
 import { CopilotPanel, type CopilotActions, type CopilotHandle } from "./copilot-panel";
 import { receptionOf, type Reception } from "./improve-model";
 import { visibleText, visibleTone } from "./life-model";
+import { useAgentKnowledge } from "./use-agent-knowledge";
 import { MissingCapabilities, type MissingState } from "./missing-capabilities";
 import { missingCapabilities, notOfferedKeys, specProblemText } from "./missing-model";
 import { modelNamesOf } from "./quality-model";
@@ -271,6 +272,13 @@ export function AgentBuilder({
 }) {
   const t = useT();
   const [draft, setDraft] = React.useState(initial);
+  // Spec 082 (R2.2): «Qué sabe» counts the live sources of the same query the Knowledge list reads.
+  const known = useAgentKnowledge(
+    { ref: refId, agent: draft.agent_id },
+    knowledge?.data ?? null,
+    (qualityActions.knowledge ?? KNOWLEDGE_ACTIONS).reload,
+    { enabled: knowledge !== undefined },
+  );
   const [proposals, setProposals] = React.useState(initialProposals);
   const [proposalsVersion, setProposalsVersion] = React.useState(0);
   // La fila abierta de la tabla y el bloque que se edita dentro (uno a la vez).
@@ -648,12 +656,12 @@ export function AgentBuilder({
             agentName={header?.name ?? draft.agent_name}
             knowledge={knowledge.data}
             canWrite={knowledge.canWrite}
-            onTaught={() => void refreshAll()}
+            onChanged={() => void refreshAll()}
             actions={qualityActions.knowledge}
           />
         ) : undefined
       }
-      sources={knowledge?.data ? knowledge.data.items.length : null}
+      sources={known.live}
       business={business}
       onConnect={connectTo}
       connected={inUse}

@@ -18,7 +18,7 @@ import {
 } from "@/app/(console)/clients/[ref]/agents/channel-actions";
 import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
 import { ATTENTION } from "@/components/channels/meta-social-card";
-import { runWhatsAppSignup, type MetaSignupConfig } from "@/components/channels/whatsapp-connect";
+import { runWhatsAppSignup, type MetaSignupConfig, type SignupWait } from "@/components/channels/whatsapp-connect";
 import { BalanceButton, type BalanceMode } from "@/components/money/balance-button";
 import { CrumbName, openChannelCrumb } from "@/components/shell/crumb-names";
 import { agentHref } from "@/components/shell/routes-v2";
@@ -296,12 +296,14 @@ export function ChannelConfigPage({
   const paused = page.status === "paused";
   const reconnect =
     !paused && meta?.appId && reconnectConfig && actions.reconnect
-      ? async (): Promise<ReconnectOutcome> => {
+      ? async (wait: Required<SignupWait>): Promise<ReconnectOutcome> => {
+          // `wait`: la espera de Meta se cancela hasta que empieza el canje (049, 7.2).
           const res = await actions.reconnect!({
             refId,
             meta: { ...meta, configIdCloudApi: reconnectConfig, configIdCoexistence: null },
             mode: "cloud_api",
             t,
+            ...wait,
           });
           return res.ok ? { ok: true } : { ok: false, text: res.text };
         }

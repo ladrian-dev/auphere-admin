@@ -9,7 +9,7 @@ import type { InboxActivity, InboxDetail } from "@/lib/backend/inbox";
 import { adOriginText } from "./ad-origin";
 import { ContactAvatar } from "./contact-avatar";
 import { eventText } from "./event-text";
-import { clock, dayLabel } from "./inbox-model";
+import { atUsername, clock, dayLabel } from "./inbox-model";
 
 /**
  * The contact panel (spec 030, R13): what the agent understood, who the
@@ -36,6 +36,7 @@ export function ContactPanel({
 }) {
   const t = useT();
   const locale = useLocale();
+  const username = atUsername(detail.contact.username);
   const first = detail.contact.first_message_at;
   const firstText = first
     ? (() => {
@@ -61,6 +62,11 @@ export function ContactPanel({
             {detail.contact.name}
           </span>
           <span className="truncate text-sm font-medium text-primary-text">{detail.contact.handle}</span>
+          {username ? (
+            <span className="truncate text-sm text-muted-foreground" title={username}>
+              {username}
+            </span>
+          ) : null}
         </div>
         <Button type="button" variant="ghost" size="icon-sm" aria-label={t("inbox.action.panel.hide")} title={t("inbox.action.panel.hide")} onClick={onClose}>
           <X />

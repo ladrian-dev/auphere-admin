@@ -242,6 +242,10 @@ export const builderQualityMessages = {
   "builder.review.check.contradictions": { es: "Coherencia con la ficha", en: "Consistency with the profile" },
   "builder.review.check.promises": { es: "Promesas con su herramienta", en: "Promises backed by a tool" },
   "builder.review.check.tools_exist": { es: "Herramientas que existen", en: "Tools that exist" },
+  // Bug «la revisión ve lo que no hay»: las promesas ya están en «No tenemos herramienta para».
+  "builder.review.promises.above.one": { es: "Su texto promete algo que ninguna herramienta hace.", en: "Its text promises something no tool does." },
+  "builder.review.promises.above.other": { es: "Su texto promete {n} cosas que ninguna herramienta hace.", en: "Its text promises {n} things no tool does." },
+  "builder.review.promises.see": { es: "Ver cuáles", en: "See which" },
   "builder.review.check.escalation_recipients": { es: "A quién se pasa la conversación", en: "Who conversations are handed to" },
   "builder.review.check.ai_disclosure": { es: "Aviso de IA", en: "AI notice" },
   "builder.review.fix.integrations": { es: "Ir a Conectores", en: "Go to Connectors" },

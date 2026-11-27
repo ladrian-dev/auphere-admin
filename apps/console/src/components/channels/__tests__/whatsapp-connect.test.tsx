@@ -1,14 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { whatsappSignupAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { LocaleProvider } from "@/i18n/client";
 import { messages } from "@/i18n/messages";
+import { loginWithMeta } from "@/lib/meta-fb-sdk";
 
 import { connectChoice, metaIsConfigured, metaSignupConfig, type ConnectChoice } from "../connect-choice";
 import { MetaWindowVeil, WhatsAppConnect, signupFailureKey, type MetaSignupConfig } from "../whatsapp-connect";
 import { WhatsAppConnectByAuphere } from "../whatsapp-connect-by-auphere";
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock("@/app/(console)/clients/[ref]/channels/actions", () => ({ whatsappSignupAction: vi.fn(), listCatalogsAction: vi.fn() }));
 vi.mock("@/lib/meta-fb-sdk", () => ({ loginWithMeta: vi.fn(), SignupError: class extends Error {} }));
 
@@ -105,6 +108,22 @@ describe("mientras la ventana de Meta está abierta (2026-09-30)", () => {
     expect(screen.getByRole("status")).toHaveTextContent("explicit access to the business's assets");
   });
 
+  it("cuando «Cancelar» se va (empieza el canje), el foco queda en el velo y no cae en la página (047 T101)", async () => {
+    const view = render(
+      <LocaleProvider locale="es">
+        <MetaWindowVeil open onCancel={() => {}} />
+      </LocaleProvider>,
+    );
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cancelar" })).toHaveFocus());
+    view.rerender(
+      <LocaleProvider locale="es">
+        <MetaWindowVeil open />
+      </LocaleProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "Cancelar" })).toBeNull();
+    expect(document.querySelector("[data-slot=meta-window-veil]")).toHaveFocus();
+  });
+
   it("y desaparece en cuanto Meta devuelve", () => {
     render(
       <LocaleProvider locale="es">
@@ -112,5 +131,50 @@ describe("mientras la ventana de Meta está abierta (2026-09-30)", () => {
       </LocaleProvider>,
     );
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+/**
+ * Spec 047 (30.4, T101) y spec 049 (7.2, enmienda del 2026-11-26): en la
+ * página Canales del cliente, la espera de la ventana de Meta también se
+ * cancela. Se vuelve al diálogo del modo y lo que Meta mande tarde no conecta.
+ */
+describe("Conectar WhatsApp en la página Canales: la espera se puede cancelar (047 T101; 049 7.2)", () => {
+  it("«Cancelar» y Escape quitan el velo, vuelven al diálogo del modo y lo que Meta mande tarde no llega a la API", async () => {
+    const user = userEvent.setup();
+    const signals: Array<AbortSignal | undefined> = [];
+    const late: Array<(v: Awaited<ReturnType<typeof loginWithMeta>>) => void> = [];
+    vi.mocked(loginWithMeta).mockImplementation((opts) => {
+      signals.push(opts.signal);
+      return new Promise((resolve) => late.push(resolve));
+    });
+    render(
+      <LocaleProvider locale="es">
+        <WhatsAppConnect refId="demo" meta={configured} canConnect used={0} max={1} />
+      </LocaleProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /Conectar WhatsApp/ }));
+    await user.click(within(await screen.findByRole("dialog", { name: "Conectar WhatsApp" })).getByRole("button", { name: "Abrir Meta" }));
+
+    expect(await screen.findByText("Estamos en la ventana de Meta")).toBeInTheDocument();
+    const cancel = screen.getByRole("button", { name: "Cancelar" });
+    await waitFor(() => expect(cancel).toHaveFocus());
+    await user.click(cancel);
+    expect(screen.queryByText("Estamos en la ventana de Meta")).toBeNull();
+    expect(signals[0]?.aborted).toBe(true);
+    const dialog = await screen.findByRole("dialog", { name: "Conectar WhatsApp" });
+    expect(within(dialog).getByRole("button", { name: "Abrir Meta" })).toBeEnabled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Abrir Meta" }));
+    expect(await screen.findByText("Estamos en la ventana de Meta")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByText("Estamos en la ventana de Meta")).toBeNull();
+    expect(signals[1]?.aborted).toBe(true);
+    expect(await screen.findByRole("dialog", { name: "Conectar WhatsApp" })).toBeInTheDocument();
+
+    late[0]!({ code: "LATE", waba_id: "w" });
+    late[1]!({ code: "LATE", waba_id: "w" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(whatsappSignupAction).not.toHaveBeenCalled();
   });
 });

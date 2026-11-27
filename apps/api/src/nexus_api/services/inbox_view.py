@@ -637,6 +637,8 @@ class Detail:
     handled_by: tuple[uuid.UUID, str] | None = None
     #: Instagram / Messenger: where the person's profile picture is stored.
     contact_avatar_key: str | None = None
+    #: Spec 082 (5.4): the WhatsApp username, shown as «@usuario».
+    contact_username: str | None = None
     # Spec 049, 7.3: el agente aún puede responder (24 h). En WhatsApp coincide
     # con ``window_open``; en Instagram y Messenger con Human Agent, no.
     agent_window_open: bool = False
@@ -720,6 +722,22 @@ async def detail(
     last_escalation = next(
         (e for e in events if e.kind == ConversationEventKind.ESCALATED.value), None
     )
+    # Spec 082 (R4.1 a R4.4): the agent's summary belongs to an escalation that is
+    # still the conversation's — not resolved since, and not from before the
+    # conversation started again (``context_from``). A date comparison, no model.
+    summary_from = last_escalation
+    if summary_from is not None:
+        resolved_after = any(
+            e.kind == ConversationEventKind.RESOLVED.value
+            and e.created_at > summary_from.created_at
+            for e in events
+        )
+        stale = (
+            conversation.context_from is not None
+            and summary_from.created_at < conversation.context_from
+        )
+        if resolved_after or stale:
+            summary_from = None
     tags = [
         str(t)
         for t in (
@@ -774,9 +792,10 @@ async def detail(
         contact_name=str((customer.name or handle) if customer else "—"),
         contact_handle=handle,
         contact_avatar_key=customer.avatar_s3_key if customer else None,
+        contact_username=(customer.username or None) if customer else None,
         first_message_at=first,
         conversations=rows_for_customer + reopened,
-        summary=(payload.get("customer_summary") or None) if last_escalation else None,
+        summary=(summary_from.payload.get("customer_summary") or None) if summary_from else None,
         waiting_reason=(payload.get("reason") or None)
         if (last_escalation and conversation.status == ConversationStatus.ESCALATED)
         else None,

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import { Button, Callout, ConfirmDialog, StatusBadge, formatDateTime } from "@nexus/ui";
 
-import { MetaWindowVeil } from "@/components/channels/whatsapp-connect";
+import { MetaWindowVeil, type SignupWait } from "@/components/channels/whatsapp-connect";
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
 import type { AdMeasurement, AdMeasurementIn } from "@/lib/backend/channel-config-types";
@@ -61,8 +61,11 @@ export function AdMeasurementSection({
   measurement: AdMeasurement;
   canWrite: boolean;
   onSave: (body: AdMeasurementIn) => Promise<Result<AdMeasurement>>;
-  /** El alta de Meta con `reconnect_config_id`. Sin él (sin claves de Meta), «Volver a conectar» no se ofrece. */
-  onReconnect?: () => Promise<ReconnectOutcome>;
+  /**
+   * El alta de Meta con `reconnect_config_id`. Sin él (sin claves de Meta), «Volver a conectar» no se ofrece.
+   * `signal` cancela la espera de la ventana de Meta y `onMetaDone` avisa de que empieza el canje (049, 7.2).
+   */
+  onReconnect?: (wait: Required<SignupWait>) => Promise<ReconnectOutcome>;
   /** El número está en pausa: volver a conectarlo lo reanudaría, así que antes hay que reanudarlo. */
   paused?: boolean;
 }) {
@@ -73,6 +76,13 @@ export function AdMeasurementSection({
   const [agreed, setAgreed] = React.useState(false);
   const [dialogError, setDialogError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<"off" | "reconnect" | null>(null);
+  // Spec 049, 7.2 (enmienda del 2026-11-26): la espera de la ventana de Meta al
+  // volver a conectar se cancela, como en Instagram y Messenger. Cada intento
+  // lleva su número; lo que devuelva uno cancelado se descarta.
+  const [waitingMeta, setWaitingMeta] = React.useState(false);
+  const attempt = React.useRef(0);
+  const abort = React.useRef<AbortController | null>(null);
+  React.useEffect(() => () => abort.current?.abort(), []);
   const agreeId = React.useId();
 
   const state = STATE[m.state] ?? STATE.off!;
@@ -117,15 +127,31 @@ export function AdMeasurementSection({
 
   async function reconnect() {
     if (!onReconnect) return;
+    abort.current?.abort();
+    const mine = ++attempt.current;
+    const controller = new AbortController();
+    abort.current = controller;
     setBusy("reconnect");
-    const res = await onReconnect();
+    setWaitingMeta(true);
+    const res = await onReconnect({ signal: controller.signal, onMetaDone: () => attempt.current === mine && setWaitingMeta(false) });
+    if (attempt.current !== mine) return;
+    abort.current = null;
     setBusy(null);
+    setWaitingMeta(false);
     if (!res.ok) {
       toast.error(res.text);
       return;
     }
     toast.success(t("builder.channel.ads.reconnect.done"));
     ask();
+  }
+
+  function cancelWait() {
+    attempt.current += 1;
+    abort.current?.abort();
+    abort.current = null;
+    setBusy(null);
+    setWaitingMeta(false);
   }
 
   const facts = (
@@ -225,7 +251,7 @@ export function AdMeasurementSection({
           <span className="text-pretty">{t("builder.channel.ads.confirm.agree")}</span>
         </label>
       </ConfirmDialog>
-      <MetaWindowVeil open={busy === "reconnect"} />
+      <MetaWindowVeil open={busy === "reconnect"} onCancel={waitingMeta ? cancelWait : undefined} />
     </div>
   );
 }

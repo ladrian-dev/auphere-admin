@@ -67,3 +67,29 @@ describe("el enlace de WhatsApp enviado al cliente", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 });
+
+/** Spec 085 (1.5): los de Instagram y Messenger van en la misma lista, cada uno con su canal. */
+describe("los enlaces de Instagram y Messenger", () => {
+  const INSTAGRAM: SignupLinkRow = { ...LIVE, id: "9b2a1e3c-4d5f-4a6b-8c7d-9e0f1a2b3c4d", channel: "instagram", mode: "meta_login" };
+
+  beforeEach(() => {
+    revoke.mockReset();
+    revoke.mockResolvedValue({ ok: true, data: null });
+  });
+
+  it("cada enlace dice su canal", () => {
+    paint([{ ...LIVE, channel: "whatsapp" }, INSTAGRAM]);
+    expect(screen.getByText(/Hay un enlace sin usar para WhatsApp, en modo Coexistencia/)).toBeInTheDocument();
+    expect(screen.getByText(/Hay un enlace sin usar para Instagram\. Caduca el/)).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Anular enlace" })).toHaveLength(2);
+  });
+
+  it("se anula igual, y la confirmación nombra su canal", async () => {
+    paint([INSTAGRAM]);
+    await userEvent.click(screen.getByRole("button", { name: "Anular enlace" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/conectar su Instagram con ese enlace/)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: "Anular enlace" }));
+    await waitFor(() => expect(revoke).toHaveBeenCalledWith({ ref: "panaderia", id: INSTAGRAM.id }));
+  });
+});

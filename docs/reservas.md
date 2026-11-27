@@ -318,6 +318,26 @@ dentro de la antelación. Con `too_soon` el agente no dice que no hay disponibil
 dice que esa hora la confirma el negocio y ofrece pasar la conversación. `create` y
 `reschedule` responden `too_soon` si se intenta.
 
+**Buscar sin fecha (spec 080, requisito 3).** Si el cliente no da día o pide «lo
+antes posible», el agente llama a `reservas.find_slots` sin `date`. La herramienta
+recorre los días desde hoy, en la zona del negocio y saltando los cerrados, hasta
+juntar 6 horarios (`FIRST_FREE_TOP`) o llegar al final de la ventana
+(`agent_max_days_ahead`). Cada horario trae su `date` y su `weekday`. La salida
+lleva `searched_from` y `searched_to`, y `too_soon` va con fecha
+(`YYYY-MM-DD HH:MM`). Sin nada libre en la ventana, `why_closed: none_in_window`.
+
+Con `date`, la forma es la de siempre: esos campos no aparecen. Lo trajo Jemma
+(2026-11-23): con Luna, el agente buscaba «mañana» habiendo huecos esa tarde; con
+Sol, recorría los días de uno en uno. La agenda simulada del Playground hace lo
+mismo (`simulation/registry._first_free`). Contrato:
+`specs/080-agente-tras-el-traspaso/contracts/reservas-find-slots.md`.
+
+**Quién canceló.** Cuando el agente cancela a petición del cliente, el historial
+registra al agente como autor (`actor_kind: agent`, con su nombre) y la decisión
+sigue siendo del cliente (`by: customer`, `cancelled_by: customer`), que es lo que
+deciden los avisos. Hasta la 080 se registraba como `customer`, y esas
+cancelaciones anteriores no se reescriben.
+
 **El teléfono es obligatorio al reservar a mano desde la consola**, en los dos
 modos: empieza por `+` y tiene de 8 a 15 dígitos (`model/phone.ts`, `validPhone`).
 Lo exigen el formulario y su acción de servidor (`createSchema`). Desde la enmienda
@@ -337,13 +357,32 @@ un `noshow` cuya hora de fin ya pasó. Ese `undo` deja `done`, no `confirmed`. C
 corrección queda en el historial con la persona y no escribe al cliente final. En
 Aforo no se ofrece: allí `done` llega después de que alguien marcara «Llegó».
 
-**La pantalla se pone al día sola** (`reservas-view.tsx`): con la pestaña visible
-relee cada 45 s, y al volver a verse si la lectura tiene más de 15 s. Lo hace con
-`router.refresh()`, fuera de la transición que atenúa la pantalla, así que un
-diálogo abierto y lo escrito en él siguen ahí. Si la relectura llega vacía o con
-una parte en error, se conserva la última lectura entera de ese periodo y la
-pantalla dice «Puede que esto no esté al día», igual que si pasan más de 150 s sin
-una lectura nueva.
+**La pantalla se pone al día sola** (`reservas-view.tsx`, spec 082). La agenda y
+la ficha son consultas de React Query (`["reservas","screen",url]` y
+`["reservas","booking",id]`) que releen con `reservasScreenAction`, la misma
+lectura que la página (`read.ts`) para la URL que se mira (pestaña, vista,
+periodo, día y persona): pasada la medianoche sigue en el día que se mira. Se
+relee al instante:
+
+- **tras cada escritura propia**: la API confirma antes de responder (spec 082,
+  1.1) y la pantalla invalida `["reservas"]`;
+- **con el aviso `reservations.changed`**, que llega por la línea en vivo de la
+  consola cuando cambia algo por detrás (el agente, la app, otra pestaña). Una
+  ráfaga de avisos es una sola relectura (ver «Tiempo real» en
+  [`consola-lite.md`](consola-lite.md));
+- **al volver la línea** tras un corte.
+
+Además, con la pestaña visible relee cada 45 s, y al volver a verse o al volver la
+red (`online`) si la lectura tiene más de 15 s. Una URL sin `date` es «hoy»: la
+relectura pide el hoy del negocio de ese momento (`date: null` en
+`reservasScreenAction`), así que una pestaña abierta el lunes muestra el martes
+el martes; con `date` en la URL, se queda en ese día. Nada de eso atenúa la pantalla, así que un diálogo abierto y lo
+escrito en él siguen ahí. Mientras sale un cambio de estado, y hasta que llega la
+relectura de la ficha, sus botones están ocupados: con los botones viejos a la
+vista se repetía el 412. Si la relectura llega vacía, con una parte en error o
+falla del todo, se conserva la última lectura entera de ese periodo y la pantalla
+dice «Puede que esto no esté al día», igual que si pasan más de 150 s sin una
+lectura nueva.
 
 ## API (`/console/lite/reservas/*`)
 

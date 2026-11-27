@@ -168,8 +168,9 @@ Consumo también enseña la **ganancia** (spec 039): venta, coste del modelo de 
 En el paso «Conectar WhatsApp» del asistente, la primera opción es **enviar un enlace al dueño** del negocio.
 - Lo abre en su teléfono o su computadora, donde ya tiene su cuenta de Meta, y conecta él mismo el número (coexistencia o Cloud API).
 - El enlace sirve una vez, caduca a los 7 días y se puede anular desde Canales, en el Admin y en la consola del partner.
-- Hay uno vivo por cliente: crear otro anula el anterior.
+- Hay uno vivo por cliente y canal: crear otro de WhatsApp anula el anterior de WhatsApp.
 - La página del dueño vive en la consola. El enlace (`/connect/whatsapp/{token}`) pasa el token a una cookie httpOnly y redirige a `/connect/whatsapp`, así que el token no queda en la dirección, el historial ni el `Referer`.
+- Spec 085: la consola del partner crea también enlaces de Instagram y Messenger ([`canales.md`](canales.md) §4). El panel sigue solo con WhatsApp: su lista de enlaces no enseña los de otros canales.
 
 ## Lista de clientes (`/tenants`, spec 036)
 

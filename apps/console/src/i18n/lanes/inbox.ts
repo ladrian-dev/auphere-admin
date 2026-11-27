@@ -152,6 +152,12 @@ export const inboxMessages = {
   "inbox.settings.error": { es: "No pudimos cargar los ajustes.", en: "We couldn't load the settings." },
   "inbox.settings.saved": { es: "Guardado.", en: "Saved." },
   "inbox.settings.saveError": { es: "No se pudo guardar. Inténtalo de nuevo.", en: "It could not be saved. Try again." },
+  // Spec 082 (R3.4): the sound, per browser.
+  "inbox.settings.sound": { es: "Sonido al llegar un mensaje", en: "Sound when a message arrives" },
+  "inbox.settings.sound.hint": {
+    es: "Suena en cualquier pantalla de la consola, salvo en la conversación que tienes abierta. Se guarda en este navegador.",
+    en: "It plays on any screen of the console, except in the conversation you have open. It is saved in this browser.",
+  },
   "inbox.event.reopened.you": { es: "La reabriste", en: "You reopened it" },
   // ── header actions (R12) ─────────────────────────────────────────
   "inbox.action.unread": { es: "Marcar como no leída", en: "Mark as unread" },

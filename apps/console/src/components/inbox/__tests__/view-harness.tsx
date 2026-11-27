@@ -1,7 +1,9 @@
 import { render } from "@testing-library/react";
 import { vi } from "vitest";
 
+import { LiveStreamProvider } from "@/components/live/live-stream";
 import { LocaleProvider } from "@/i18n/client";
+import { withQuery } from "@/test/query";
 
 import type { InboxInitial } from "../inbox-view";
 import { conversation, page } from "./fixtures";
@@ -38,12 +40,20 @@ export const a = {
 };
 
 export class FakeEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
   static last: FakeEventSource | null = null;
+  /** Every source opened since a test emptied it (a closed line is opened again). */
+  static all: FakeEventSource[] = [];
+  readyState = FakeEventSource.CONNECTING;
+  closed = false;
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
   listeners = new Map<string, Set<(e: MessageEvent<string>) => void>>();
   constructor(public url: string) {
     FakeEventSource.last = this;
+    FakeEventSource.all.push(this);
   }
   addEventListener(name: string, fn: (e: MessageEvent<string>) => void) {
     if (!this.listeners.has(name)) this.listeners.set(name, new Set());
@@ -55,7 +65,10 @@ export class FakeEventSource {
   emit(name: string, data: unknown) {
     for (const fn of this.listeners.get(name) ?? []) fn(new MessageEvent(name, { data: JSON.stringify(data) }));
   }
-  close() {}
+  close() {
+    this.closed = true;
+    this.readyState = FakeEventSource.CLOSED;
+  }
 }
 
 export function resetActions() {
@@ -81,10 +94,15 @@ export function renderInbox(initial: Partial<InboxInitial> = {}) {
     suggested: [],
     ...initial,
   };
+  // Spec 082: the Inbox listens to the console's shared live line.
   return render(
-    <LocaleProvider locale="es">
-      <InboxViewRef.current initial={full} />
-    </LocaleProvider>,
+    withQuery(
+      <LiveStreamProvider enabled>
+        <LocaleProvider locale="es">
+          <InboxViewRef.current initial={full} />
+        </LocaleProvider>
+      </LiveStreamProvider>,
+    ),
   );
 }
 

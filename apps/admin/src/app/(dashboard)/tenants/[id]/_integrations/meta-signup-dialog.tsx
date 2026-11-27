@@ -9,10 +9,17 @@
  * triggers ``FB.login`` with the matching configuration ID. On success
  * the server action runs the post-signup orchestrator and the dialog
  * closes.
+ *
+ * Spec 047 (30.4, T101) and 049 (7.2, 2026-11-26), as in the console:
+ * while Meta's window is open the wait can be cancelled with «Cancelar»,
+ * Escape or the ×; a click outside does not. Each attempt carries its
+ * number and its ``AbortController``, so whatever Meta returns to a
+ * cancelled one never reaches the backend. Once the backend is connecting
+ * the number, it cannot be cancelled.
  */
 
 import { CheckCircle2, Smartphone } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -34,6 +41,9 @@ import { connectMetaWhatsAppSetupAction } from "./setup-actions";
 
 type SignupMode = "cloud_api" | "coexistence";
 
+/** Waiting for Meta's window (cancellable) or the backend connecting the number (not). */
+type Busy = { mode: SignupMode; phase: "meta" | "saving" };
+
 interface Props {
   tenantId: string;
   alreadyConnected: boolean;
@@ -43,33 +53,61 @@ interface Props {
 
 export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected, onConnected }: Props) {
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<SignupMode | null>(null);
+  const [busy, setBusy] = useState<Busy | null>(null);
   const [, startTransition] = useTransition();
+  const attempt = useRef(0);
+  const abort = useRef<AbortController | null>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+  useEffect(() => () => abort.current?.abort(), []);
+  // «Empezar» se desactiva con el foco dentro: el foco pasa a «Cancelar»
+  // mientras se espera a Meta, y a la línea de estado durante el canje, para
+  // que Escape y el teclado sigan teniendo dónde estar.
+  const phase = busy?.phase ?? null;
+  useEffect(() => {
+    if (phase === "meta") cancelRef.current?.focus();
+    else if (phase === "saving") statusRef.current?.focus();
+  }, [phase]);
+
+  function cancelWait() {
+    attempt.current += 1;
+    abort.current?.abort();
+    abort.current = null;
+    setBusy(null);
+  }
 
   async function runSignup(mode: SignupMode) {
-    setBusy(mode);
+    const configId =
+      mode === "cloud_api"
+        ? META_CONFIG_ID_CLOUD_API
+        : META_CONFIG_ID_COEXISTENCE;
+    if (!configId) {
+      toast.error("Configuración faltante", {
+        description: `Falta NEXT_PUBLIC_META_CONFIG_ID_${
+          mode === "cloud_api" ? "WA_CLOUD_API" : "WA_COEXISTENCE"
+        } en Vercel.`,
+      });
+      return;
+    }
+    abort.current?.abort();
+    const mine = ++attempt.current;
+    const controller = new AbortController();
+    abort.current = controller;
+    setBusy({ mode, phase: "meta" });
     try {
-      const configId =
-        mode === "cloud_api"
-          ? META_CONFIG_ID_CLOUD_API
-          : META_CONFIG_ID_COEXISTENCE;
-      if (!configId) {
-        toast.error("Configuración faltante", {
-          description: `Falta NEXT_PUBLIC_META_CONFIG_ID_${
-            mode === "cloud_api" ? "WA_CLOUD_API" : "WA_COEXISTENCE"
-          } en Vercel.`,
-        });
-        return;
-      }
       let envelope;
       try {
-        envelope = await loginWithMeta(configId, mode);
+        envelope = await loginWithMeta(configId, mode, undefined, controller.signal);
       } catch (err) {
+        if (attempt.current !== mine) return;
         toast.error("No se completó el flow de Meta", {
           description: err instanceof Error ? err.message : String(err),
         });
         return;
       }
+      // A cancelled attempt never reaches the backend, even if Meta answers.
+      if (attempt.current !== mine || controller.signal.aborted) return;
+      setBusy({ mode, phase: "saving" });
       const result = await connectMetaWhatsAppSetupAction(tenantId, {
         code: envelope.code,
         waba_id: envelope.waba_id,
@@ -89,15 +127,20 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected, onConnecte
       startTransition(() => setOpen(false));
       onConnected?.();
     } finally {
-      setBusy(null);
+      if (attempt.current === mine) {
+        abort.current = null;
+        setBusy(null);
+      }
     }
   }
 
   return (
     <Dialog
       open={open}
+      disablePointerDismissal={busy !== null}
       onOpenChange={(next) => {
-        if (busy) return;
+        if (busy?.phase === "saving") return;
+        if (!next && busy) cancelWait();
         setOpen(next);
       }}
     >
@@ -111,7 +154,7 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected, onConnecte
           </Button>
         }
       />
-      <DialogContent className="max-w-3xl md:max-w-4xl">
+      <DialogContent className="max-w-3xl md:max-w-4xl" showCloseButton={busy?.phase !== "saving"}>
         <DialogHeader>
           <DialogTitle>Conectar canal de WhatsApp</DialogTitle>
           <DialogDescription>
@@ -129,7 +172,7 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected, onConnecte
             cta="Empezar"
             highlighted
             badge="Recomendado"
-            busy={busy === "cloud_api"}
+            busy={busy?.mode === "cloud_api"}
             disabled={busy !== null}
             onSelect={() => runSignup("cloud_api")}
           />
@@ -139,11 +182,30 @@ export function MetaWhatsAppSetupDialog({ tenantId, alreadyConnected, onConnecte
             subtitle="Convive con la app móvil"
             description="El cliente sigue respondiendo desde la app WhatsApp Business del móvil en paralelo al agente. Menor throughput; útil para transiciones graduales."
             cta="Empezar"
-            busy={busy === "coexistence"}
+            busy={busy?.mode === "coexistence"}
             disabled={busy !== null}
             onSelect={() => runSignup("coexistence")}
           />
         </div>
+
+        {busy ? (
+          <div
+            ref={statusRef}
+            tabIndex={-1}
+            className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-md bg-muted px-4 py-3 outline-none"
+          >
+            <p role="status" className="min-w-0 text-sm text-pretty">
+              {busy.phase === "meta"
+                ? "Continúa en la ventana de Meta. Si la cerraste o no la encuentras, cancela y vuelve a empezar."
+                : "Conectando el número…"}
+            </p>
+            {busy.phase === "meta" ? (
+              <Button ref={cancelRef} size="sm" variant="outline" onClick={cancelWait}>
+                Cancelar
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         <p className="pt-1 text-xs text-muted-foreground">
           El cliente debe ser admin de su Meta Business Account y tener acceso

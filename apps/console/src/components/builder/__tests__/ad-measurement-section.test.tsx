@@ -126,6 +126,47 @@ describe("los resultados en anuncios de un número", () => {
     expect(adMeasurement).toHaveBeenCalledTimes(1);
   });
 
+  it("la espera de Meta al volver a conectar se cancela, y lo que Meta mande tarde no cuenta (047 T101; 049 7.2)", async () => {
+    const user = userEvent.setup();
+    const seen: Array<{ signal?: AbortSignal; onMetaDone?: () => void }> = [];
+    let late: (v: { ok: true; data: never }) => void = () => {};
+    const reconnect = vi.fn((body: { signal?: AbortSignal; onMetaDone?: () => void }) => {
+      seen.push(body);
+      return new Promise<{ ok: true; data: never }>((resolve) => (late = resolve));
+    });
+    view(page({ ad_measurement: measurement({ state: "reauthorize", last_error: { code: "reauthorize", at: null, hint: "reauthorize" } }) }), {
+      reconnect: reconnect as unknown as Actions["reconnect"],
+    });
+
+    await user.click(within(section()).getByRole("button", { name: "Volver a conectar" }));
+    expect(await screen.findByText("Estamos en la ventana de Meta")).toBeInTheDocument();
+    expect(seen[0]?.signal).toBeInstanceOf(AbortSignal);
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByText("Estamos en la ventana de Meta")).toBeNull();
+    expect(seen[0]!.signal!.aborted).toBe(true);
+    expect(within(section()).getByRole("button", { name: "Volver a conectar" })).toBeEnabled();
+
+    late({ ok: true, data: {} as never });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(toast.success).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "¿Enviar los resultados a Meta?" })).toBeNull();
+  });
+
+  it("mientras se canjea el código de la reconexión, el velo ya no ofrece «Cancelar»", async () => {
+    const user = userEvent.setup();
+    const reconnect = vi.fn((body: { onMetaDone?: () => void }) => {
+      body.onMetaDone?.();
+      return new Promise<never>(() => {});
+    });
+    view(page({ ad_measurement: measurement({ state: "reauthorize", last_error: { code: "reauthorize", at: null, hint: "reauthorize" } }) }), {
+      reconnect: reconnect as unknown as Actions["reconnect"],
+    });
+    await user.click(within(section()).getByRole("button", { name: "Volver a conectar" }));
+    expect(await screen.findByText("Estamos en la ventana de Meta")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).toBeNull();
+  });
+
   it("sin las claves de Meta no ofrece volver a conectar, y dice quién tiene que hacerlo", () => {
     view(page({ ad_measurement: measurement({ state: "reauthorize", last_error: { code: "reauthorize", at: null, hint: "reauthorize" } }) }), {
       meta: null,

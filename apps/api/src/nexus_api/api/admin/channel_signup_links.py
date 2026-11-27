@@ -82,7 +82,12 @@ async def list_signup_links(tenant_id: uuid.UUID) -> list[SignupLinkOut]:
             (
                 await s.execute(
                     sa.select(ChannelSignupLink)
-                    .where(ChannelSignupLink.tenant_id == tenant_id)
+                    .where(
+                        ChannelSignupLink.tenant_id == tenant_id,
+                        # Spec 085 (R12): the panel stays with WhatsApp; the
+                        # client's Instagram and Messenger links are the console's.
+                        ChannelSignupLink.channel == "whatsapp",
+                    )
                     .order_by(ChannelSignupLink.created_at.desc())
                     .limit(20)
                 )

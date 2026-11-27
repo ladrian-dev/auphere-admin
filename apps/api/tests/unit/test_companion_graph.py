@@ -327,6 +327,73 @@ async def test_the_cost_event_carries_the_cache_breakdown_and_the_steps() -> Non
     )
 
 
+async def test_the_cost_event_carries_each_call_for_the_price_tier() -> None:
+    """Bug ``copiloto-sin-tramos``: el tramo (Haiku 5.5 x5 por encima de 100.000
+    tokens de prompt) se decide **por llamada**. Con solo los totales del turno la
+    API no puede aplicarlo, así que el evento lleva también cada llamada, con su
+    prompt bruto y su desglose. Solo recuentos: nada de contenido."""
+    from nexus_api.api.companion_streaming import COMPANION_EVENTS
+
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        stream_usage={
+            "prompt_tokens": 9_000,
+            "completion_tokens": 300,
+            "cache_read_input_tokens": 8_000,
+            "cache_creation_input_tokens": 500,
+        },
+    )
+    events = await _run(provider)
+    cost = next(d for n, d in events if n == "cost.updated")
+
+    assert cost["calls"], "sin llamadas no hay tramo que aplicar"
+    assert len(cost["calls"]) == cost["steps"]
+    first = cost["calls"][0]
+    assert first == {
+        "prompt": 9_000,
+        "uncached": 1_000,
+        "cache_read": 8_000,
+        "cache_write": 500,
+        "output": 300,
+    }
+    assert sum(c["uncached"] for c in cost["calls"]) == cost["input_tokens"]
+    assert set(cost) <= COMPANION_EVENTS["cost.updated"]
+
+
+async def test_each_turn_of_a_thread_bills_only_itself() -> None:
+    """Bug ``copiloto-sin-tramos``: el segundo turno de un hilo informaba la caché, los
+    pasos y las llamadas de los dos turnos (8.000 + 8.000), porque solo la entrada y la
+    salida se ponían a cero. Con el checkpoint del hilo, cada turno cobraba la caché de
+    todos los anteriores. El nodo de entrada lo pone todo a cero, sea quien sea el driver."""
+    provider = InMemoryProvider(
+        responder=lambda c: "ok",
+        stream_usage={
+            "prompt_tokens": 9_000,
+            "completion_tokens": 300,
+            "cache_read_input_tokens": 8_000,
+            "cache_creation_input_tokens": 500,
+        },
+    )
+    graph = build_companion_graph(
+        provider=provider, model="anthropic/claude-sonnet-4-6", checkpointer=MemorySaver()
+    )
+    thread = str(uuid.uuid4())
+    seen: list[dict] = []
+    for _turn in range(2):
+        async for ev in graph.astream_events(
+            {"user_message": "hola", "history": []},
+            config={"configurable": {"thread_id": thread}},
+            version="v2",
+        ):
+            if ev.get("event") == "on_custom_event" and ev.get("name") == "cost.updated":
+                seen.append(dict(ev.get("data") or {}))
+
+    first, second = seen
+    for key in ("input_tokens", "output_tokens", "cache_read", "cache_write", "steps"):
+        assert second[key] == first[key], key
+    assert len(second["calls"]) == len(first["calls"])
+
+
 async def test_a_provider_that_reports_cache_apart_never_bills_negative() -> None:
     """Si un proveedor reportara la caché fuera de ``prompt_tokens``, la resta
     daría negativo. El uncached tiene **suelo cero**.

@@ -10,6 +10,7 @@ import { Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogH
 import { metaSocialCompleteAction, metaSocialConnectAction } from "@/app/(console)/clients/[ref]/channels/actions";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
+import type { ActionResult } from "@/lib/actions";
 import type { MetaSocialAccount, MetaSocialConnectResult, MetaSocialKind, MetaSocialOffer } from "@/lib/backend/channels";
 import { SignupError, loginForCode, type SignupErrorCode } from "@/lib/meta-fb-sdk";
 
@@ -34,6 +35,24 @@ export const META_SOCIAL_REASONS: Record<string, MessageKey> = {
  *  configuration. */
 type Via = "default" | "page";
 
+/**
+ * Spec 085 (R9): who hands Meta's code to the server. The console's, bound to
+ * the client (`ref`), are the default; the owner's page passes the link's,
+ * which read the token from its cookie. Same window, same question, same
+ * account picker and same refusals either way: one flow, not two.
+ */
+export type MetaSocialConnectActions = {
+  connect: (kind: MetaSocialKind, code: string) => Promise<ActionResult<MetaSocialConnectResult>>;
+  complete: (kind: MetaSocialKind, nonce: string, accountId: string) => Promise<ActionResult<MetaSocialConnectResult>>;
+};
+
+export function consoleMetaSocialActions(refId: string): MetaSocialConnectActions {
+  return {
+    connect: (kind, code) => metaSocialConnectAction({ ref: refId, kind, code }),
+    complete: (kind, nonce, accountId) => metaSocialCompleteAction({ ref: refId, kind, nonce, accountId }),
+  };
+}
+
 const LOGIN_ERRORS = {
   sdk_failed: "ch.connect.sdkFailed",
   cancelled: "ch.connect.cancelled",
@@ -49,19 +68,33 @@ const LOGIN_ERRORS = {
  * Login for Business with the channel's configuration, hands the single-use
  * code to the server and, when the business granted several accounts or
  * Pages, asks which one (`dialog`). The old Channels page wraps it in a
- * button; the new console's channel wizard calls `start` from its card.
+ * button; the new console's channel wizard calls `start` from its card; the
+ * owner's link page (spec 085) calls it with the link's `actions`.
  */
 export function useMetaSocialConnect({
-  refId,
+  refId = "",
   offer,
+  actions,
   onConnected,
+  onDone,
+  failureHint,
 }: {
-  refId: string;
+  /** The console's client. Not needed when `actions` come from elsewhere. */
+  refId?: string;
   offer: MetaSocialOffer | null;
+  /** Spec 085 (R9): the console's, bound to `refId`, unless given. */
+  actions?: MetaSocialConnectActions;
   onConnected?: (res: MetaSocialConnectResult) => void | Promise<void>;
+  /** After `onConnected`. Without it, the console says it with a toast and
+   *  refreshes the page; a page with its own `actions` decides itself. */
+  onDone?: (res: MetaSocialConnectResult) => void;
+  /** Spec 085 (5.4): a sentence under every failure — on the owner's page,
+   *  «tell whoever sent you the link» when it is not theirs to fix. */
+  failureHint?: MessageKey;
 }) {
   const t = useT();
   const router = useRouter();
+  const act = actions ?? consoleMetaSocialActions(refId);
   const [working, setWorking] = React.useState(false);
   const [choice, setChoice] = React.useState<{ kind: MetaSocialKind; via: Via; nonce: string; accounts: MetaSocialAccount[] } | null>(null);
   // A failure stays on screen with «Intentar de nuevo», as WhatsApp's veil
@@ -77,9 +110,11 @@ export function useMetaSocialConnect({
   const attempt = React.useRef(0);
 
   async function done(res: MetaSocialConnectResult) {
-    const name = res.channel?.username ? `@${res.channel.username}` : (res.channel?.display_name ?? "");
     setChoice(null);
     await onConnected?.(res);
+    if (onDone) return onDone(res);
+    if (actions) return;
+    const name = res.channel?.username ? `@${res.channel.username}` : (res.channel?.display_name ?? "");
     toast.success(t("ch.social.done", { name }));
     router.refresh();
   }
@@ -119,7 +154,7 @@ export function useMetaSocialConnect({
       const code = await loginForCode({ appId: offer.app_id, version: offer.graph_version, configId, ...prompt });
       if (attempt.current !== mine) return;
       setWaitingMeta(false);
-      const res = await metaSocialConnectAction({ ref: refId, kind, code });
+      const res = await act.connect(kind, code);
       if (!res.ok) return void refused(kind, via, res.code);
       if (res.data.status === "choose" && res.data.nonce) {
         setChoice({ kind, via, nonce: res.data.nonce, accounts: res.data.accounts });
@@ -147,7 +182,7 @@ export function useMetaSocialConnect({
     if (!choice) return;
     setWorking(true);
     try {
-      const res = await metaSocialCompleteAction({ ref: refId, kind: choice.kind, nonce: choice.nonce, accountId: account.id });
+      const res = await act.complete(choice.kind, choice.nonce, account.id);
       if (!res.ok) {
         const { kind, via } = choice;
         setChoice(null);
@@ -169,6 +204,7 @@ export function useMetaSocialConnect({
             <DialogTitle className="text-xl leading-tight font-semibold text-balance">{t("channels.proto.veil.failed")}</DialogTitle>
             <DialogDescription className="max-w-prose text-pretty">{failure ? t(failure.key) : null}</DialogDescription>
           </DialogHeader>
+          {failureHint ? <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t(failureHint)}</p> : null}
           <div className="flex flex-wrap justify-center gap-2">
             <Button variant="ghost" onClick={() => setFailure(null)}>
               {t("common.close")}

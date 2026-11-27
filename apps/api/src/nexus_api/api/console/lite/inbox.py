@@ -167,6 +167,8 @@ class ContactDetailOut(BaseModel):
     name: str
     handle: str
     has_avatar: bool = False
+    #: Spec 082 (5.4): the WhatsApp username, without «@».
+    username: str | None = None
     first_message_at: datetime | None
     conversations: int
     next_booking: NextBookingOut | None = None
@@ -381,6 +383,7 @@ async def _detail_out(scope: LiteScope, conv: Conversation) -> ConversationDetai
             name=d.contact_name,
             handle=d.contact_handle,
             has_avatar=bool(d.contact_avatar_key),
+            username=d.contact_username,
             first_message_at=d.first_message_at,
             conversations=d.conversations,
             next_booking=await _next_booking(scope, conv),

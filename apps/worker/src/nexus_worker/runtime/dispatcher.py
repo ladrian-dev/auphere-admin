@@ -355,7 +355,7 @@ async def accept_inbound(event: InboundEvent) -> AcceptedInbound:
         customer = await _upsert_customer(
             session,
             identifier=event.user_id,
-            name=event.customer_name,
+            profile_name=event.customer_name,
             bsuid=event.customer_bsuid,
             phone=event.customer_phone,
             username=event.customer_username,

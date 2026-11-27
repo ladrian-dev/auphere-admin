@@ -30,7 +30,7 @@ const { CrumbName } = await import("../crumb-names");
 /**
  * Spec 047 (R47.1, R47.7, R47.11, R47.12): el marco común de la consola nueva.
  * - Menú lateral plegable, como el prototipo aprobado: «Operar» (Panel, Clientes,
- *   Consumo, Auditoría, Guía del partner y Teammate) y «Cuenta» (Equipo,
+ *   Métricas, Auditoría, Guía del partner y Teammate) y «Cuenta» (Equipo,
  *   Facturación y API), cada grupo con su etiqueta; el perfil, al pie.
  *   Plegado mide 64 px y cada entrada enseña su nombre como tooltip.
  * - Migas de pan, donde el último elemento no es un enlace.
@@ -69,7 +69,7 @@ describe("ConsoleShellV2 — el marco", () => {
     render(<Shell />);
     const aside = sidebar();
     const operate = within(aside).getByRole("list", { name: "Operar" });
-    expect(linksIn(operate)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría", "Guía del partner", "Teammate"]);
+    expect(linksIn(operate)).toEqual(["Panel", "Clientes", "Métricas", "Auditoría", "Guía del partner", "Teammate"]);
     expect(within(aside).queryByRole("list", { name: "Cuenta" })).toBeNull();
     expect(within(aside).queryByRole("link", { name: "Facturación" })).toBeNull();
   });
@@ -147,18 +147,18 @@ describe("ConsoleShellV2 — el marco", () => {
     expect(screen.getByRole("button", { name: "Abrir menú" })).toHaveAttribute("aria-expanded", "false");
     expect(document.cookie).toContain("nexus-console.nav=collapsed");
     // Plegado, el texto no se ve pero el enlace se sigue llamando igual.
-    expect(within(sidebar()).getByRole("link", { name: "Consumo" })).toBeInTheDocument();
+    expect(within(sidebar()).getByRole("link", { name: "Métricas" })).toBeInTheDocument();
   });
 
   it("plegado, el nombre de cada entrada sale como tooltip", async () => {
     render(<Shell collapsed />);
-    const usage = within(sidebar()).getByRole("link", { name: "Consumo" });
+    const usage = within(sidebar()).getByRole("link", { name: "Métricas" });
     await act(async () => {
       fireEvent.mouseEnter(usage);
       fireEvent.mouseMove(usage);
       fireEvent.focus(usage);
     });
-    await waitFor(() => expect(document.querySelector("[data-slot=tooltip-content]")).toHaveTextContent("Consumo"));
+    await waitFor(() => expect(document.querySelector("[data-slot=tooltip-content]")).toHaveTextContent("Métricas"));
   });
 
   it("las migas: el último elemento no es un enlace", () => {
@@ -211,7 +211,7 @@ describe("ConsoleShellV2 — el marco", () => {
     const bar = mobileNav();
     expect(bar.className).toMatch(/shell:hidden/);
     // D1: las cuatro secciones de cada día; el resto de «Operar», en el menú del perfil.
-    expect(linksIn(bar)).toEqual(["Panel", "Clientes", "Consumo", "Auditoría"]);
+    expect(linksIn(bar)).toEqual(["Panel", "Clientes", "Métricas", "Auditoría"]);
     // D1: ni la fila de arriba ni el botón ☰.
     expect(document.querySelector("[data-slot=shell-mobile-nav]")).toBeNull();
     expect(screen.queryByRole("button", { name: /Mostrar el menú|Ocultar el menú/ })).toBeNull();

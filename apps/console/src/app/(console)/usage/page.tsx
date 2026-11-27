@@ -15,6 +15,7 @@ import {
   requireClientPrincipal,
   requirePartnerPrincipal,
   requirePrincipal,
+  resolvePrincipal,
   type PartnerPrincipal,
 } from "@/lib/principal";
 import { meterLabel } from "@/lib/meter-label";
@@ -30,7 +31,12 @@ import { SpendControls } from "./spend-controls";
 import { PartnerUsageV2 } from "./usage-v2";
 import { pageTitle } from "@/i18n/metadata";
 
-export const generateMetadata = () => pageTitle("nav.usage");
+// Spec 083 (enmienda, D16): para el partner, Métricas; la persona de un cliente
+// sigue viendo su Consumo.
+export async function generateMetadata() {
+  const who = await resolvePrincipal();
+  return pageTitle(who.kind === "ok" && who.principal.kind === "partner" ? "nav.metrics" : "nav.usage");
+}
 
 type Search = { days?: string; client?: string; source?: string; meter?: string; line?: string };
 

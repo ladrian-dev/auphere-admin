@@ -51,7 +51,7 @@ export const shellMessages = {
   "shell.search.client.agents": { es: "{client} · Agentes", en: "{client} · Agents" },
   "shell.search.screen.home": { es: "Panel", en: "Dashboard" },
   "shell.search.screen.clients": { es: "Clientes", en: "Clients" },
-  "shell.search.screen.usage": { es: "Consumo", en: "Usage" },
+  "shell.search.screen.usage": { es: "Métricas", en: "Metrics" },
   "shell.search.screen.audit": { es: "Auditoría", en: "Audit" },
   "shell.search.screen.knowledge": { es: "Guía del partner", en: "Playbook" },
   "shell.search.screen.workstation": { es: "Teammate", en: "Teammate" },

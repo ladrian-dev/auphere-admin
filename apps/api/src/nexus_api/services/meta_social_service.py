@@ -9,15 +9,17 @@ A partner without them does not see the channels at all (constitution §V).
 
 from __future__ import annotations
 
+import uuid
 from typing import Any, Literal
 
 from nexus_channels.meta_social import MetaSocialClient
-from nexus_channels.meta_social.connect import MetaSocialConnector
+from nexus_channels.meta_social.connect import ConnectableAccount, MetaSocialConnector
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.config import get_settings
 from nexus_api.db.models import Partner
+from nexus_api.repositories.audit import AuditRepository
 
 Kind = Literal["instagram", "messenger"]
 KINDS: tuple[Kind, ...] = ("instagram", "messenger")
@@ -81,6 +83,30 @@ def client() -> MetaSocialClient:
 def connector(session: AsyncSession, redis: Redis) -> MetaSocialConnector:
     return MetaSocialConnector(
         session=session, redis=redis, client=client(), app_id=get_settings().meta_app_id
+    )
+
+
+def display_name(account: ConnectableAccount) -> str:
+    """How a connected account is named: ``@username``, or the Page's name."""
+    return f"@{account.username}" if account.username else account.name
+
+
+async def audit_connect(
+    session: AsyncSession,
+    *,
+    actor: str,
+    kind: Kind,
+    channel_id: uuid.UUID,
+    account: ConnectableAccount,
+) -> None:
+    """``channel.{kind}.connect``: the console's member, or the owner's link
+    (``link:{id}``, spec 085)."""
+    await AuditRepository(session).record(
+        actor=actor,
+        action=f"channel.{kind}.connect",
+        target=f"channel:{channel_id}",
+        before=None,
+        after={"display_name": display_name(account), "account_id": account.id},
     )
 
 

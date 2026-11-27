@@ -61,7 +61,8 @@ export type InboxDetail = {
   /** `agent_open` (spec 049, 7.3): the agent can still answer. Only differs from `open` on Instagram and Messenger with Human Agent. */
   window: { open: boolean; closes_at: string | null; agent_open?: boolean };
   channel: { kind: string; connected: boolean };
-  contact: { name: string; handle: string; first_message_at: string | null; conversations: number; has_avatar?: boolean };
+  /** `username` (spec 082, 5.4): the WhatsApp username, painted as «@usuario». */
+  contact: { name: string; handle: string; first_message_at: string | null; conversations: number; has_avatar?: boolean; username?: string | null };
   summary: string | null;
   /** The reason of the last escalation: a code of `events.md` §2 or the agent's own words. */
   waiting_reason: string | null;

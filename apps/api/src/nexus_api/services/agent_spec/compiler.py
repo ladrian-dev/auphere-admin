@@ -27,6 +27,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Final, Literal
 
 from nexus_api.core.guardrails.untrusted import neutralise_tags
@@ -327,12 +328,42 @@ _NOUN = re.compile(
 )
 _TOOL_MENTION = re.compile(r"\b([a-z][a-z0-9_]*\.[a-z][a-z0-9_]*)\b")
 _TIME_RANGE = re.compile(
-    r"\b(?:de|desde)?\s*(\d{1,2})(?::(\d{2}))?\s*(?:h|hs)?\s*(?:a|-|\u2013|hasta)\s*(\d{1,2})(?::(\d{2}))?\s*(?:h|hs)?\b",
+    r"(?<![\d.,:/])(?P<from>\b(?:de|desde)\s+)?(?P<h1>\d{1,2})(?:[:.](?P<m1>\d{2}))?\s*"
+    r"(?P<s1>hs|h|am|pm)?\s*(?:\ba\b|-|\u2013|\bhasta\b)\s*"
+    r"(?P<h2>\d{1,2})(?:[:.](?P<m2>\d{2}))?\s*(?P<s2>hs|h|am|pm)?\b(?![:.,/]?\d)",
     re.I,
 )
 _HOURS_WORDS = re.compile(r"\b(abr(e|imos|o)|horario|abiert[oa]s?|cerramos|atendemos)\b", re.I)
+#: Bug «la revisión ve lo que no hay»: lo que va detrás de un «N a M» que no es una hora
+#: («de 2 a 4 personas», «con 24 a 48 horas de antelación», «de 2 a 3 días»).
+_NOT_A_TIME_AFTER: Final = re.compile(
+    r"^\s*(personas?|pax|horas?|hrs?\b|d[ií]as?|minutos?|min\b|semanas?|mes(es)?\b|años?|"
+    r"clientes?|clientas?|citas?|veces|niñ[oa]s?|adult[oa]s?|invitad[oa]s?|servicios?|sesiones?)"
+    r"|^[^.\n;:]{0,12}\b(antelaci[oó]n|anticipaci[oó]n|antes|de plazo|de margen)\b",
+    re.I,
+)
+#: Una frase del horario: un punto entre dígitos («10.30») no la corta.
+_HOURS_SENTENCE: Final = re.compile(r"[!?;\n]+|\.(?!\d)")
+#: Una hora de la ficha («10:00»), sin los dígitos de una fecha, una dirección o un teléfono.
+_CLOCK: Final = re.compile(r"(?<![\d/])(\d{1,2})[:.](\d{2})(?!\d)")
+#: El horario propio de una sede, en su línea de la ficha (``load_facts``).
+_PLACE_HOURS: Final = re.compile(r"Horario propio:\s*(.*)$")
+#: Un importe con la gramática de la ficha y de quien escribe: grupos de tres dígitos son
+#: miles; uno o dos dígitos al final, decimales («30», «30,00», «15.000», «1,500.00»).
+_NUMBER: Final = r"\d+(?:[.,]\d{3})*(?:[.,]\d{1,2})?"
+#: Las monedas con que se escribe un precio en un texto, detrás del importe.
+_CURRENCY_AFTER: Final = (
+    r"(?:€|\$|us\$|euros?\b|d[oó]lar(?:es)?\b|pesos?\b|soles?\b|bol[ií]vares\b|bs\b|"
+    r"(?:eur|usd|clp|mxn|cop|ars|pen|ves|gbp|brl|uyu|bob|pyg|crc|dop|gtq|hnl|nio|pab)\b)"
+)
 _PRICE = re.compile(
-    r"(\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{1,2})?)\s*(€|euros?|\$|usd|clp|pesos|mxn)", re.I
+    rf"(?<![\w$€])(?:us\$|\$|€)\s?(?P<pre>{_NUMBER})(?!\d)"
+    rf"|(?<![\d.,])(?P<post>{_NUMBER})\s*{_CURRENCY_AFTER}",
+    re.I,
+)
+#: Lo que escribe la ficha: ``format_amount`` pone el código ISO de cualquier moneda.
+_FICHA_PRICE: Final = re.compile(
+    rf"(?<![\d.,])(?P<post>{_NUMBER})\s*(?:{_CURRENCY_AFTER}|(?-i:[A-Z]{{3}})\b)", re.I
 )
 
 
@@ -453,6 +484,26 @@ _TEAM_CHECKS: Final = re.compile(
     rf"(el |la |nuestro |nuestra |tu |su )?{_TEAM}\b",
     re.I,
 )
+#: «El equipo no confirma las citas»: la negación es de lo que hace el equipo, no una
+#: orden al agente (bug «la revisión ve lo que no hay», con el texto de Jemma's Hair).
+_TEAM_SUBJECT: Final = re.compile(
+    rf"\b{_TEAM}\b(\s+(?!(y|e|o|u|si|cuando)\b)\w+){{0,3}}?\s+(no|nunca|jam[aá]s)\s+$", re.I
+)
+_NEGATED: Final = re.compile(r"\b(no|nunca|jam[aá]s|ni)\b", re.I)
+_NEGATION_BEFORE: Final = re.compile(r"\b(no|nunca|jam[aá]s|sin)\s+$", re.I)
+
+
+def _team_checks(sentence: str) -> bool:
+    """The team confirms, reviews or validates; not «el equipo no confirma»."""
+    for match in _TEAM_CHECKS.finditer(sentence):
+        if _NEGATED.search(match.group(0)):
+            continue
+        if _NEGATION_BEFORE.search(sentence[: match.start()][-12:]):
+            continue
+        return True
+    return False
+
+
 #: «La agenda no está activa», «no tienes acceso a la agenda», «sin agenda».
 _AGENDA_OFF: Final = re.compile(
     r"\b(agenda|sistema de (citas|reservas)|reservas)\b(\s+\w+){0,3}?\s+no\s+"
@@ -514,6 +565,7 @@ def _refused(text: str, match: re.Match[str]) -> bool:
         or _IF_NOT.search(clause)
         or _PURPOSE.search(before)
         or _DEFINITION.search(before)
+        or _TEAM_SUBJECT.search(before)
     ):
         return False
     rest = re.split(r"[.\n;:]", text[match.end() :])[0]
@@ -570,7 +622,7 @@ def forbids_agenda(text: str, *, hands_off: bool = False) -> bool:
         if _NOT_CONFIRMED.search(sentence):
             return True
         if (
-            _TEAM_CHECKS.search(sentence)
+            _team_checks(sentence)
             and _ABOUT_APPOINTMENTS.search(sentence)
             and not _OTHER_MATTER.search(sentence)
         ):
@@ -615,13 +667,75 @@ def _quote(text: str, limit: int = 90) -> str:
     return flat if len(flat) <= limit else flat[: limit - 1].rstrip() + "…"
 
 
-def _numbers(text: str) -> set[int]:
-    return {int(n) for n in re.findall(r"\d{1,2}", text)}
+def _hours_in(text: str) -> set[int]:
+    """Las horas de un texto de horario de la ficha: las de sus «10:00»; si no tiene
+    ninguna (una frase de antes), sus números de una o dos cifras."""
+    clock = {int(h) for h, _m in _CLOCK.findall(text)}
+    return clock or {int(n) for n in re.findall(r"(?<!\d)\d{1,2}(?!\d)", text)}
 
 
-def _amount(raw: str) -> str:
-    digits = re.sub(r"[^\d]", "", raw)
-    return digits.lstrip("0") or "0"
+def _ficha_hours(facts: Facts) -> set[int] | None:
+    """Todas las horas de la ficha: el horario del negocio, el propio de cada sede y el de
+    las fechas especiales. ``None`` si la ficha no tiene ningún horario."""
+    texts: list[str] = [facts.hours] if facts.hours else []
+    for line in facts.locations:
+        own = _PLACE_HOURS.search(line)
+        if own is not None:
+            texts.append(own.group(1))
+    hours: set[int] = set().union(*(_hours_in(t) for t in texts)) if texts else set()
+    for line in facts.special_dates:
+        hours |= {int(h) for h, _m in _CLOCK.findall(line)}
+    return hours if texts or hours else None
+
+
+def _is_time(match: re.Match[str], rest: str) -> bool:
+    """«de 9 a 21», «10:00-20:00», «9 a 7 pm»; no «de 2 a 4 personas» ni «24 a 48 horas
+    de antelación»."""
+    marked = any(match.group(g) for g in ("from", "m1", "m2", "s1", "s2"))
+    if not marked or _NOT_A_TIME_AFTER.search(rest):
+        return False
+    hours = (int(match.group("h1")), int(match.group("h2")))
+    minutes = [int(m) for m in (match.group("m1"), match.group("m2")) if m]
+    return all(h <= 24 for h in hours) and all(m <= 59 for m in minutes)
+
+
+def _same_hour(said: int, known: set[int]) -> bool:
+    """La hora dicha está en la ficha, también con la hora de 12 («a las 8» por 20:00)."""
+    return (
+        said in known
+        or (said < 12 and said + 12 in known)
+        or (said == 24 and 0 in known)
+        or (said == 0 and 24 in known)
+    )
+
+
+def _hours_said(text: str, known: set[int] | None) -> str | None:
+    """El primer rango de horas de ``text`` que no es de la ficha, en una frase que habla
+    del horario. ``None`` si no hay ninguno."""
+    for sentence in _HOURS_SENTENCE.split(text):
+        if not _HOURS_WORDS.search(sentence):
+            continue
+        for match in _TIME_RANGE.finditer(sentence):
+            if not _is_time(match, sentence[match.end() :]):
+                continue
+            said = (int(match.group("h1")), int(match.group("h2")))
+            if known is None or not all(_same_hour(h, known) for h in said):
+                return match.group(0).strip()
+    return None
+
+
+def _value(raw: str) -> Decimal:
+    """El importe de ``raw`` como número: «30», «30,00» y «30.00» son lo mismo."""
+    found = re.fullmatch(r"(\d+(?:[.,]\d{3})*)(?:[.,](\d{1,2}))?", raw)
+    if found is None:
+        return Decimal(re.sub(r"\D", "", raw) or "0")
+    whole = re.sub(r"[.,]", "", found.group(1))
+    return Decimal(f"{whole}.{found.group(2) or '0'}")
+
+
+def _amount_of(match: re.Match[str]) -> Decimal:
+    groups = match.groupdict()
+    return _value(groups.get("pre") or groups["post"])
 
 
 def incoherences(
@@ -647,23 +761,16 @@ def incoherences(
             found.append(Incoherence("forbids_agenda", pointer, _quote(text)))
 
     if facts is not None:
-        hours_numbers = _numbers(facts.hours or "")
-        prices = {_amount(m.group(1)) for line in facts.services for m in _PRICE.finditer(line)}
+        known_hours = _ficha_hours(facts)
+        prices = {_amount_of(m) for line in facts.services for m in _FICHA_PRICE.finditer(line)}
         for pointer, text in _texts(spec):
-            if _HOURS_WORDS.search(text):
-                for match in _TIME_RANGE.finditer(text):
-                    said = {int(match.group(1)), int(match.group(3))}
-                    if facts.hours is None or not said <= hours_numbers:
-                        found.append(
-                            Incoherence(
-                                "contradicts_business",
-                                pointer,
-                                f"horario «{match.group(0).strip()}»",
-                            )
-                        )
-                        break
+            said_hours = _hours_said(text, known_hours)
+            if said_hours is not None:
+                found.append(
+                    Incoherence("contradicts_business", pointer, f"horario «{said_hours}»")
+                )
             for match in _PRICE.finditer(text):
-                if _amount(match.group(1)) not in prices:
+                if _amount_of(match) not in prices:
                     found.append(
                         Incoherence(
                             "contradicts_business", pointer, f"precio «{match.group(0).strip()}»"

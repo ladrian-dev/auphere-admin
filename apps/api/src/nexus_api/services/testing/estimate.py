@@ -41,8 +41,11 @@ JUDGE_CALLS: Final = 1
 AGENT_CALL: Final = TokenEstimate(input_tokens=1_500, cache_read_tokens=4_500, output_tokens=45)
 CLASSIFY_CALL: Final = TokenEstimate(input_tokens=140, output_tokens=35)
 CUSTOMER_CALL: Final = TokenEstimate(input_tokens=400, output_tokens=60)
-#: With the business data to check against (66.9).
-JUDGE_CALL: Final = TokenEstimate(input_tokens=800, output_tokens=120)
+#: With the business data to check against (66.9) and, since the bug «el juez solo mira la
+#: ficha» (2026-11-26), what the agent knew: its prompt without the ficha and the knowledge
+#: of each turn. Not measured yet: counted as fresh input, though it is the same prefix in
+#: every judge call of a run and a provider may serve it from its cache.
+JUDGE_CALL: Final = TokenEstimate(input_tokens=3_300, output_tokens=120)
 #: The partner's price over the provider's cost, as in «Construcción y pruebas».
 PRICE_MULTIPLIER: Final = Decimal("2.2")
 
