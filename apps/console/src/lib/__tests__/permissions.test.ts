@@ -14,6 +14,9 @@ const API_MAP: Record<string, string[]> = {
   "clients:delete": ["owner", "admin"],
   "agents:read": ["owner", "admin", "builder", "analyst"],
   "agents:write": ["owner", "admin", "builder"],
+  // Spec 082 — rutinas.
+  "schedules:read": ["owner", "admin", "builder", "analyst"],
+  "schedules:write": ["owner", "admin", "builder"],
   "channels:read": ["owner", "admin", "builder", "analyst"],
   "channels:write": ["owner", "admin", "builder"],
   "conversations:read": ["owner", "admin", "builder", "analyst"],

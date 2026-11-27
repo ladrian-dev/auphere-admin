@@ -15,6 +15,9 @@ export const PERMISSIONS = {
   "clients:delete": ["owner", "admin"],
   "agents:read": ["owner", "admin", "builder", "analyst"],
   "agents:write": ["owner", "admin", "builder"],
+  // Spec 082 — rutinas. Los mismos roles que escribir agentes.
+  "schedules:read": ["owner", "admin", "builder", "analyst"],
+  "schedules:write": ["owner", "admin", "builder"],
   "channels:read": ["owner", "admin", "builder", "analyst"],
   "channels:write": ["owner", "admin", "builder"],
   "conversations:read": ["owner", "admin", "builder", "analyst"],

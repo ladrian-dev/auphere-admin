@@ -101,6 +101,12 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     "clients:delete": frozenset({_O, _A}),
     "agents:read": frozenset({_O, _A, _B, _AN}),
     "agents:write": frozenset({_O, _A, _B}),
+    # Spec 082 — rutinas. Los mismos roles que escribir agentes: una rutina es
+    # una instrucción para un agente, y quien puede cambiar lo que el agente
+    # hace puede decidir que lo haga a una hora. Van aparte de ``agents:*``
+    # para poder separarlas después sin migración, que es como se hace aquí.
+    "schedules:read": frozenset({_O, _A, _B, _AN}),
+    "schedules:write": frozenset({_O, _A, _B}),
     "channels:read": frozenset({_O, _A, _B, _AN}),
     "channels:write": frozenset({_O, _A, _B}),
     # Metadata only — bodies never leave the backend (C8).
