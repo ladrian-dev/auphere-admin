@@ -3,6 +3,8 @@
 import { z } from "zod";
 
 import { validPhone } from "@/components/reservas/model/phone";
+import type { SearchParams } from "@/components/reservas/model/url-state";
+import type { ReservasInitial } from "@/components/reservas/reservas-view";
 import { run, type ActionResult } from "@/lib/actions";
 import { backendFor } from "@/lib/backend";
 import type { Hours } from "@/lib/backend/business-sections";
@@ -24,6 +26,8 @@ import {
 } from "@/lib/backend/reservas";
 import { checkCategory, checkDay, checkDuration, checkPrice, type Checked, type RuleProblem } from "@/lib/business-rules";
 import { resolvePrincipal } from "@/lib/principal";
+
+import { readReservas } from "./read";
 
 /**
  * Server Actions of Reservas (spec 043, T021). Zod on the server, a fresh 60 s
@@ -79,6 +83,29 @@ const dayHours = z
 const weekHours = z.object(Object.fromEntries(WEEKDAYS.map((d) => [d, dayHours])) as Record<(typeof WEEKDAYS)[number], typeof dayHours>);
 
 // ── reads ────────────────────────────────────────────────────────────────
+
+/**
+ * Spec 082 (R1.1, R1.2): what the screen shows for a URL, read again. React
+ * Query calls this on every re-read (after a write, on a `reservations.changed`
+ * notice, every 45 s); it reads **exactly** what the page painted first,
+ * through `readReservas`. `booking` is not part of it: the page's link opens a
+ * panel once, a re-read never does. `date: null` is a URL without a date: the
+ * business's today at the time of the re-read, not of the first paint.
+ */
+const screenSchema = z.object({
+  tab: z.enum(["agenda", "waitlist", "settings"]),
+  view: z.enum(["grid", "list"]),
+  period: z.enum(["day", "week", "month"]),
+  date: day.nullable(),
+  staff: id.nullable(),
+});
+export async function reservasScreenAction(raw: unknown): Promise<ActionResult<ReservasInitial>> {
+  const { staff, date, ...rest } = screenSchema.parse(raw);
+  const principal = await reservasPrincipal();
+  if (!principal) return forbidden;
+  const sp: SearchParams = { ...rest, ...(date ? { date } : {}), ...(staff ? { staff } : {}) };
+  return run(() => readReservas(principal, sp, new Date().toISOString()));
+}
 
 const idSchema = z.object({ id });
 

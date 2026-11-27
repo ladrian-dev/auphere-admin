@@ -31,6 +31,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 log = structlog.get_logger(__name__)
 
+#: Spec 082 (5.5), in ``customers.preferences``: the last WhatsApp profile name,
+#: and who wrote ``name`` (``"person"``: the team; the profile never changes it).
+PROFILE_NAME = "profile_name"
+NAME_BY = "name_by"
+PERSON = "person"
+
 
 def identity_of(identifier: str) -> dict[str, str]:
     """Spec 050: what a bare WhatsApp identifier is. A BSUID (``CC.…``) has a
@@ -46,6 +52,7 @@ async def upsert_customer(
     bsuid: str | None = None,
     phone: str | None = None,
     username: str | None = None,
+    profile_name: str | None = None,
 ) -> Customer:
     """Find or create the person behind an inbound (spec 050, D2).
 
@@ -61,6 +68,14 @@ async def upsert_customer(
 
     Two existing rows are never merged: if the BSUID and the phone point at
     different people, the BSUID's wins and the conflict is logged.
+
+    The name (spec 082, 5.5): ``profile_name`` is what WhatsApp says the
+    person calls themself; when it differs from the last one stored
+    (``preferences.profile_name``, or the name on rows from before it), the
+    name follows it, unless a person of the team wrote the name
+    (``preferences.name_by == "person"``). An explicit ``name`` — the
+    business's own phone agenda — only fills a row without one, and marks it
+    as written by a person.
     """
     require_current_tenant()
     found: Customer | None = None
@@ -95,17 +110,36 @@ async def upsert_customer(
             found.phone, changed = phone, True
         if username and found.username != username:
             found.username, changed = username, True
+        prefs = dict(found.preferences or {})
+        if name and not found.name:
+            found.name, changed = name, True
+            prefs[NAME_BY] = PERSON
+        if profile_name:
+            last = prefs.get(PROFILE_NAME, found.name)
+            if profile_name != last:
+                if prefs.get(NAME_BY) != PERSON or not found.name:
+                    found.name = profile_name
+                changed = True
+            prefs[PROFILE_NAME] = profile_name
+        if prefs != (found.preferences or {}):
+            # A new dict: JSONB is not tracked in place.
+            found.preferences, changed = prefs, True
         if changed:
             await session.flush()
         return found
+    preferences: dict[str, Any] = {}
+    if name:
+        preferences[NAME_BY] = PERSON
+    if profile_name:
+        preferences[PROFILE_NAME] = profile_name
     customer = Customer(
         tenant_id=require_current_tenant(),
         identifier=identifier,
-        name=name,
+        name=name or profile_name,
         bsuid=bsuid,
         phone=phone,
         username=username,
-        preferences={},
+        preferences=preferences,
     )
     session.add(customer)
     await session.flush()

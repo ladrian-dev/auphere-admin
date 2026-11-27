@@ -45,6 +45,12 @@ export const builderKnowledgeMessages = {
   "builder.knowledge.notRead": { es: "Sin leer todavía", en: "Not read yet" },
   "builder.knowledge.actions": { es: "Acciones de {title}", en: "Actions for {title}" },
   "builder.knowledge.retry": { es: "Reintentar", en: "Retry" },
+  // Spec 082 (R2.5, §V): an upload that never answered, and the first read.
+  "builder.knowledge.timeout": {
+    es: "No respondió a tiempo. Volvemos a leer la lista por si sí entró.",
+    en: "It did not answer in time. We are reading the list again in case it went in.",
+  },
+  "builder.knowledge.loading": { es: "Cargando lo que sabe el agente", en: "Loading what the agent knows" },
   "builder.knowledge.cancel": { es: "Cancelar", en: "Cancel" },
   "builder.knowledge.restorable": { es: "Quitadas hace poco", en: "Recently removed" },
 

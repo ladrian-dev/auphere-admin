@@ -46,6 +46,15 @@ export function parseReservasUrl(sp: SearchParams, ctx: { today: string; mode: R
 }
 
 /**
+ * Whether the URL's own `date` placed the screen. Without it the screen is the
+ * business's today, and its re-reads follow today: a tab opened on Monday
+ * reads Tuesday's agenda on Tuesday (spec 064, 2.6).
+ */
+export function urlHasDate(sp: SearchParams, url: ReservasUrl): boolean {
+  return one(sp.date) === url.date;
+}
+
+/**
  * The booking to open on arrival (spec 043, T026): the Panel's «Próximas de
  * hoy» link to `/reservas?booking={id}`. Only a UUID — anything else opens
  * nothing. It is not part of `ReservasUrl`: the links of the screen (tabs,

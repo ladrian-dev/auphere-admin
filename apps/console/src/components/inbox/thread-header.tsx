@@ -9,6 +9,7 @@ import type { InboxDetail } from "@/lib/backend/inbox";
 import { AdOriginLine } from "./ad-origin";
 import { ChannelBadge } from "./channel-badge";
 import { ContactAvatar } from "./contact-avatar";
+import { atUsername } from "./inbox-model";
 
 /**
  * The top of an open conversation (spec 030, R9, R12): who it is, who
@@ -43,6 +44,7 @@ export function ThreadHeader({
   onDeleteChat: () => void;
 }) {
   const t = useT();
+  const username = atUsername(detail.contact.username);
   const resolved = detail.state === "resolved";
   // Spec 030: with more than one agent, the one of this number by name.
   // Spec 047 (53.2): after Recepción hands it over, the agent that answers now.
@@ -70,9 +72,16 @@ export function ThreadHeader({
         <ChannelBadge kind={detail.channel.kind} />
       </span>
       <div className="flex min-w-0 flex-1 flex-col">
-        <h2 className="truncate text-base font-semibold" title={detail.contact.name}>
-          {detail.contact.name}
-        </h2>
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h2 className="min-w-0 truncate text-base font-semibold" title={detail.contact.name}>
+            {detail.contact.name}
+          </h2>
+          {username ? (
+            <span className="min-w-0 max-w-1/2 shrink-0 truncate text-xs font-medium text-muted-foreground" title={username}>
+              {username}
+            </span>
+          ) : null}
+        </div>
         <span className="truncate text-xs font-medium text-muted-foreground" title={attends}>
           {attends}
         </span>

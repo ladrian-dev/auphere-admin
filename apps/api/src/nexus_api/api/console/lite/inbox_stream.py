@@ -14,6 +14,11 @@ La línea de un teléfono (spec 031) se corta sola a los cinco minutos: un
 teléfono cerrado, una persona quitada o un acceso apagado dejan de recibir
 eventos, como tarde, en ese plazo (R7.2 pide menos de 15). La app reconecta
 sola y vuelve a pasar por la puerta. La línea de la consola web no cambia.
+
+Spec 082 (requisito 1.11, contrato ``realtime-082.md``): la línea admite a quien
+tenga ``inbox`` **o** ``reservas``, y reenvía a cada persona solo lo de sus
+módulos: las conversaciones a quien tiene la Bandeja, ``reservations.changed`` a
+quien tiene Reservas. El canal sigue siendo el del negocio de la sesión.
 """
 
 from __future__ import annotations
@@ -23,13 +28,13 @@ import time
 from collections.abc import AsyncIterator
 
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
 from sse_starlette.sse import EventSourceResponse
 
 from nexus_api.api.deps import get_redis
 from nexus_api.core.client_auth import ClientPrincipal, require_client_principal
-from nexus_api.services.inbox_stream import EVENTS, inbox_channel
+from nexus_api.services.inbox_stream import EVENTS, RESERVATIONS_EVENT, inbox_channel
 
 router = APIRouter(prefix="/inbox")
 log = structlog.get_logger(__name__)
@@ -41,9 +46,16 @@ PHONE_LINE_SECONDS = 300.0
 @router.get("/stream")
 async def stream(
     request: Request,
-    principal: ClientPrincipal = Depends(require_client_principal("inbox")),
+    principal: ClientPrincipal = Depends(require_client_principal()),
     redis: Redis = Depends(get_redis),
 ) -> EventSourceResponse:
+    inbox, reservas = principal.has("inbox"), principal.has("reservas")
+    if not (inbox or reservas):
+        # El mismo 403 que una ruta de un módulo que no se tiene.
+        raise HTTPException(status_code=403, detail="No client access")
+    relayed = (EVENTS if inbox else frozenset()) | (
+        frozenset({RESERVATIONS_EVENT}) if reservas else frozenset()
+    )
     channel = inbox_channel(principal.tenant_id)
     lasts = PHONE_LINE_SECONDS if principal.phone_id is not None else None
 
@@ -74,7 +86,7 @@ async def stream(
                 except json.JSONDecodeError:
                     continue
                 name = parsed.get("event")
-                if name not in EVENTS:
+                if name not in relayed:
                     continue
                 yield {"event": str(name), "data": json.dumps(parsed)}
         finally:
