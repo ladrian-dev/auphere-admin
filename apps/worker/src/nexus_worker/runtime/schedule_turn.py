@@ -33,6 +33,8 @@ tenerlo.
 
 from __future__ import annotations
 
+import json
+import uuid
 from dataclasses import dataclass
 from typing import Any, Final, Protocol
 
@@ -155,11 +157,140 @@ async def tools_for_routine(
     return select_tools(registry, tuple(ceiling), policy)
 
 
+#: Vueltas antes de obligar al modelo a escribir. La última va sin herramientas:
+#: si no, un modelo que se atasca pide una llamada más para siempre y la
+#: ejecución termina sin una línea de respuesta.
+MAX_ITERATIONS: Final = 6
+#: El papel con el que se pide el modelo: el mismo con el que el agente contesta.
+ROLE: Final = "respond"
+
+
+@dataclass(frozen=True)
+class RoutineAnswer:
+    """Lo que la ejecución guarda: el texto, lo que usó y si quedó a medias."""
+
+    text: str
+    tools_used: tuple[str, ...]
+    withheld: tuple[Withheld, ...]
+    iterations: int
+    partial: bool
+
+
+def _result_text(envelope: Any) -> str:
+    """El resultado de la herramienta tal cual vuelve al modelo. Nada de
+    resúmenes: antes de ADR-023 el modelo escribía la respuesta final sobre un
+    resumen de las llamadas y nunca veía el dato, lo que hacía decorativa toda
+    herramienta de lectura."""
+    try:
+        return json.dumps(envelope, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return str(envelope)
+
+
+async def run_loop(
+    *,
+    provider: Any,
+    model: str,
+    tenant_id: uuid.UUID,
+    system: str,
+    instruction: str,
+    registry: Any,
+    chosen: RoutineTools,
+    max_iterations: int = MAX_ITERATIONS,
+) -> RoutineAnswer:
+    """El bucle del turno: pedir, despachar, devolver el resultado y repetir.
+
+    La instrucción del partner entra como mensaje de operador y lo que devuelven
+    las herramientas como resultado, nunca mezclados (constitución §III).
+    """
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": instruction},
+    ]
+    used: list[str] = []
+    failed = False
+    text = ""
+    rounds = 0
+
+    for rounds in range(1, max_iterations + 1):
+        last = rounds == max_iterations
+        tools: list[dict[str, Any]] = (
+            [] if last or not chosen.names else registry.get_openai_tools(chosen.names)
+        )
+        response = await provider.acomplete_with_tools(
+            tenant_id=tenant_id,
+            role=ROLE,
+            model=model,
+            messages=messages,
+            tools=tools,
+        )
+        if not response.tool_calls:
+            text = response.text
+            break
+
+        messages.append(
+            {
+                "role": "assistant",
+                "content": response.text or None,
+                "tool_calls": [
+                    {
+                        "id": call.id or call.name,
+                        "type": "function",
+                        "function": {
+                            "name": call.name,
+                            "arguments": json.dumps(call.arguments or {}, default=str),
+                        },
+                    }
+                    for call in response.tool_calls
+                ],
+            }
+        )
+        for call in response.tool_calls:
+            try:
+                envelope = await registry.dispatch(
+                    call.name, dict(call.arguments or {}), whitelist=chosen.names
+                )
+            except Exception as exc:
+                # Un fallo vuelve al modelo como resultado: así puede decir qué
+                # no pudo hacer, que es mejor que una ejecución sin respuesta.
+                failed = True
+                envelope = {"status": "error", "error": type(exc).__name__}
+                log.warning(
+                    "schedule_turn.tool_failed",
+                    tenant_id=str(tenant_id),
+                    tool=call.name,
+                    error=type(exc).__name__,
+                )
+            else:
+                used.append(call.name)
+                if isinstance(envelope, dict) and envelope.get("status") not in (None, "ok"):
+                    failed = True
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.id or call.name,
+                    "content": _result_text(envelope),
+                }
+            )
+
+    return RoutineAnswer(
+        text=text,
+        tools_used=tuple(dict.fromkeys(used)),
+        withheld=chosen.withheld,
+        iterations=rounds,
+        partial=chosen.partial or failed,
+    )
+
+
 __all__ = [
     "CONVERSATION_ARG",
+    "MAX_ITERATIONS",
+    "ROLE",
     "WHY",
+    "RoutineAnswer",
     "RoutineTools",
     "Withheld",
+    "run_loop",
     "select_tools",
     "tools_for_routine",
 ]
