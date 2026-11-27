@@ -14,11 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  Label,
   NativeSelect,
   Skeleton,
+  Switch,
 } from "@nexus/ui";
 
 import { inboxSettingsAction, patchInboxSettingsAction } from "@/app/(console)/inbox/actions";
+import { SOUND_EVENT, setSoundOn, soundOn } from "@/components/live/chime";
 import { useActionLoad } from "@/components/reservas/model/use-load";
 import { useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
@@ -134,6 +137,7 @@ export function InboxSettings() {
               <Skeleton className="h-4 w-3/4" />
             </div>
           )}
+          <SoundSwitch />
           {/* Always mounted, so a screen reader hears the text when it changes (WCAG 4.1.3). */}
           <p role="status" className="min-h-5 text-sm text-muted-foreground">
             {said === "saved" ? t("inbox.settings.saved") : ""}
@@ -151,5 +155,42 @@ export function InboxSettings() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Spec 082 (R3.4): the sound when a message arrives, on or off **in this
+ * browser** — a preference of the work station, saved at once, no API. On by
+ * default. It does not wait for the server read: it is always there.
+ */
+function SoundSwitch() {
+  const t = useT();
+  const id = React.useId();
+  const [on, setOn] = React.useState(true);
+  React.useEffect(() => {
+    // Read after mount: the server cannot know what this browser chose.
+    const sync = () => setOn(soundOn());
+    sync();
+    window.addEventListener(SOUND_EVENT, sync);
+    return () => window.removeEventListener(SOUND_EVENT, sync);
+  }, []);
+  return (
+    <div className="flex min-w-0 items-start gap-3" data-slot="inbox-sound">
+      <Switch
+        id={`${id}-sound`}
+        checked={on}
+        onCheckedChange={(v) => setSoundOn(v === true)}
+        aria-describedby={`${id}-sound-hint`}
+        className="mt-1"
+      />
+      <div className="grid min-w-0 flex-1 gap-1">
+        <Label htmlFor={`${id}-sound`} className="text-sm font-medium">
+          {t("inbox.settings.sound")}
+        </Label>
+        <p id={`${id}-sound-hint`} className="text-sm text-pretty text-muted-foreground">
+          {t("inbox.settings.sound.hint")}
+        </p>
+      </div>
+    </div>
   );
 }

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,10 +6,15 @@ import { axeViolations } from "@nexus/ui/test/axe";
 
 import { LocaleProvider } from "@/i18n/client";
 import type { AgentSpec, AnswersResult, BuilderAnswer, BuilderDraft, Proposal } from "@/lib/backend/builder-types";
+import { queryWrapper } from "@/test/query";
 
 import { AGENDA, ON } from "./agenda-fixtures";
-import { HISTORY as CHANNEL_HISTORY, page as channelPage } from "./channel-fixtures";
+import { HISTORY as CHANNEL_HISTORY, page as channelPage, source as knowledgeSource } from "./channel-fixtures";
 import { HISTORY, REVIEW, job, noWait, ok as okData, preview, session, suite, test } from "./quality-fixtures";
+
+/** Spec 082: «Qué sabe» and the Knowledge list read one query, so every render lives under React Query. */
+const render: typeof rtlRender = ((ui: React.ReactElement, opts?: Parameters<typeof rtlRender>[1]) =>
+  rtlRender(ui, { wrapper: queryWrapper(), ...opts })) as typeof rtlRender;
 
 const toast = vi.hoisted(() => Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }));
 vi.mock("sonner", () => ({ toast }));
@@ -801,6 +806,18 @@ describe("la pantalla del agente · como el prototipo", () => {
     expect(within(row("knows")).getByRole("button", { name: "Enseñar" })).toBeVisible();
     await user.click(within(row("knows")).getByRole("button", { name: "Cerrar «Qué sabe»" }));
     expect(within(row("knows")).getByRole("button", { name: "Editar «Qué sabe»" })).toHaveFocus();
+  });
+
+  it("spec 082 (2.2): «Qué sabe» cuenta solo las fuentes vivas, de la misma lectura que la lista", () => {
+    const live = knowledgeSource();
+    const gone = knowledgeSource({
+      id: "00000000-0000-4000-8000-0000000000d9",
+      title: "Carta vieja",
+      removed_at: new Date().toISOString(),
+      restore_until: new Date(Date.now() + 600_000).toISOString(),
+    });
+    screenWith({}, { ...sections, knowledge: { data: { items: [live, gone], business_sources: 0 }, canWrite: true } });
+    expect(within(row("knows")).getByText(/1 fuente propia/)).toBeVisible();
   });
 
   it("una habilidad con su conector lo dice; la que no lo tiene lleva a la pestaña Conectores", async () => {

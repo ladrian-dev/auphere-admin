@@ -287,9 +287,22 @@ class AgentChannelOut(BaseModel):
     allowed: list[Action] = Field(default_factory=list)
 
 
+class PendingOwnerLinkOut(BaseModel):
+    """Un enlace del dueño pendiente: su canal, su modo y su caducidad, nunca
+    el enlace (31.7)."""
+
+    id: uuid.UUID
+    channel: str
+    mode: str
+    expires_at: datetime
+
+
 class AgentChannelsOut(BaseModel):
     channels: list[AgentChannelOut]
+    #: El enlace de WhatsApp pendiente, como siempre.
     pending_link: dict[str, Any] | None = None
+    #: Spec 085: uno por canal (WhatsApp, Instagram, Messenger).
+    pending_links: list[PendingOwnerLinkOut] = Field(default_factory=list)
     #: Spec 049: Instagram / Messenger this partner may connect (with the
     #: Facebook Login for Business configuration each opens); ``None`` when
     #: the partner does not have them — the wizard keeps them unavailable.
@@ -601,38 +614,14 @@ async def move_channel(
 ) -> ChannelPageOut:
     """Pasar el número a otro agente (34.2): vale desde el siguiente mensaje y
     conserva la configuración del canal y las conversaciones. El destino puede
-    estar en pausa; un borrador o un archivado no."""
+    estar en pausa; un borrador o un archivado no (``svc.move_channel``)."""
     channel = await _channel(scope, channel_id)
-    target = await scope.session.get(Agent, body.to_agent_id)
-    if (
-        target is None
-        or target.tenant_id != scope.tenant.id
-        or target.lifecycle not in {"published", "paused"}
-    ):
-        raise HTTPException(status_code=422, detail={"code": "unknown_target_agent"})
-    before = channel.agent_id
-    if before == target.id:
-        return await page(scope, channel)
-    channel.agent_id = target.id
-    await scope.session.flush()
-    # «A todos» no puede llevar a un agente de solo administradores (32.5): un
-    # número abierto no se mueve a uno de esos; antes se pasa a «Solo mi equipo».
-    if channel.audience_mode == "everyone" and await svc.admin_only_template(
-        scope.session, channel
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "audience_admin_only_template", "fix": "team_only"},
+    try:
+        await svc.move_channel(
+            scope.session, channel, to_agent_id=body.to_agent_id, actor=scope.principal.actor
         )
-    scope.session.add(
-        _audit(
-            scope,
-            channel,
-            "channel.moved",
-            {"from": str(before) if before else None, "to": str(target.id)},
-        )
-    )
-    await scope.session.flush()
+    except svc.ChannelConfigError as exc:
+        raise _error(exc) from None
     return await page(scope, channel)
 
 
@@ -821,7 +810,7 @@ async def agent_channels(
 
     if await principal_agent_id(scope.session) == agent.id:
         owned = sa.or_(owned, Channel.agent_id.is_(None))
-    from .channels import INTERNAL_PROVIDERS
+    from nexus_api.services.channel_quota import INTERNAL_PROVIDERS
 
     rows = (
         await scope.session.scalars(
@@ -835,17 +824,27 @@ async def agent_channels(
             .order_by(Channel.created_at, Channel.id)
         )
     ).all()
-    link = await scope.session.scalar(
-        sa.select(ChannelSignupLink).where(
-            ChannelSignupLink.tenant_id == scope.tenant.id,
-            ChannelSignupLink.agent_id == agent.id,
-            ChannelSignupLink.consumed_at.is_(None),
-            ChannelSignupLink.revoked_at.is_(None),
+    links = (
+        await scope.session.scalars(
+            sa.select(ChannelSignupLink)
+            .where(
+                ChannelSignupLink.tenant_id == scope.tenant.id,
+                ChannelSignupLink.agent_id == agent.id,
+                ChannelSignupLink.consumed_at.is_(None),
+                ChannelSignupLink.revoked_at.is_(None),
+                ChannelSignupLink.expires_at > datetime.now(UTC),
+            )
+            .order_by(ChannelSignupLink.created_at)
         )
-    )
+    ).all()
     pending = None
-    if link is not None and link.expires_at > datetime.now(UTC):
-        pending = {"id": str(link.id), "mode": link.mode, "expires_at": link.expires_at.isoformat()}
+    for link in links:
+        if link.channel == "whatsapp":
+            pending = {
+                "id": str(link.id),
+                "mode": link.mode,
+                "expires_at": link.expires_at.isoformat(),
+            }
     can_write = "channels:write" in scope.principal.permissions
     others = bool(
         await scope.session.scalar(
@@ -881,6 +880,12 @@ async def agent_channels(
             for c in rows
         ],
         pending_link=pending,
+        pending_links=[
+            PendingOwnerLinkOut(
+                id=link.id, channel=link.channel, mode=link.mode, expires_at=link.expires_at
+            )
+            for link in links
+        ],
         meta_social=(
             MetaSocialOfferOut.model_validate(meta_social_service.offer(scope.principal.partner))
             if meta_social_service.enabled_kinds(scope.principal.partner)
@@ -892,7 +897,11 @@ async def agent_channels(
 class OwnerLinkIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    mode: Literal["coexistence", "cloud_api", "whatsapp_login"] = "coexistence"
+    #: Spec 085: el canal que conecta el dueño. Instagram y Messenger no llevan
+    #: modo: el dueño elige cómo entra a Meta en su página.
+    channel: Literal["whatsapp", "instagram", "messenger"] = "whatsapp"
+    #: Solo WhatsApp; sin él, coexistencia, como siempre.
+    mode: Literal["coexistence", "cloud_api", "whatsapp_login"] | None = None
     #: «Revocar y crear»: revoca el pendiente del agente y crea otro (31.2).
     replace: bool = False
 
@@ -901,6 +910,7 @@ class OwnerLinkOut(BaseModel):
     id: uuid.UUID
     #: Solo en esta respuesta: se guarda la huella, nunca el enlace (31.1).
     url: str
+    channel: str
     mode: str
     expires_at: datetime
 
@@ -915,19 +925,31 @@ async def create_owner_link(
     body: OwnerLinkIn, scope: ClientScope = Depends(agent_in_path("channels:write"))
 ) -> OwnerLinkOut:
     """El enlace para que el dueño conecte el número desde su teléfono u
-    ordenador, ya para este agente (31.1)."""
+    ordenador, ya para este agente (31.1). Spec 085: también Instagram y
+    Messenger, con la misma disponibilidad que conectarlos desde la consola."""
     from nexus_api.services.channel_signup_links import mint_link
 
+    if body.channel == "whatsapp":
+        mode: str | None = body.mode or "coexistence"
+    else:
+        if body.channel not in meta_social_service.enabled_kinds(scope.principal.partner):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not Found")
+        mode = body.mode  # mint_link refuses any mode the partner picks here
     minted = await mint_link(
         scope.session,
         tenant_id=scope.tenant.id,
-        mode=body.mode,
+        channel=body.channel,
+        mode=mode,
         actor=scope.principal.actor,
         agent_id=scope.agent_id,
         replace=body.replace,
     )
     return OwnerLinkOut(
-        id=minted.link.id, url=minted.url, mode=minted.link.mode, expires_at=minted.link.expires_at
+        id=minted.link.id,
+        url=minted.url,
+        channel=minted.link.channel,
+        mode=minted.link.mode,
+        expires_at=minted.link.expires_at,
     )
 
 

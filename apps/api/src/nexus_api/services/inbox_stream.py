@@ -13,6 +13,12 @@ haya leído por su ruta con RLS.
 
 Publicar no falla nunca hacia fuera: el tiempo real es comodidad, no una
 frontera; si Redis no está, la consola sondea (y lo dice).
+
+Spec 082: el mismo canal lleva ``reservations.changed`` («algo cambió en
+Reservas»), sin ningún dato de la reserva ni del cliente final. Lo publica
+``reservations.live`` después del commit de cualquier escritura que deja
+historial (``core.add_event``), y la línea solo lo reenvía a quien tiene el
+módulo ``reservas``.
 """
 
 from __future__ import annotations
@@ -28,6 +34,8 @@ from redis.asyncio import Redis
 log = structlog.get_logger(__name__)
 
 EVENTS = frozenset({"conversation.updated", "message.new", "message.status"})
+#: Spec 082 (contrato ``realtime-082.md``): un hecho sin datos, del negocio.
+RESERVATIONS_EVENT = "reservations.changed"
 
 
 def inbox_channel(tenant_id: uuid.UUID) -> str:
@@ -65,4 +73,29 @@ async def publish_inbox_event(
         log.warning("inbox_stream.publish_failed", tenant_id=str(tenant_id), error=str(exc))
 
 
-__all__ = ["EVENTS", "inbox_channel", "publish_inbox_event"]
+async def publish_reservations_changed(redis: Redis | None, *, tenant_id: uuid.UUID) -> None:
+    """Spec 082 (1.4, 1.6): «algo cambió en Reservas», en el canal del negocio.
+    Sin id de reserva, sin nombre ni teléfono: quien lo oye vuelve a leer por
+    sus rutas con RLS. Nunca lanza."""
+    if redis is None:
+        try:
+            from nexus_api.core.redis_client import get_redis
+
+            redis = get_redis()
+        except Exception as exc:  # pragma: no cover - defensivo
+            log.warning("inbox_stream.no_redis", error=str(exc))
+            return
+    body = {"event": RESERVATIONS_EVENT, "at": datetime.now(UTC).isoformat()}
+    try:
+        await redis.publish(inbox_channel(tenant_id), json.dumps(body))
+    except Exception as exc:
+        log.warning("inbox_stream.publish_failed", tenant_id=str(tenant_id), error=str(exc))
+
+
+__all__ = [
+    "EVENTS",
+    "RESERVATIONS_EVENT",
+    "inbox_channel",
+    "publish_inbox_event",
+    "publish_reservations_changed",
+]

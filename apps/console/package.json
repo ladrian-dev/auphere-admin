@@ -21,6 +21,7 @@
     "@hookform/resolvers": "^5.2.2",
     "@nexus/companion-ui": "workspace:*",
     "@nexus/ui": "workspace:*",
+    "@tanstack/react-query": "^5.108.4",
     "jose": "^6.2.9",
     "lucide-react": "^1.16.0",
     "next": "16.2.11",

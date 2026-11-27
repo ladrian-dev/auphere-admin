@@ -6,15 +6,16 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 import { toast } from "sonner";
 
-import { Button, Callout, StatusBadge } from "@nexus/ui";
+import { Button, Callout, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, StatusBadge } from "@nexus/ui";
 
 import { agentChannelsAction } from "@/app/(console)/clients/[ref]/agents/channel-actions";
 import { BrandLogo, hasBrandLogo } from "@/components/brand-logo";
 import { useMetaSocialConnect } from "@/components/channels/meta-social-connect";
 import type { MetaSignupConfig } from "@/components/channels/whatsapp-connect";
 import { useT } from "@/i18n/client";
-import type { AgentChannel, AgentChannels, ChannelPage } from "@/lib/backend/channel-config-types";
-import type { MetaSocialConnectResult, WhatsAppSignupResult } from "@/lib/backend/channels";
+import type { MessageKey } from "@/i18n/messages";
+import type { AgentChannel, AgentChannels, ChannelPage, PendingOwnerLink } from "@/lib/backend/channel-config-types";
+import type { MetaSocialConnectResult, MetaSocialKind, WhatsAppSignupResult } from "@/lib/backend/channels";
 
 import type { Result } from "./builder-model";
 import { ChannelMenu, UnlinkPending, type ChannelMenuActions } from "./channel-menu";
@@ -47,6 +48,10 @@ type Unlinked = { id: string; identifier: string };
  *   que despliega el mismo asistente debajo.
  * - Con un enlace del dueño pendiente: su tarjeta arriba, y WhatsApp no abre
  *   otra conexión hasta revocarlo.
+ * - Spec 085: Instagram y Messenger también se pueden dejar al dueño con un
+ *   enlace. Bajo el asistente, «Enviar enlace de Instagram al cliente» abre el
+ *   mismo panel del enlace (`OwnerLinkPanel`, sin modo); el pendiente de cada
+ *   canal tiene su tarjeta arriba, como el de WhatsApp.
  *
  * `pages` trae, de cada número, lo que su ⋯ y su línea necesitan. Sin su
  * página, el número se ve igual, sin ⋯. Quien solo lee no ve el asistente.
@@ -86,6 +91,8 @@ export function AgentChannelsPanel({
   const [stage, setStage] = React.useState<ConnectStage | null>(null);
   const [connecting, setConnecting] = React.useState(false);
   const [adding, setAdding] = React.useState(false);
+  // Spec 085: the Instagram / Messenger link being created, in its dialog.
+  const [linking, setLinking] = React.useState<MetaSocialKind | null>(null);
   const wizardTitle = React.useRef<HTMLHeadingElement>(null);
   const listTitle = React.useId();
   const reloadAction = actions.reload ?? agentChannelsAction;
@@ -127,6 +134,19 @@ export function AgentChannelsPanel({
 
   const social = useMetaSocialConnect({ refId, offer: data?.meta_social ?? null, onConnected: placeSocial });
   const socialKinds = (data?.meta_social?.channels ?? []).map((c) => c.kind);
+  const socialPending = (kind: MetaSocialKind) => (data?.pending_links ?? []).find((l) => l.channel === kind) ?? null;
+
+  /** Spec 085: a link created or revoked for Instagram or Messenger. */
+  function setSocialPending(kind: MetaSocialKind, pending: PendingOwnerLink | null) {
+    setData((prev) =>
+      prev
+        ? {
+            ...prev,
+            pending_links: [...(prev.pending_links ?? []).filter((l) => l.channel !== kind), ...(pending ? [{ ...pending, channel: kind }] : [])],
+          }
+        : prev,
+    );
+  }
 
   if (!data) {
     return (
@@ -192,14 +212,27 @@ export function AgentChannelsPanel({
   // «¡Listo!» while the person was still choosing).
   const step: WizardStep = stage !== null || connecting || social.working ? 1 : 0;
   const count = (kind: string) => list.filter((c) => c.type === kind).length;
+  const linkable = socialKinds.filter((kind) => !socialPending(kind));
   const wizard = canWrite ? (
-    <ChannelWizard
-      step={step}
-      connected={{ whatsapp: count("whatsapp"), instagram: count("instagram"), messenger: count("messenger") }}
-      onConnect={pick}
-      headingRef={wizardTitle}
-      available={socialKinds}
-    />
+    <div className="grid min-w-0 gap-3">
+      <ChannelWizard
+        step={step}
+        connected={{ whatsapp: count("whatsapp"), instagram: count("instagram"), messenger: count("messenger") }}
+        onConnect={pick}
+        headingRef={wizardTitle}
+        available={socialKinds}
+      />
+      {linkable.length ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-2" data-slot="social-owner-links">
+          <span className="text-sm text-pretty text-muted-foreground">{t("channels.proto.link.social.ask")}</span>
+          {linkable.map((kind) => (
+            <Button key={kind} variant="outline" size="sm" onClick={() => setLinking(kind)}>
+              {t(`ch.link.open.${kind}` as MessageKey)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   ) : null;
 
   return (
@@ -216,6 +249,27 @@ export function AgentChannelsPanel({
           onRevoked={() => setData((prev) => (prev ? { ...prev, pending_link: null } : prev))}
         />
       ) : null}
+
+      {socialKinds.map((kind) => {
+        const pending = socialPending(kind);
+        // Keyed by channel, not by link: «Crear otro enlace» replaces the
+        // pending one, and a new key would remount the card and drop the link
+        // it just created — the only time it can be shown (31.1).
+        return pending ? (
+          <OwnerLinkPanel
+            key={kind}
+            refId={refId}
+            agentId={agentId}
+            channel={kind}
+            pending={pending}
+            canWrite={canWrite}
+            fromPhone={fromPhone}
+            actions={actions.ownerLink}
+            onCreated={(next) => setSocialPending(kind, next)}
+            onRevoked={() => setSocialPending(kind, null)}
+          />
+        ) : null;
+      })}
 
       {list.length ? (
         <section aria-labelledby={listTitle} className="grid min-w-0 gap-4">
@@ -295,6 +349,31 @@ export function AgentChannelsPanel({
       ))}
 
       {canWrite ? social.dialog : null}
+
+      {canWrite ? (
+        <Dialog open={linking !== null} onOpenChange={(o) => !o && setLinking(null)}>
+          <DialogContent data-slot="social-owner-link">
+            <DialogHeader>
+              <DialogTitle>{t("channels.proto.link.title")}</DialogTitle>
+              <DialogDescription className="max-w-prose text-pretty">{linking ? t(`ch.link.body.${linking}` as MessageKey) : null}</DialogDescription>
+            </DialogHeader>
+            {linking ? (
+              <OwnerLinkPanel
+                refId={refId}
+                agentId={agentId}
+                channel={linking}
+                pending={null}
+                canWrite={canWrite}
+                fromPhone={fromPhone}
+                actions={actions.ownerLink}
+                bare
+                onCreated={(next) => setSocialPending(linking, next)}
+                onDone={() => setLinking(null)}
+              />
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      ) : null}
 
       {canWrite ? (
         <ConnectWhatsApp

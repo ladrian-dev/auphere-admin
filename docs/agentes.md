@@ -672,8 +672,9 @@ repite herramientas (`tool_once`).
    una cita hecha, confirmada o cambiada ahora).
 
    **Spec 080:** también respalda una reserva viva **del cliente de la
-   conversación** con un evento `created` o `moved` desde que empezó el ciclo
-   (`coalesce(context_from, attended_at)`). La hace quien sea: el agente, una
+   conversación** con un evento `created`, `moved` o `waitlist_accepted` (el
+   adelanto al aceptar una oferta de la lista de espera, que mueve la reserva sin
+   `moved`) desde que empezó el ciclo (`coalesce(context_from, attended_at)`). La hace quien sea: el agente, una
    persona desde la agenda o el cliente (`booking_brake.load_customer_backing`).
    Es el caso de Jemma del 23-nov: una persona reservó desde la agenda, sin
    conversación en la reserva, devolvió la conversación, y el «gracias» siguiente

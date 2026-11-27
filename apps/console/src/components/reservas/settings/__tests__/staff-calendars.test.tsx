@@ -104,7 +104,7 @@ describe("Calendarios de Google, profesional por profesional", () => {
     await waitFor(() => expect(a.connectStaffCalendarAction).toHaveBeenCalledWith({ id: LUCIA, share: true }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(LINK));
     expect(toasts.success).toHaveBeenCalled();
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
     expect(assign).not.toHaveBeenCalled();
   });
 
@@ -144,7 +144,7 @@ describe("Calendarios de Google, profesional por profesional", () => {
     expect(within(row()).getByText(/Esperando a que autorice/)).toBeInTheDocument();
     await userEvent.click(within(row()).getByRole("button", { name: "Comprobar el calendario de Lucía" }));
     await waitFor(() => expect(a.refreshStaffCalendarAction).toHaveBeenCalledWith({ id: LUCIA }));
-    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    await waitFor(() => expect(a.reservasScreenAction).toHaveBeenCalled());
     expect(toasts.success).toHaveBeenCalled();
   });
 
@@ -208,7 +208,7 @@ describe("Sin mezclar calendarios", () => {
     await userEvent.click(within(dialog).getByRole("radio", { name: /Sala de arriba/ }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() => expect(a.staffCalendarAction).toHaveBeenCalledWith({ id: LUCIA, calendar_id: "sala@group" }));
-    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    await waitFor(() => expect(a.reservasScreenAction).toHaveBeenCalled());
   });
 
   it("si otro se lo quedó mientras tanto, lo dice con su nombre", async () => {
@@ -258,7 +258,7 @@ describe("Desconectar", () => {
     expect(within(dialog).getByText(/quitaremos de él los «Ocupado»/)).toBeInTheDocument();
     await userEvent.click(within(dialog).getByRole("button", { name: "Desconectar" }));
     await waitFor(() => expect(a.staffCalendarAction).toHaveBeenCalledWith({ id: LUCIA, calendar_id: null }));
-    await waitFor(() => expect(router.refresh).toHaveBeenCalled());
+    await waitFor(() => expect(a.reservasScreenAction).toHaveBeenCalled());
   });
 
   it("sin conectar no hay menú: no hay nada más que hacer", () => {
@@ -281,7 +281,7 @@ describe("La vuelta de Google", () => {
     open({ status: "pending", calendar_name: null, account: null, last_sync_at: null, last_error: null });
     await waitFor(() => expect(a.refreshStaffCalendarAction).toHaveBeenCalledWith({ id: LUCIA }));
     await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Calendario de Lucía conectado."));
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
     const cleaned = String(router.replace.mock.calls[0]?.[0]);
     expect(cleaned).toContain("tab=settings");
     expect(cleaned).not.toContain("calendar_return");

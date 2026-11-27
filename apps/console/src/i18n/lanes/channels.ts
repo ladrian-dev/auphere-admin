@@ -21,14 +21,23 @@ export const channelsMessages = {
   },
   "ch.link.pending.title": { es: "Enlace enviado al cliente", en: "Link sent to the client" },
   "ch.link.pending.line": {
-    es: "Hay un enlace sin usar, en modo {mode}. Caduca el {date}.",
-    en: "There is an unused link, in {mode} mode. It expires on {date}.",
+    es: "Hay un enlace sin usar para {channel}, en modo {mode}. Caduca el {date}.",
+    en: "There is an unused {channel} link, in {mode} mode. It expires on {date}.",
+  },
+  // Spec 085: Instagram y Messenger no tienen modo; el dueño elige cómo entra a Meta.
+  "ch.link.pending.line.social": {
+    es: "Hay un enlace sin usar para {channel}. Caduca el {date}.",
+    en: "There is an unused {channel} link. It expires on {date}.",
   },
   "ch.link.revoke": { es: "Anular enlace", en: "Revoke link" },
   "ch.link.revoke.title": { es: "Anular el enlace", en: "Revoke the link" },
   "ch.link.revoke.body": {
     es: "El cliente ya no podrá conectar su WhatsApp con ese enlace. Puedes enviarle otro cuando quieras.",
     en: "The client will no longer be able to connect their WhatsApp with that link. You can send another one at any time.",
+  },
+  "ch.link.revoke.body.social": {
+    es: "El cliente ya no podrá conectar su {channel} con ese enlace. Puedes enviarle otro cuando quieras.",
+    en: "The client will no longer be able to connect their {channel} with that link. You can send another one at any time.",
   },
   "ch.link.revoked": { es: "Enlace anulado.", en: "Link revoked." },
   "ch.link.creating": { es: "Creando…", en: "Creating…" },
@@ -46,6 +55,30 @@ export const channelsMessages = {
     en: "Hi. To connect your business WhatsApp to your agent, open this link on your phone and follow Meta's steps: {url}",
   },
   "ch.link.subject": { es: "Conecta el WhatsApp de tu negocio", en: "Connect your business WhatsApp" },
+  // ── spec 085: the same link for Instagram ─────────────────────────
+  // Its own words next to WhatsApp's «Enviar enlace al cliente»: on one page,
+  // three equal buttons could not be told apart.
+  "ch.link.open.instagram": { es: "Enviar enlace de Instagram al cliente", en: "Send the client an Instagram link" },
+  "ch.link.body.instagram": {
+    es: "El dueño del negocio abre el enlace en su teléfono o su computadora, entra a Meta con su cuenta y elige el Instagram de su negocio. Sus datos de Meta no pasan por tu equipo. El enlace sirve una vez y caduca en 7 días.",
+    en: "The business owner opens the link on their phone or computer, signs in to Meta with their own account and picks their business Instagram. Their Meta details never go through your device. The link works once and expires in 7 days.",
+  },
+  "ch.link.message.instagram": {
+    es: "Hola. Para que tu agente responda los mensajes de tu Instagram, abre este enlace y sigue los pasos de Meta: {url}",
+    en: "Hi. For your agent to answer your Instagram messages, open this link and follow Meta's steps: {url}",
+  },
+  "ch.link.subject.instagram": { es: "Conecta el Instagram de tu negocio", en: "Connect your business Instagram" },
+  // ── spec 085: and for Messenger ───────────────────────────────────
+  "ch.link.open.messenger": { es: "Enviar enlace de Messenger al cliente", en: "Send the client a Messenger link" },
+  "ch.link.body.messenger": {
+    es: "El dueño del negocio abre el enlace en su teléfono o su computadora, entra con Facebook y elige la Página de su negocio. Sus datos de Meta no pasan por tu equipo. El enlace sirve una vez y caduca en 7 días.",
+    en: "The business owner opens the link on their phone or computer, signs in with Facebook and picks their business Page. Their Meta details never go through your device. The link works once and expires in 7 days.",
+  },
+  "ch.link.message.messenger": {
+    es: "Hola. Para que tu agente responda los mensajes de la Página de tu negocio en Messenger, abre este enlace y sigue los pasos de Meta: {url}",
+    en: "Hi. For your agent to answer your business Page's Messenger messages, open this link and follow Meta's steps: {url}",
+  },
+  "ch.link.subject.messenger": { es: "Conecta el Messenger de tu negocio", en: "Connect your business Messenger" },
   // ── the page the owner opens ──────────────────────────────────────
   "connect.title": { es: "Conecta el WhatsApp de {name}", en: "Connect {name}'s WhatsApp" },
   "connect.body": {
@@ -72,6 +105,27 @@ export const channelsMessages = {
   "connect.dead.unknown": { es: "Este enlace no existe", en: "This link does not exist" },
   "connect.dead.body": { es: "Pide uno nuevo a quien te lo envió.", en: "Ask whoever sent it for a new one." },
   "connect.error.quota": { es: "Este negocio ya tiene todos los números que puede conectar. Avisa a quien te envió el enlace.", en: "This business already has every number it can connect. Tell whoever sent you the link." },
+  // ── spec 085: the owner's page for Instagram ──────────────────────
+  "connect.social.title.instagram": { es: "Conecta el Instagram de {name}", en: "Connect {name}'s Instagram" },
+  "connect.social.body.instagram": {
+    es: "Vas a abrir la ventana de Meta. Entra con tu cuenta, elige el Instagram de tu negocio y acepta los permisos. Tu agente responderá sus mensajes directos.",
+    en: "You are about to open Meta's window. Sign in, pick your business Instagram and accept the permissions. Your agent will answer its direct messages.",
+  },
+  "connect.social.start.instagram": { es: "Conectar mi Instagram", en: "Connect my Instagram" },
+  "connect.social.done.instagram": { es: "¡Listo! Tu Instagram está conectado", en: "Done! Your Instagram is connected" },
+  // ── spec 085: the owner's page for Messenger ──────────────────────
+  "connect.social.title.messenger": { es: "Conecta el Messenger de {name}", en: "Connect {name}'s Messenger" },
+  "connect.social.body.messenger": {
+    es: "Vas a entrar con Facebook. Elige la Página de tu negocio y acepta los permisos. Tu agente responderá los mensajes que le escriban a la Página.",
+    en: "You are about to sign in with Facebook. Pick your business Page and accept the permissions. Your agent will answer the messages people send the Page.",
+  },
+  "connect.social.start.messenger": { es: "Entrar con Facebook", en: "Sign in with Facebook" },
+  "connect.social.done.messenger": { es: "¡Listo! Tu Messenger está conectado", en: "Done! Your Messenger is connected" },
+  "connect.social.done.body": { es: "{name} ya está con tu agente. Puedes cerrar esta página.", en: "{name} is now with your agent. You can close this page." },
+  "connect.social.tell": {
+    es: "Si no puedes arreglarlo tú, avisa a quien te envió el enlace.",
+    en: "If it is not something you can fix, tell whoever sent you the link.",
+  },
   "connect.error.generic": { es: "No se pudo terminar la conexión. Vuelve a intentarlo. Si sigue fallando, avisa a quien te envió el enlace.", en: "The connection could not be finished. Try again. If it keeps failing, tell whoever sent you the link." },
   "ch.connect.another": { es: "Conectar otro número", en: "Connect another number" },
   "ch.connect.mode": { es: "Modo de conexión", en: "Connection mode" },

@@ -12,6 +12,8 @@ the console hands the single-use ``code`` to :meth:`MetaSocialConnector.begin`:
    ``/me/accounts`` (Pages, each with its Page token).
 4. One asset → connect it. Several → keep the token encrypted in Redis for
    ten minutes and return the list; :meth:`complete` connects the one picked.
+   The pending choice remembers where it began (``origin``: ``console`` or
+   ``link:{id}``, spec 085): only that place may complete it.
 5. ``POST /{id}/subscribed_apps`` with the channel's fields, the profile for
    the card, the channel row (``status=active``) and the credential,
    encrypted on the row. The tenant-resolver cache is invalidated so the next
@@ -66,6 +68,10 @@ log = structlog.get_logger(__name__)
 Kind = Literal["instagram", "messenger"]
 PENDING_TTL_SECONDS = 600
 _PENDING_KEY = "nexus:meta_social:pending:{tenant}:{nonce}"
+#: Spec 085 (7.3): where a pending choice began. The console's own connection
+#: uses this; an owner link uses ``link:{link_id}``. A value stored before the
+#: origin existed belongs to the console.
+CONSOLE_ORIGIN = "console"
 
 
 def provider_of(kind: Kind) -> str:
@@ -125,7 +131,7 @@ class MetaSocialConnector:
 
     # ── connect ─────────────────────────────────────────────────────────
 
-    async def begin(self, *, kind: Kind, code: str) -> ConnectOutcome:
+    async def begin(self, *, kind: Kind, code: str, origin: str = CONSOLE_ORIGIN) -> ConnectOutcome:
         tenant_id = require_current_tenant()
         try:
             envelope = await self._client.exchange_code(app_id=self._app_id, code=code)
@@ -167,6 +173,7 @@ class MetaSocialConnector:
             "business_id": business_id,
             "page_tokens": page_tokens,
             "accounts": [_account_dict(a) for a in accounts],
+            "origin": origin,
         }
         await self._redis.set(
             _PENDING_KEY.format(tenant=tenant_id, nonce=nonce),
@@ -175,7 +182,9 @@ class MetaSocialConnector:
         )
         return ConnectOutcome(status="choose", nonce=nonce, accounts=accounts)
 
-    async def complete(self, *, kind: Kind, nonce: str, account_id: str) -> ConnectOutcome:
+    async def complete(
+        self, *, kind: Kind, nonce: str, account_id: str, origin: str = CONSOLE_ORIGIN
+    ) -> ConnectOutcome:
         tenant_id = require_current_tenant()
         key = _PENDING_KEY.format(tenant=tenant_id, nonce=nonce)
         raw = await self._redis.get(key)
@@ -187,6 +196,10 @@ class MetaSocialConnector:
             raise MetaSocialConnectError("pending_expired") from exc
         if stash.get("kind") != kind:
             raise MetaSocialConnectError("pending_expired")
+        if (stash.get("origin") or CONSOLE_ORIGIN) != origin:
+            # Begun by the console or another link: as if it had expired, and
+            # left in place for the one that began it.
+            raise MetaSocialConnectError("pending_expired", "begun elsewhere")
         accounts = [ConnectableAccount(**a) for a in stash.get("accounts") or []]
         account = next((a for a in accounts if a.id == account_id), None)
         if account is None:

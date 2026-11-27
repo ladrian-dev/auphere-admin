@@ -146,6 +146,12 @@ export function initialsOf(name: string | null | undefined): string {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase();
 }
 
+/** Spec 082 (5.4): the WhatsApp username as «@usuario», whether or not Meta sent the «@». */
+export function atUsername(username: string | null | undefined): string | null {
+  const bare = (username ?? "").trim().replace(/^@+/, "");
+  return bare ? `@${bare}` : null;
+}
+
 /** Same person in two readings — a list row and the thread — compares equal. */
 export function isMe(author: InboxAuthor | null | undefined): boolean {
   return Boolean(author && author.kind === "member" && author.is_me);

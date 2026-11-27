@@ -111,8 +111,10 @@ export function TimeGrid({ label, columns, bounds, onFree }: { label: string; co
               </span>
             ))}
           {showNow ? (
+            // Spec 082 (T041): the solid red and bone, 5.45:1 in both themes. With
+            // `bg-destructive` the dark theme painted bone on light red (2.17:1).
             <span
-              className="absolute right-1 -translate-y-1/2 rounded-sm bg-destructive px-1 text-xs font-medium text-destructive-foreground tabular-nums"
+              className="absolute right-1 -translate-y-1/2 rounded-sm bg-status-danger px-1 text-xs font-medium text-anti-flash tabular-nums"
               style={{ top: px(nowMinutes, bounds.from) }}
             >
               <span className="sr-only">{t("reservas.grid.now", { time: fromMinutes(nowMinutes) })}</span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Clock, MessageCircle, Phone, StickyNote, UserRound } from "lucide-react";
 import Link from "next/link";
 import * as React from "react";
@@ -10,12 +11,12 @@ import { bookingDetailAction, bookingTransitionAction } from "@/app/(console)/re
 import type { MessageKey } from "@/i18n/messages";
 import { formatAmount } from "@/lib/amount";
 import type { Booking, BookingAction, BookingDetail, BookingTransition } from "@/lib/backend/reservas";
+import { keys, unwrap } from "@/lib/query";
 
 import { useReservas, useWords } from "./context";
 import { formatMinutes } from "./model/dates";
 import { bookingSpan } from "./model/day-grid";
 import { eventLine, originLine } from "./model/events";
-import { useActionLoad } from "./model/use-load";
 import { actionButtons, channelKey } from "./model/vocab";
 import { BookingStatus, Initials, useWrite } from "./shared";
 
@@ -54,16 +55,44 @@ export function useTransitionAction() {
  * The side panel of a booking (spec 043, T023/T024): who, when, with whom,
  * how to reach them, its status, where it came from and its history — written
  * from `events[]`, never raw — and **only** the buttons `allowed` brings.
+ *
+ * Spec 082 (R1.2): it reads under `["reservas","booking",id]`, the same root
+ * as the agenda, so whatever re-reads one (a write, a notice of the live line,
+ * the 45 s pass) re-reads the other; a re-read keeps the booking on screen
+ * instead of a skeleton. R1.3: while a status change is on its way, and until
+ * the booking has been read again, its buttons are busy — a second click does
+ * not send a second order with an old version (the 412 of 2026-11-20).
  */
 export function BookingDetailSheet({ id, initial, onClose }: { id: string; initial: Booking | null; onClose: () => void }) {
   const { t } = useReservas();
-  // Each read has its own key: «Reintentar» and the quiet read after a change ask again;
-  // the quiet one keeps the booking on screen meanwhile instead of a skeleton.
-  const [round, setRound] = React.useState(0);
-  const state = useActionLoad<BookingDetail>(`${id}|${round}`, () => bookingDetailAction({ id }), { keepOk: true });
-  const load = () => setRound((n) => n + 1);
+  const qc = useQueryClient();
+  const key = keys.reservasBooking(id);
+  const q = useQuery({ queryKey: key, queryFn: async () => unwrap(await bookingDetailAction({ id })) });
+  const transition = useTransitionAction();
+  // How many reads (and failed reads) the booking had when the change left: the panel
+  // is busy until the answer came AND a newer read, or its failure, landed. The counts
+  // live on the query's state; `isFetching` is what repaints when a read lands.
+  const state = qc.getQueryState(key);
+  const reads = { data: state?.dataUpdateCount ?? 0, error: state?.errorUpdateCount ?? 0 };
+  const [saving, setSaving] = React.useState<{ data: number; error: number; done: boolean } | null>(null);
+  const lock = React.useRef(false);
+  const landed = saving !== null && saving.done && !q.isFetching && (reads.data > saving.data || reads.error > saving.error);
+  const busy = saving !== null && !landed;
 
-  const name = (state.kind === "ok" ? state.data.contact.name : initial?.contact.name) ?? t("reservas.detail.walkinName");
+  const run = (b: BookingDetail, action: BookingTransition) => {
+    if (lock.current || busy) return;
+    lock.current = true;
+    setSaving({ ...reads, done: false });
+    void transition(b, action).then(() => {
+      lock.current = false;
+      setSaving((s) => (s ? { ...s, done: true } : s));
+      // A write that went through already re-read `["reservas"]`; this one only
+      // asks if nothing is on its way (a refusal that did not re-read, say).
+      void qc.invalidateQueries({ queryKey: key }, { cancelRefetch: false });
+    });
+  };
+
+  const name = (q.data ? q.data.contact.name : initial?.contact.name) ?? t("reservas.detail.walkinName");
 
   return (
     <Sheet open onOpenChange={(o) => (!o ? onClose() : undefined)}>
@@ -73,10 +102,10 @@ export function BookingDetailSheet({ id, initial, onClose }: { id: string; initi
           <SheetDescription className="sr-only">{t("reservas.detail.history")}</SheetDescription>
         </SheetHeader>
         <div className="flex min-w-0 flex-col gap-6 px-4 pb-6">
-          {state.kind === "ok" ? (
-            <DetailBody detail={state.data} onChanged={load} />
-          ) : state.kind === "error" ? (
-            <ErrorState title={t("reservas.detail.error")} onRetry={load} retryLabel={t("common.retry")} />
+          {q.data ? (
+            <DetailBody detail={q.data} busy={busy} onTransition={run} />
+          ) : q.isError ? (
+            <ErrorState title={t("reservas.detail.error")} onRetry={() => void q.refetch()} retryLabel={t("common.retry")} />
           ) : (
             <DetailSkeleton label={t("reservas.detail.loading")} />
           )}
@@ -107,10 +136,18 @@ function DetailSkeleton({ label }: { label: string }) {
   );
 }
 
-function DetailBody({ detail: b, onChanged }: { detail: BookingDetail; onChanged: () => void }) {
+function DetailBody({
+  detail: b,
+  busy,
+  onTransition,
+}: {
+  detail: BookingDetail;
+  busy: boolean;
+  onTransition: (b: BookingDetail, action: BookingTransition) => void;
+}) {
   const { t, locale, mode, settings, hasInbox, open } = useReservas();
   const words = useWords();
-  const transition = useTransitionAction();
+  const [clicked, setClicked] = React.useState<BookingAction | null>(null);
   const name = b.contact.name ?? t("reservas.detail.walkinName");
   const span = bookingSpan(b);
   // Spec 056 (13.1): the one money format of the console, in the person's language.
@@ -124,10 +161,12 @@ function DetailBody({ detail: b, onChanged }: { detail: BookingDetail; onChanged
   const origin = originLine(b, { agent: t("reservas.actor.agent"), when: words.instant(b.created_at), channel });
 
   const onAction = (action: BookingAction) => {
+    if (busy) return;
     if (action === "move") return open({ kind: "move", booking: b });
     if (action === "cancel") return open({ kind: "cancel", booking: b });
     // The panel reads the booking again once the change is in (or refused: it shows what is true now).
-    void transition(b, action).then(onChanged);
+    setClicked(action);
+    onTransition(b, action);
   };
 
   return (
@@ -220,6 +259,8 @@ function DetailBody({ detail: b, onChanged }: { detail: BookingDetail; onChanged
                 key={btn.action}
                 size="sm"
                 variant={btn.destructive ? "destructive" : btn.action === "confirm" || btn.action === "arrive" ? "default" : "outline"}
+                loading={busy && clicked === btn.action}
+                disabled={busy}
                 onClick={() => onAction(btn.action)}
               >
                 {t(btn.labelKey)}

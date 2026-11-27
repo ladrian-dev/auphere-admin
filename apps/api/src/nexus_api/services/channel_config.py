@@ -662,6 +662,44 @@ def _audit(channel: Channel, actor: str, action: str, after: Mapping[str, Any]) 
     )
 
 
+async def move_channel(
+    session: AsyncSession, channel: Channel, *, to_agent_id: uuid.UUID, actor: str
+) -> bool:
+    """Pasar el número a otro agente (34.2): vale desde el siguiente mensaje y
+    conserva la configuración del canal y las conversaciones. El destino puede
+    estar en pausa; un borrador o un archivado no. Devuelve si cambió.
+
+    La usan la consola (``POST …/channels/{id}/move``) y, spec 085 (R6), el
+    enlace del dueño que se creó desde un agente.
+    """
+    target = await session.get(Agent, to_agent_id)
+    if (
+        target is None
+        or target.tenant_id != channel.tenant_id
+        or target.lifecycle not in {"published", "paused"}
+    ):
+        raise ChannelConfigError("unknown_target_agent", 422)
+    before = channel.agent_id
+    if before == target.id:
+        return False
+    channel.agent_id = target.id
+    await session.flush()
+    # «A todos» no puede llevar a un agente de solo administradores (32.5): un
+    # número abierto no se mueve a uno de esos; antes se pasa a «Solo mi equipo».
+    if channel.audience_mode == "everyone" and await admin_only_template(session, channel):
+        raise ChannelConfigError("audience_admin_only_template", 409, fix="team_only")
+    session.add(
+        _audit(
+            channel,
+            actor,
+            "channel.moved",
+            {"from": str(before) if before else None, "to": str(target.id)},
+        )
+    )
+    await session.flush()
+    return True
+
+
 async def write_config(
     session: AsyncSession,
     channel: Channel,

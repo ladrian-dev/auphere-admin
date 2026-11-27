@@ -1,41 +1,42 @@
-import { usePathname } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
 import { inboxCountsAction } from "@/app/(console)/inbox/actions";
 import { INBOX_COUNTS_EVENT } from "@/components/inbox/use-inbox-stream";
+import { useLiveStream } from "@/components/live/live-stream";
+import { keys, unwrap } from "@/lib/query";
+
+/** Spec 082 (R3.8): with the live line down, the counter reads every 60 s, as before. */
+export const UNREAD_POLL_MS = 60_000;
 
 /**
- * Spec 030 (R3.5): how many conversations this person has not read, for the
- * number next to «Bandeja de entrada». Read on mount and on navigation, every
- * 60 s while the tab is visible, and at once when the open Inbox announces
- * new counts (it is the one listening to the live stream).
+ * Spec 030 (R3.5), spec 082 (R3.7, R3.8): how many conversations this person
+ * has not read — the number next to «Bandeja de entrada» and at the head of the
+ * tab's title. One query (`["inbox","counts"]`) for the whole console: the live
+ * line makes it stale on each conversation event, and the open Inbox hands it
+ * the counts it just read. It polls only while the line is down.
  */
 export function useInboxUnread(enabled: boolean): number {
-  const pathname = usePathname();
-  const [unread, setUnread] = React.useState(0);
+  const qc = useQueryClient();
+  const { status } = useLiveStream();
+  const query = useQuery({
+    queryKey: keys.inboxCounts,
+    queryFn: async () => unwrap(await inboxCountsAction()),
+    enabled,
+    refetchInterval: status === "live" ? false : UNREAD_POLL_MS,
+  });
 
   React.useEffect(() => {
     if (!enabled) return;
-    let alive = true;
-    const load = async () => {
-      const r = await inboxCountsAction();
-      if (alive && r.ok) setUnread(r.data.unread);
-    };
-    void load();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, 60_000);
     const onCounts = (e: Event) => {
-      const detail = (e as CustomEvent<{ unread?: unknown }>).detail;
-      if (typeof detail?.unread === "number") setUnread(detail.unread);
+      const detail = (e as CustomEvent<{ unread?: unknown; waiting?: unknown }>).detail;
+      if (typeof detail?.unread === "number") {
+        qc.setQueryData(keys.inboxCounts, { unread: detail.unread, waiting: typeof detail.waiting === "number" ? detail.waiting : 0 });
+      }
     };
     window.addEventListener(INBOX_COUNTS_EVENT, onCounts);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-      window.removeEventListener(INBOX_COUNTS_EVENT, onCounts);
-    };
-  }, [enabled, pathname]);
+    return () => window.removeEventListener(INBOX_COUNTS_EVENT, onCounts);
+  }, [enabled, qc]);
 
-  return enabled ? unread : 0;
+  return enabled ? (query.data?.unread ?? 0) : 0;
 }

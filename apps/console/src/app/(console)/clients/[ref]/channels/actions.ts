@@ -228,14 +228,27 @@ export async function testSendAction(raw: unknown): Promise<ActionResult<TestSen
   return run(() => backendFor(principal).channelTestSend(body.ref, body.to));
 }
 
-/** Spec 040: a link for the business owner to connect WhatsApp themselves. */
-export async function whatsappSignupLinkAction(
+/** Spec 040: a link for the business owner to connect a channel themselves.
+ *  Spec 085: WhatsApp with its mode; Instagram and Messenger without one —
+ *  the owner picks how to sign in to Meta on their page. */
+export async function signupLinkAction(
   raw: unknown,
-): Promise<ActionResult<{ url: string; mode: string; expires_at: string }>> {
-  const body = z.object({ ref, mode: z.enum(["cloud_api", "coexistence"]) }).parse(raw);
+): Promise<ActionResult<{ url: string; channel: "whatsapp" | "instagram" | "messenger"; mode?: string; expires_at: string }>> {
+  const body = z
+    .discriminatedUnion("channel", [
+      z.object({ ref, channel: z.literal("whatsapp"), mode: z.enum(["cloud_api", "coexistence"]) }),
+      z.object({ ref, channel: z.enum(["instagram", "messenger"]) }).strict(),
+    ])
+    .parse(raw);
   const principal = await requirePrincipal();
   if (!can(principal.role, "channels:write")) return forbidden();
-  return run(() => backendFor(principal).whatsappSignupLink(body.ref, body.mode));
+  const api = backendFor(principal);
+  if (body.channel === "whatsapp") {
+    const res = await run(() => api.whatsappSignupLink(body.ref, body.mode));
+    return res.ok ? { ok: true, data: { ...res.data, channel: "whatsapp" } } : res;
+  }
+  const kind = body.channel;
+  return run(() => api.metaSocialSignupLink(body.ref, kind));
 }
 
 /** Revoke a WhatsApp link the owner has not used (owner, 2026-10-20). */

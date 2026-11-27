@@ -41,6 +41,7 @@ from nexus_api.services.business import hours as business_hours
 from nexus_api.services.business import services_catalog
 from nexus_api.services.business_hours import WEEKDAYS, parse_business_hours
 from nexus_api.services.reservations import engine
+from nexus_api.services.reservations.live import mark_changed
 
 #: Moneda por mercado del negocio (los precios de Servicios no son consumo).
 CURRENCY_BY_MARKET = services_catalog.CURRENCY_BY_MARKET
@@ -381,10 +382,19 @@ def phone_digits(phone: str | None) -> str | None:
 
 
 async def contact_customer(
-    session: AsyncSession, ctx: Ctx, phone: str | None, name: str | None
+    session: AsyncSession,
+    ctx: Ctx,
+    phone: str | None,
+    name: str | None,
+    *,
+    by_person: bool = False,
 ) -> uuid.UUID | None:
     """El contacto del negocio con ese teléfono, o uno nuevo. Sin teléfono, nadie
-    a quien escribir."""
+    a quien escribir.
+
+    Spec 082 (5.5): un contacto nuevo con el nombre que escribió una persona del
+    equipo queda ``name_by: "person"``, y el nombre de perfil de WhatsApp ya no lo
+    cambia (``upsert_customer`` del worker). El del agente no se marca."""
     digits = phone_digits(phone)
     if digits is None:
         return None
@@ -393,7 +403,8 @@ async def contact_customer(
     )
     if found is not None:
         return uuid.UUID(str(found))
-    cust = Customer(tenant_id=ctx.tenant_id, identifier=digits, name=name, preferences={})
+    prefs = {"name_by": "person"} if by_person and name else {}
+    cust = Customer(tenant_id=ctx.tenant_id, identifier=digits, name=name, preferences=prefs)
     session.add(cust)
     await session.flush()
     return cust.id
@@ -409,6 +420,9 @@ def add_event(
     actor: Actor,
     data: dict[str, Any] | None = None,
 ) -> None:
+    # Spec 082 (1.4): toda escritura que deja historial avisa a la agenda abierta,
+    # después del commit y sin datos (``reservations.live``).
+    mark_changed(session, res.tenant_id)
     session.add(
         ReservationEvent(
             tenant_id=res.tenant_id,
@@ -604,7 +618,13 @@ async def create_booking(
     if req.customer_id is not None:
         res.customer_id = req.customer_id
     else:
-        res.customer_id = await contact_customer(session, ctx, res.contact_phone, res.contact_name)
+        res.customer_id = await contact_customer(
+            session,
+            ctx,
+            res.contact_phone,
+            res.contact_name,
+            by_person=req.origin in {"person", "walkin"},
+        )
     if walkin:
         res.status = "arrived"
         res.arrived_at = now

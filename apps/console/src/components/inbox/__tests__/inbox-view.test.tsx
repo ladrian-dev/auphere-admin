@@ -112,6 +112,22 @@ describe("InboxView", () => {
     expect(await screen.findByText("nuevo", {}, { timeout: 2000 })).toBeInTheDocument();
   });
 
+  it("back after a drop, re-reads the list and the open conversation (spec 082, 3.10)", async () => {
+    a.openConversationAction.mockResolvedValue({ ok: true, data: { detail: detail(), thread: { items: [message({ text: "llegó mientras tanto" })], next_before: null } } });
+    renderInbox({ selectedId: ID, open: { detail: detail(), thread: { items: [], next_before: null } } });
+    const es = FakeEventSource.last!;
+    act(() => es.emit("ready", {}));
+    a.listConversationsAction.mockClear();
+    a.openConversationAction.mockClear();
+
+    act(() => es.onerror?.());
+    expect(a.listConversationsAction).not.toHaveBeenCalled();
+    act(() => es.emit("ready", {}));
+    await waitFor(() => expect(a.listConversationsAction).toHaveBeenCalled());
+    await waitFor(() => expect(a.openConversationAction).toHaveBeenCalledWith(expect.objectContaining({ id: ID })));
+    expect(await screen.findByText("llegó mientras tanto")).toBeInTheDocument();
+  });
+
   it("a session that expired (or an Inbox taken away) sends the person where the guard says", async () => {
     reload.mockClear();
     a.openConversationAction.mockResolvedValue({ ok: false, status: 403, message: "forbidden" });

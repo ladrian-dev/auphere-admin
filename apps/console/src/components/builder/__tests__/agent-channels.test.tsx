@@ -138,6 +138,35 @@ describe("la sección Canales del agente", () => {
     expect(toast.success).toHaveBeenCalledWith("Terminado también en Meta.");
   });
 
+  it("spec 085: «Crear otro enlace» desde la tarjeta de Instagram enseña el nuevo para copiarlo", async () => {
+    const user = userEvent.setup();
+    const url = "https://consola.auphere.com/connect/instagram/tok_abcdefghijklmnop";
+    const create = vi.fn(async () => ok({ id: CH2, url, mode: "meta_login", expires_at: "2026-11-03T10:00:00Z", channel: "instagram" as const }));
+    const data = channels({
+      meta_social: { app_id: "app", graph_version: "v26.0", channels: [{ kind: "instagram", config_id: "IG" }] },
+      pending_links: [{ id: LINK, mode: "meta_login", expires_at: "2026-11-02T10:00:00Z", channel: "instagram" }],
+    });
+    const { container } = render(
+      <LocaleProvider locale="es">
+        <AgentChannelsPanel
+          refId={REF}
+          agentId={RECEPCION}
+          channels={data}
+          pages={{ [CH]: page(), [CH2]: null }}
+          canWrite
+          actions={{ reload: vi.fn(async () => ok(data)), ownerLink: { create, revoke: vi.fn() } }}
+        />
+      </LocaleProvider>,
+    );
+    const card = screen.getByRole("region", { name: "Enlace enviado al cliente · Instagram" });
+    expect(await axeViolations(container)).toEqual([]);
+    await user.click(within(card).getByRole("button", { name: "Crear otro enlace" }));
+    await user.click(screen.getByRole("button", { name: "Revocar y crear" }));
+    expect(create).toHaveBeenCalledWith({ ref: REF, agent: RECEPCION, channel: "instagram", replace: true });
+    // The link is shown only once: the card must not lose it when the new pending one arrives.
+    expect(await screen.findByRole("textbox", { name: "Enlace para el dueño" })).toHaveValue(url);
+  });
+
   it("si no se pudieron leer los números, lo dice y deja reintentar", async () => {
     const user = userEvent.setup();
     const { actions } = panel(null);
