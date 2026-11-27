@@ -33,11 +33,11 @@ from nexus_api.db.models import (
     CHANNEL_SIGNUP_LINK_TTL,
     Channel,
     ChannelSignupLink,
-    ChannelStatus,
     Partner,
     Tenant,
 )
 from nexus_api.repositories.audit import AuditRepository
+from nexus_api.services.channel_quota import count_connected_channels, is_reconnect
 from nexus_api.services.connectors import service as connector_service
 from nexus_api.services.meta_signup_service import complete_meta_signup
 from nexus_api.services.partner_provisioning import activate_tenant_if_ready
@@ -46,8 +46,6 @@ log = structlog.get_logger(__name__)
 
 #: The UNIQUE that says «this number already belongs to a client» (spec 021).
 _NUMBER_UNIQUE = "uq_channels_live_number"
-#: Providers that are not a client's channel (the Playground's).
-_INTERNAL_PROVIDERS = ("qa_playground",)
 
 MODES = ("coexistence", "cloud_api", "whatsapp_login")
 
@@ -271,18 +269,13 @@ async def connect_with_link(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"code": "link_unknown"})
     partner = await session.get(Partner, tenant.partner_id) if tenant.partner_id else None
     if partner is not None:
-        used = int(
-            await session.scalar(
-                sa.select(sa.func.count())
-                .select_from(Channel)
-                .where(
-                    Channel.status != ChannelStatus.DISCONNECTED,
-                    Channel.provider.not_in(_INTERNAL_PROVIDERS),
-                )
-            )
-            or 0
-        )
-        if used >= partner.max_channels_per_client:
+        # The console's rule (``services/channel_quota``): Instagram and
+        # Messenger do not take a number's slot (spec 049), and authorising
+        # again a number this client already has is not another one (076, 4.3).
+        used = await count_connected_channels(session)
+        if used >= partner.max_channels_per_client and not await is_reconnect(
+            session, payload.phone_number_id
+        ):
             # Before Meta is called: the code stays unused for a retry.
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail={"code": "channel_quota_full"}
