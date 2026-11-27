@@ -13,6 +13,15 @@
 | **Nota de KB que la justifica** | `research/2026-11-26-beta-jemma-p0-p1.md`, «Enlace de conexión para Instagram y Messenger (comprobado el 2026-11-27)». |
 | **Qué se mide** | Nada nuevo. |
 
+## Clarificaciones
+
+### Sesión 2026-11-27
+
+- P: En el enlace de Instagram, ¿quién elige cómo entra el dueño a Meta, con Facebook y su Página o con Instagram? → R: El dueño, en su página (requisito 2.2). El partner crea el enlace sin preguntar nada (requisito 1.3).
+- P: ¿Un enlace conecta un solo canal, o Instagram y Messenger a la vez? → R: Un canal por enlace, igual que WhatsApp. Para los dos, el partner envía dos enlaces.
+- P: El enlace de WhatsApp cuenta Instagram y Messenger como números, y eso ya ocurre en producción. ¿Cuándo se arregla? → R: Aparte, como bug y ya, con la regla entera de la consola, incluida la excepción de volver a autorizar un número. Sale de esta spec (Fuera de alcance).
+- P: Cuando la 085 esté lista, ¿cómo se abre a los partners? → R: A todos, sin interruptor nuevo, y solo después de las dos pruebas en vivo de Supuestos.
+
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
 ### Historia 1 — El cliente conecta su Instagram desde un enlace (Prioridad: P1)
@@ -57,20 +66,6 @@ Si la persona administra más de una cuenta de Instagram o más de una Página, 
 
 1. **Dado** que Meta devuelve dos Páginas, **cuando** el dueño elige una, **entonces** se conecta esa y no la otra.
 2. **Dado** el diálogo de elección abierto, **cuando** el dueño lo cancela, **entonces** no se conecta nada y el enlace sigue valiendo.
-
----
-
-### Historia 4 — Un enlace de WhatsApp no tropieza con Instagram ni con Messenger (Prioridad: P1)
-
-Hoy, el enlace de WhatsApp cuenta las cuentas de Instagram y las Páginas como si fueran números. Un cliente con Instagram conectado y una plaza de número libre recibe «Este negocio ya tiene todos los números que puede conectar». La consola no los cuenta (spec 049). El enlace aplica la misma regla.
-
-**Por qué esta prioridad**: ya puede estar pasando en producción, y al abrir los enlaces de Instagram y Messenger pasaría más.
-
-**Prueba independiente**: un partner con un número por cliente; un cliente con Instagram y sin WhatsApp conecta un número por enlace.
-
-**Escenarios de aceptación**:
-
-1. **Dado** un cliente con Instagram y Messenger conectados y ningún número, con un tope de un número, **cuando** el dueño usa un enlace de WhatsApp, **entonces** el número se conecta.
 
 ---
 
@@ -148,13 +143,11 @@ Hoy, el enlace de WhatsApp cuenta las cuentas de Instagram y las Páginas como s
 
 ### Requisito 6 — La cuota de números
 
-**Historia de usuario:** Como partner, quiero que el enlace cuente los canales igual que la consola.
+**Historia de usuario:** Como partner, quiero que conectar Instagram o Messenger por enlace no consuma la plaza de un número, igual que desde la consola.
 
 #### Criterios de aceptación
 
-1. El sistema DEBE contar la cuota de canales del enlace con la misma regla que la consola: las cuentas de Instagram y las Páginas no ocupan la plaza de un número de WhatsApp (spec 049).
-2. WHEN se usa un enlace de WhatsApp para volver a autorizar un número que el cliente ya tiene THEN el sistema NO DEBE contarlo como otro número, igual que la consola (spec 076, 4.3).
-3. WHEN se usa un enlace de Instagram o de Messenger THEN el sistema NO DEBE aplicar la cuota de números.
+1. WHEN se usa un enlace de Instagram o de Messenger THEN el sistema NO DEBE aplicar la cuota de números de WhatsApp, igual que la consola (spec 049).
 
 ### Requisito 7 — Aislamiento
 
@@ -176,7 +169,7 @@ Hoy, el enlace de WhatsApp cuenta las cuentas de Instagram y las Páginas como s
 
 - **CE-001**: un dueño sin cuenta en Auphere conecta Instagram desde el enlace en menos de dos minutos, y el agente contesta su primer mensaje directo.
 - **CE-002**: lo mismo con Messenger y una Página.
-- **CE-003**: un cliente con Instagram conectado y una plaza de número libre conecta un número de WhatsApp por enlace sin error de cuota.
+- **CE-003**: el partner crea y envía un enlace de Instagram o de Messenger con los mismos pasos que uno de WhatsApp, sin ninguno nuevo.
 - **CE-004**: ningún enlace conecta una cuenta en un cliente distinto del suyo, ni completa una elección que inició otro enlace o la consola.
 
 ## Fuera de alcance
@@ -185,14 +178,12 @@ Hoy, el enlace de WhatsApp cuenta las cuentas de Instagram y las Páginas como s
 - **Un enlace que conecte varios canales a la vez:** un enlace conecta un canal, como en WhatsApp.
 - **Cambiar cómo conecta la consola:** la página del dueño usa la misma conexión, no una nueva.
 - **TikTok:** no se usa.
+- **El fallo de la cuota del enlace de WhatsApp:** hoy cuenta Instagram y Messenger como números. Ya ocurre en producción, así que va aparte, como bug, y antes que esta spec (clarificación del 2026-11-27).
 
 ## Supuestos
 
-- **Dependencias antes de abrirlo a los partners:**
+- **Apertura:** a todos los partners, sin interruptor nuevo, solo después de dos pruebas en vivo:
   - la T008 del hotfix 081: un DM real que llega con la conexión con Página;
   - la T072 de la 049: entrar con Instagram, probado en vivo.
 - **Meta no pide una revisión nueva:** el dueño entra con las mismas configuraciones y permisos que ya usa la consola, igual que el enlace de WhatsApp usa los del registro integrado. Se confirma antes de abrir.
-- **Decisiones tomadas sin Luis, para su revisión:**
-  - **D1.** La forma de entrar a Instagram la elige el dueño en su página, no el partner al crear el enlace. Es el dueño quien sabe si su Instagram está vinculado a una Página.
-  - **D2.** Un enlace conecta un solo canal. Para Instagram y Messenger se envían dos enlaces.
-  - **D3.** La regla de la cuota del enlace es la de la consola entera, incluida la excepción de volver a autorizar un número (076, 4.3), que hoy el enlace tampoco aplica.
+- **El bug de la cuota llega antes:** la 085 cuenta con que el enlace ya use la regla de cuota de la consola.
