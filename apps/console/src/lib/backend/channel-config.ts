@@ -10,6 +10,7 @@ import type {
   ChannelPage,
   InstagramComments,
   OwnerLink,
+  OwnerLinkChannel,
   OwnerLinkMode,
 } from "./channel-config-types";
 
@@ -55,7 +56,7 @@ export function channelConfigApi(call: Call) {
       call<AdMeasurement>(`${channel(ref, channelId)}/ad-measurement`, { method: "PUT", body }),
 
     listAgentChannels: (ref: string, agentId: string) => call<AgentChannels>(`${agent(ref, agentId)}/channels`),
-    createOwnerLink: (ref: string, agentId: string, body: { mode: OwnerLinkMode; replace?: boolean }) =>
+    createOwnerLink: (ref: string, agentId: string, body: { channel?: OwnerLinkChannel; mode?: OwnerLinkMode; replace?: boolean }) =>
       call<OwnerLink>(`${agent(ref, agentId)}/channels/owner-links`, { method: "POST", body }),
     revokeOwnerLink: (ref: string, agentId: string, linkId: string) =>
       call<null>(`${agent(ref, agentId)}/channels/owner-links/${enc(linkId)}`, { method: "DELETE" }),

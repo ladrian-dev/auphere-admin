@@ -79,6 +79,9 @@ export const channelsProtoMessages = {
 
   // ── Enlace pendiente (§7.3) ──
   "channels.proto.linkCard.title": { es: "Enlace enviado al cliente · WhatsApp", en: "Link sent to the client · WhatsApp" },
+  // Spec 085: el mismo enlace para Instagram y Messenger.
+  "channels.proto.linkCard.title.social": { es: "Enlace enviado al cliente · {channel}", en: "Link sent to the client · {channel}" },
+  "channels.proto.link.social.ask": { es: "¿Prefieres que lo conecte el cliente?", en: "Would you rather the client connected it?" },
   "channels.proto.linkCard.note": {
     es: "Caduca el {date}. Cuando el cliente termine en Meta, el canal aparece aquí y te avisamos. Si el enlace se perdió, crea otro: no se puede volver a enseñar.",
     en: "Expires on {date}. When the client finishes at Meta, the channel shows up here and we let you know. If the link got lost, create another one: it cannot be shown again.",

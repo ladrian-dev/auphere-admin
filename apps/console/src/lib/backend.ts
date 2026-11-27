@@ -831,18 +831,32 @@ export type BillingCardView = {
   }>;
 };
 
-/** Spec 040: what the owner's page learns from a WhatsApp signup link. */
+/** Spec 040: what the owner's page learns from a signup link. */
 export type ChannelSignupLinkInfo = {
   state: "valid" | "used" | "expired" | "revoked" | "unknown";
   business_name: string | null;
-  /** Spec 047 (31.5): `whatsapp_login` solo si Auphere activó la beta para el país del negocio. */
-  mode: "cloud_api" | "coexistence" | "whatsapp_login" | null;
+  /** Spec 085: the channel the link connects (`null` on a dead link). */
+  channel?: "whatsapp" | "instagram" | "messenger" | null;
+  /** Spec 047 (31.5): `whatsapp_login` solo si Auphere activó la beta para el
+   *  país del negocio. Spec 085: Instagram and Messenger are `meta_login`. */
+  mode: "cloud_api" | "coexistence" | "whatsapp_login" | "meta_login" | null;
   expires_at: string | null;
   meta_app_id: string | null;
   meta_config_id: string | null;
   meta_graph_version: string | null;
   /** Spec 050: the Embedded Signup version (`meta_embedded_signup_version`). */
   meta_signup_version?: "v4" | "v5" | null;
+  /** Spec 085 (081): Instagram with the linked Facebook Page, when configured. */
+  meta_page_config_id?: string | null;
+};
+
+/** Spec 085: what the owner's Instagram / Messenger page gets back. */
+export type ChannelSignupSocialResult = {
+  status: "connected" | "choose";
+  display_name: string | null;
+  business_name: string | null;
+  nonce: string | null;
+  accounts: { id: string; name: string; username: string | null; picture_url: string | null }[];
 };
 
 export type ChannelSignupLinkDone = {
@@ -865,6 +879,21 @@ export const consoleService = {
       method: "POST",
       body,
     })) as ChannelSignupLinkDone;
+  },
+  /** Spec 085: the code from Facebook Login for Business, on the owner's device. */
+  async channelSignupMetaSocial(token: string, code: string): Promise<ChannelSignupSocialResult> {
+    return (await request<ChannelSignupSocialResult>(mintServiceToken, `/console/channel-signup/${encodeURIComponent(token)}/meta-social`, {
+      method: "POST",
+      body: { code },
+    })) as ChannelSignupSocialResult;
+  },
+  /** Spec 085: the account the owner picked, only for the link that asked. */
+  async channelSignupMetaSocialComplete(token: string, nonce: string, accountId: string): Promise<ChannelSignupSocialResult> {
+    return (await request<ChannelSignupSocialResult>(
+      mintServiceToken,
+      `/console/channel-signup/${encodeURIComponent(token)}/meta-social/complete`,
+      { method: "POST", body: { nonce, account_id: accountId } },
+    )) as ChannelSignupSocialResult;
   },
   async lookupInvitation(token: string): Promise<InvitationLookup | null> {
     return request<InvitationLookup>(mintServiceToken, `/console/invitations/${encodeURIComponent(token)}`, { optional: true });

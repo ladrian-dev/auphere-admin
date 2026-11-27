@@ -72,6 +72,8 @@ export type MetaSocialConnectResult = {
   channel: ChannelDetail | null;
   nonce: string | null;
   accounts: MetaSocialAccount[];
+  /** Spec 085: the owner's page gets the account's name instead of the channel. */
+  display_name?: string | null;
 };
 
 export type ChannelsOverview = {
@@ -253,6 +255,9 @@ export function channelsApi(call: Call) {
         method: "POST",
         body: { mode },
       }),
+    /** Spec 085: the same link for Instagram or Messenger; the owner picks how to sign in. */
+    metaSocialSignupLink: (ref: string, kind: MetaSocialKind) =>
+      call<{ url: string; channel: MetaSocialKind; expires_at: string }>(`${base(ref)}/${kind}/signup-link`, { method: "POST" }),
     /** The client's recent links (owner, 2026-10-20): one works at a time. */
     whatsappSignupLinks: (ref: string) => call<SignupLinkRow[]>(`${base(ref)}/whatsapp/signup-links`),
     revokeWhatsappSignupLink: (ref: string, linkId: string) =>
@@ -281,11 +286,14 @@ export function channelsApi(call: Call) {
   };
 }
 
-/** Spec 040: one of the client's WhatsApp links. The token is never shown again. */
+/** Spec 040: one of the client's links. The token is never shown again. */
 export type SignupLinkRow = {
   id: string;
-  /** Spec 047 (31.5): un enlace por agente puede ir en «WhatsApp login». */
-  mode: "coexistence" | "cloud_api" | "whatsapp_login";
+  /** Spec 085: one list for the three channels. */
+  channel?: "whatsapp" | "instagram" | "messenger";
+  /** Spec 047 (31.5): un enlace por agente puede ir en «WhatsApp login».
+   *  Spec 085: Instagram and Messenger are `meta_login`. */
+  mode: "coexistence" | "cloud_api" | "whatsapp_login" | "meta_login";
   state: "valid" | "used" | "revoked" | "expired";
   created_at: string;
   expires_at: string;

@@ -149,7 +149,9 @@ export async function agentChannelsAction(raw: unknown): Promise<ActionResult<Ag
 }
 
 const linkSchema = agentSchema.extend({
-  mode: z.enum(["coexistence", "cloud_api", "whatsapp_login"]),
+  /** Spec 085: Instagram y Messenger, sin modo. */
+  channel: z.enum(["whatsapp", "instagram", "messenger"]).optional(),
+  mode: z.enum(["coexistence", "cloud_api", "whatsapp_login"]).optional(),
   replace: z.boolean().optional(),
 });
 
@@ -160,7 +162,9 @@ const linkSchema = agentSchema.extend({
  */
 export async function createOwnerLinkAction(raw: unknown): Promise<ActionResult<OwnerLink>> {
   const body = linkSchema.parse(raw);
-  return write(body.ref, (api) => api.createOwnerLink(body.ref, body.agent, { mode: body.mode, ...(body.replace ? { replace: true } : {}) }));
+  const channel = body.channel ?? "whatsapp";
+  const choice = channel === "whatsapp" ? { mode: body.mode ?? "coexistence" } : { channel };
+  return write(body.ref, (api) => api.createOwnerLink(body.ref, body.agent, { ...choice, ...(body.replace ? { replace: true } : {}) }));
 }
 
 const revokeSchema = agentSchema.extend({ link: uuid });

@@ -1,6 +1,7 @@
 import { Stethoscope, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Fragment } from "react";
 
 import { Alert, AlertDescription, AlertTitle, Button, EmptyState } from "@nexus/ui";
 
@@ -11,7 +12,7 @@ import { connectChoice, metaSignupConfig } from "@/components/channels/connect-c
 import { MetaSocialConnect } from "@/components/channels/meta-social-connect";
 import { WhatsAppConnect } from "@/components/channels/whatsapp-connect";
 import { PendingSignupLinks } from "@/components/channels/pending-signup-links";
-import { WhatsAppShareLink } from "@/components/channels/whatsapp-share-link";
+import { ShareLink } from "@/components/channels/whatsapp-share-link";
 import { WhatsAppConnectByAuphere } from "@/components/channels/whatsapp-connect-by-auphere";
 import { WhatsAppContinueInBrowser } from "@/components/channels/whatsapp-continue-in-browser";
 import { getT } from "@/i18n/server";
@@ -44,7 +45,9 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
     // works. A read that fails hides the line; the page does not depend on it.
     api.whatsappSignupLinks(ref).catch(() => []),
   ]);
-  const liveLink = signupLinks.some((l) => l.state === "valid");
+  // Spec 085: one live link per channel; each panel warns about its own.
+  const liveLink = (channel: "whatsapp" | "instagram" | "messenger") =>
+    signupLinks.some((l) => l.state === "valid" && (l.channel ?? "whatsapp") === channel);
   // Spec 030: who answers on each number — its agent, or the principal.
   const principalAgent = agents.find((a) => a.is_principal)?.id;
   const agentOf: Record<string, string> = {};
@@ -85,11 +88,12 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
   ];
   const share =
     choice === "connect" ? (
-      <WhatsAppShareLink
+      <ShareLink
         refId={ref}
+        channel="whatsapp"
         modes={linkModes}
         disabled={!overview.can_connect}
-        hasLive={liveLink}
+        hasLive={liveLink("whatsapp")}
         fromPhone={env().NEXUS_OWNER_LINK_FROM_PHONE}
       />
     ) : null;
@@ -107,11 +111,17 @@ export default async function ChannelsPage({ params }: { params: Promise<{ ref: 
     <WhatsAppConnectByAuphere />
   ) : null;
 
+  // Spec 085: next to «Conectar Instagram», the link for the owner. Like
+  // WhatsApp's, it works in the desktop app too, where Meta's popup does not.
+  const desktop = await isDesktopShell();
   const socialConnect =
-    manage && social && !(await isDesktopShell()) ? (
+    manage && social ? (
       <>
         {social.channels.map((c) => (
-          <MetaSocialConnect key={c.kind} refId={ref} offer={social} kind={c.kind} />
+          <Fragment key={c.kind}>
+            {desktop ? null : <MetaSocialConnect refId={ref} offer={social} kind={c.kind} />}
+            <ShareLink refId={ref} channel={c.kind} offer={social} hasLive={liveLink(c.kind)} />
+          </Fragment>
         ))}
       </>
     ) : null;

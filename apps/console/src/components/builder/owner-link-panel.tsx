@@ -10,14 +10,15 @@ import { createOwnerLinkAction, revokeOwnerLinkAction } from "@/app/(console)/cl
 import { BrandLogo } from "@/components/brand-logo";
 import { useLocale, useT } from "@/i18n/client";
 import type { MessageKey } from "@/i18n/messages";
-import type { OwnerLink, OwnerLinkMode, PendingOwnerLink } from "@/lib/backend/channel-config-types";
+import type { OwnerLink, OwnerLinkChannel, OwnerLinkMode, PendingOwnerLink } from "@/lib/backend/channel-config-types";
 
 import type { Result } from "./builder-model";
 import { OWNER_LINK_MODES, ownerLinkCopy, ownerLinkModeName } from "./channel-model";
 
 type Ids = { ref: string; agent: string };
 export type OwnerLinkActions = {
-  create: (body: Ids & { mode: OwnerLinkMode; replace?: boolean }) => Promise<Result<OwnerLink>>;
+  /** WhatsApp lleva `mode`; Instagram y Messenger, `channel` y ningún modo (spec 085). */
+  create: (body: Ids & { channel?: OwnerLinkChannel; mode?: OwnerLinkMode; replace?: boolean }) => Promise<Result<OwnerLink>>;
   revoke: (body: Ids & { link: string }) => Promise<Result<null>>;
 };
 
@@ -41,15 +42,23 @@ export const OWNER_LINK_ACTIONS: OwnerLinkActions = {
  *
  * Quien solo lee ve el pendiente, sin botones (§V).
  *
+ * Spec 085: el mismo panel para Instagram y Messenger (`channel`), sin el
+ * modo: el dueño elige cómo entra a Meta en su página. Copiar, enviar por
+ * WhatsApp o por correo con el asunto de su canal, y la caducidad, iguales.
+ *
  * Como el prototipo aprobado (`agente.md` §7.3 y §10.1, hueco H4): el
  * pendiente es la tarjeta «Enlace enviado al cliente · WhatsApp» de la pestaña
  * Canales, y crear uno es el paso «Compartir un enlace» del modal «Conectar
  * WhatsApp» (`bare`: sin marco ni título, los pone el modal). `onCreated`,
  * `onDone` y `onRevoked` avisan a la pestaña para que pinte o quite la tarjeta.
  */
+/** Brand names: the same in every language. */
+const CHANNEL_NAME = { whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Messenger" } as const;
+
 export function OwnerLinkPanel({
   refId,
   agentId,
+  channel = "whatsapp",
   pending: initial,
   canWrite,
   fromPhone = false,
@@ -62,6 +71,8 @@ export function OwnerLinkPanel({
 }: {
   refId: string;
   agentId: string;
+  /** Spec 085: the channel the owner connects. */
+  channel?: OwnerLinkChannel;
   pending: PendingOwnerLink | null;
   canWrite: boolean;
   fromPhone?: boolean;
@@ -78,7 +89,11 @@ export function OwnerLinkPanel({
   const t = useT();
   const locale = useLocale();
   const base = React.useId();
-  const copy = ownerLinkCopy(fromPhone);
+  const whatsapp = channel === "whatsapp";
+  const copy = whatsapp
+    ? ownerLinkCopy(fromPhone)
+    : { body: `ch.link.body.${channel}` as MessageKey, message: `ch.link.message.${channel}` as MessageKey };
+  const subject: MessageKey = whatsapp ? "builder.ownerLink.subject" : (`ch.link.subject.${channel}` as MessageKey);
   const ids = { ref: refId, agent: agentId };
   const [pending, setPending] = React.useState(initial);
   const [creating, setCreating] = React.useState(!initial);
@@ -96,10 +111,11 @@ export function OwnerLinkPanel({
   async function create(replace: boolean) {
     setBusy(true);
     setError(null);
-    const res = await actions.create({ ...ids, mode, ...(replace ? { replace: true } : {}) });
+    const choice = whatsapp ? { mode } : { channel };
+    const res = await actions.create({ ...ids, ...choice, ...(replace ? { replace: true } : {}) });
     setBusy(false);
     if (res.ok) {
-      const next = { id: res.data.id, mode: res.data.mode, expires_at: res.data.expires_at };
+      const next = { id: res.data.id, mode: res.data.mode, expires_at: res.data.expires_at, channel };
       setCreated(res.data);
       setExists(false);
       setPending(next);
@@ -178,7 +194,7 @@ export function OwnerLinkPanel({
               variant="outline"
               size="sm"
               nativeButton={false}
-              render={<a href={`mailto:?subject=${encodeURIComponent(t("builder.ownerLink.subject"))}&body=${encodeURIComponent(message)}`} />}
+              render={<a href={`mailto:?subject=${encodeURIComponent(t(subject))}&body=${encodeURIComponent(message)}`} />}
             >
               <Mail aria-hidden="true" />
               {t("builder.ownerLink.email")}
@@ -200,7 +216,9 @@ export function OwnerLinkPanel({
       ) : pending && !creating ? (
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-3" data-slot="owner-link-pending">
           <div className="grid min-w-0 flex-1 basis-64 gap-1 text-sm">
-            <span className="text-muted-foreground">{t("builder.ownerLink.pending", { mode: ownerLinkModeName(t, pending.mode) })}</span>
+            <span className="text-muted-foreground">
+              {t("builder.ownerLink.pending", { mode: whatsapp ? ownerLinkModeName(t, pending.mode) : CHANNEL_NAME[channel] })}
+            </span>
             <span className="text-xs text-pretty text-muted-foreground">
               {t("channels.proto.linkCard.note", { date: formatDateTime(pending.expires_at, locale) })}
             </span>
@@ -227,6 +245,7 @@ export function OwnerLinkPanel({
           data-slot="owner-link-form"
         >
           {bare ? null : <p className="max-w-prose text-sm text-pretty text-muted-foreground">{t(copy.body)}</p>}
+          {whatsapp ? (
           <fieldset className="grid min-w-0 gap-2">
             <legend className="mb-1 text-sm font-medium">{t("builder.ownerLink.mode")}</legend>
             {modes.map((m) => (
@@ -249,6 +268,7 @@ export function OwnerLinkPanel({
               </label>
             ))}
           </fieldset>
+          ) : null}
           {pending || exists ? <Callout tone="warning">{t("builder.ownerLink.replaces")}</Callout> : null}
           {error ? (
             <p role="alert" className="text-sm text-pretty text-destructive">
@@ -290,10 +310,14 @@ export function OwnerLinkPanel({
   }
   return (
     <section aria-labelledby={`${base}-title`} className="flex min-w-0 items-start gap-3 rounded-lg border border-border bg-card p-4" data-slot="owner-link">
-      <BrandLogo brand="whatsapp" size="md" />
+      <BrandLogo brand={channel} size="md" />
       <div className="grid min-w-0 flex-1 gap-3">
         <p id={`${base}-title`} className="font-medium text-pretty">
-          {showsPending ? t("channels.proto.linkCard.title") : t("builder.ownerLink.title")}
+          {showsPending
+            ? whatsapp
+              ? t("channels.proto.linkCard.title")
+              : t("channels.proto.linkCard.title.social", { channel: CHANNEL_NAME[channel] })
+            : t("builder.ownerLink.title")}
         </p>
         {body}
       </div>
