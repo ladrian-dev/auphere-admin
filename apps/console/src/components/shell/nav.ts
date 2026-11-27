@@ -27,7 +27,7 @@ export const NAV: NavGroup[] = [
       // first, then the record of what happened, the guide and the Teammate.
       { href: "/", labelKey: "nav.home", icon: LayoutDashboard, exact: true, module: "panel" },
       { href: "/clients", labelKey: "nav.clients", icon: Building2, permission: "clients:read", module: "clients" },
-      { href: "/usage", labelKey: "nav.usage", icon: BarChart3, permission: "usage:read", module: "usage" },
+      { href: "/usage", labelKey: "nav.metrics", icon: BarChart3, permission: "usage:read", module: "usage" },
       { href: "/audit", labelKey: "nav.audit", icon: ScrollText, permission: "audit:read", module: "audit" },
       { href: "/knowledge", labelKey: "nav.knowledge", icon: BookOpen, permission: "playbook:read", module: "knowledge" },
       { href: "/workstation", labelKey: "nav.workstation", icon: Laptop, permission: "workstation:read", module: "workstation" },

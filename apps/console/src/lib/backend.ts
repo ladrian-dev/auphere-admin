@@ -610,6 +610,7 @@ import { adsApi } from "./backend/ads";
 import { channelConfigApi } from "./backend/channel-config";
 import { channelsApi } from "./backend/channels";
 import { clientAccessApi } from "./backend/client-access";
+import { clientReportApi } from "./backend/client-report";
 import { companionApi } from "./backend/companion";
 import { homeUsageApi } from "./backend/home-usage";
 import { inboxApi } from "./backend/inbox";
@@ -667,6 +668,8 @@ export function backendFor(principal: Principal) {
     // Spec 047 (historias 10 y 11): la página de cada canal, su menú y el enlace del dueño por agente.
     ...channelConfigApi(call),
     ...adsApi(call),
+    // Spec 083: el informe de un cliente para unas fechas.
+    ...clientReportApi(call),
     // Spec 047 (historias 31 y 32): el rendimiento y las mejoras de cada agente.
     ...agentImproveApi(call),
     // Spec 047 (historia 21): los conectores de cada agente y la página de cada conexión.

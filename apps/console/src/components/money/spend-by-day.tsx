@@ -20,7 +20,18 @@ const CENT_STEP = MICROS_PER_UNIT / 100;
  * Son la URL (`?days=&client=&line=`): lo que se ve se puede compartir.
  */
 /** El periodo y el cliente — spec 072 (4.2, D3): sin el desplegable de partida. */
-export function SpendFilters({ days, client, clients }: { days: number; client: string; clients: { ref: string; name: string }[] }) {
+export function SpendFilters({
+  days,
+  client,
+  clients,
+  anchor = "gasto",
+}: {
+  days: number;
+  client: string;
+  clients: { ref: string; name: string }[];
+  /** Spec 083 (enmienda, 11.5): encima de toda la pantalla, el filtro no salta a una sección (`null`). */
+  anchor?: string | null;
+}) {
   const t = useT();
   const router = useRouter();
   const pathname = usePathname();
@@ -32,7 +43,7 @@ export function SpendFilters({ days, client, clients }: { days: number; client: 
       else sp.delete(k);
     }
     const qs = sp.toString();
-    router.push(`${pathname}${qs ? `?${qs}` : ""}#gasto`, { scroll: false });
+    router.push(`${pathname}${qs ? `?${qs}` : ""}${anchor ? `#${anchor}` : ""}`, { scroll: false });
   };
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-2" data-slot="spend-filters">

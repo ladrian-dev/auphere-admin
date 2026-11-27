@@ -41,6 +41,7 @@ from nexus_api.db.models import (
     AuditLog,
     ConsoleNotification,
     Conversation,
+    ConversationEvent,
     ConversationStatus,
     Customer,
     Message,
@@ -227,6 +228,19 @@ async def seed(
                         ),
                     ]
                 )
+                if escalated:
+                    # Spec 083: «pasada a una persona» sale del historial, así que
+                    # la siembra deja lo que deja el agente al escalar.
+                    db_session.add(
+                        ConversationEvent(
+                            tenant_id=tenant_id,
+                            conversation_id=conv.id,
+                            kind="escalated",
+                            actor="agent",
+                            payload={"reason": f"RAZON-{tag}: lo pide {name}"},
+                            created_at=started + timedelta(minutes=1),
+                        )
+                    )
                 out.conversations.append(conv.id)
                 out.bodies.append(body)
         await db_session.flush()
@@ -376,6 +390,73 @@ async def test_performance_shows_the_last_30_days_of_this_agent(
     )
     assert week.status_code == 200
     assert week.json()["conversations"] == 1 and len(week.json()["series"]) == 3
+
+
+async def test_taken_and_returned_counts_as_handed_by_its_history(
+    client: Any, db_session: AsyncSession, world: World
+) -> None:
+    """Spec 083 (9.1, 9.3): una persona la tomó y la devolvió. Hoy la lleva el
+    agente, pero pasó por una persona: cuenta como pasada, con su motivo."""
+    now = datetime.now(UTC)
+    tenant = world.biz.tenant_id
+    seeded = await seed(
+        db_session,
+        tenant,
+        world.channel_id,
+        at=now - timedelta(days=1),
+        contacts=1,
+        escalated=False,
+    )
+    conv = seeded.conversations[0]
+    async with tenant_scoped_session(db_session, tenant):
+        for kind, minutes in (("takeover", 2), ("released", 5)):
+            db_session.add(
+                ConversationEvent(
+                    tenant_id=tenant,
+                    conversation_id=conv,
+                    kind=kind,
+                    actor="client:ana@example.com",
+                    created_at=now - timedelta(days=1) + timedelta(minutes=minutes),
+                )
+            )
+        await db_session.flush()
+    await db_session.commit()
+
+    perf = await client.get(f"{world.url()}/performance", headers=world.biz.headers())
+    assert perf.status_code == 200, perf.text
+    assert perf.json()["conversations"] == 1
+    assert perf.json()["handed_to_person"] == 1
+    listed = await client.get(f"{world.url()}/conversations", headers=world.biz.headers())
+    (item,) = listed.json()["items"]
+    assert item["outcome"] == "handed_to_person"
+    assert item["handoff_reason"] == "taken_by_person"
+
+
+async def test_performance_days_are_the_clients_days(
+    client: Any, db_session: AsyncSession, world: World
+) -> None:
+    """Spec 083 (9.2): las 23:30 en Caracas cuentan en ese día, no en el siguiente UTC."""
+    from zoneinfo import ZoneInfo
+
+    caracas = ZoneInfo("America/Caracas")
+    tenant = world.biz.tenant_id
+    await db_session.execute(
+        sa.text("UPDATE tenants SET timezone = 'America/Caracas' WHERE id = :t"),
+        {"t": str(tenant)},
+    )
+    await db_session.commit()
+    day = datetime.now(caracas).date() - timedelta(days=2)
+    late = datetime(day.year, day.month, day.day, 23, 30, tzinfo=caracas).astimezone(UTC)
+    await seed(db_session, tenant, world.channel_id, at=late, contacts=1, escalated=False)
+    await db_session.commit()
+
+    resp = await client.get(
+        f"{world.url()}/performance", params={"days": 7}, headers=world.biz.headers()
+    )
+    assert resp.status_code == 200, resp.text
+    (busy,) = [d for d in resp.json()["series"] if d["conversations"]]
+    assert busy["day"] == day.isoformat()
+    assert resp.json()["series"][-1]["day"] == datetime.now(caracas).date().isoformat()
 
 
 # ── Conversaciones: solo metadatos ──────────────────────────────────────────

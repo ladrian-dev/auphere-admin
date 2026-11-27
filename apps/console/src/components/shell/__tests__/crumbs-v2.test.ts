@@ -15,14 +15,14 @@ describe("crumbsFor", () => {
   it("las pantallas de cuenta y de operación son una sola miga", () => {
     expect(crumbsFor("/", {})).toEqual([{ href: null, label: { key: "nav.home" } }]);
     expect(crumbsFor("/clients", {})).toEqual([{ href: null, label: { key: "nav.clients" } }]);
-    expect(crumbsFor("/usage", {})).toEqual([{ href: null, label: { key: "nav.usage" } }]);
+    expect(crumbsFor("/usage", {})).toEqual([{ href: null, label: { key: "nav.metrics" } }]);
     expect(crumbsFor("/keys", {})).toEqual([{ href: null, label: { key: "nav.keys" } }]);
     expect(crumbsFor("/notifications", {})).toEqual([{ href: null, label: { key: "notif.title" } }]);
   });
 
-  it("Alertas de consumo cuelga de Consumo", () => {
+  it("Alertas de consumo cuelga de Métricas (spec 083, enmienda)", () => {
     expect(crumbsFor("/usage/alerts", {})).toEqual([
-      { href: "/usage", label: { key: "nav.usage" } },
+      { href: "/usage", label: { key: "nav.metrics" } },
       { href: null, label: { key: "shell.crumbs.usageAlerts" } },
     ]);
   });

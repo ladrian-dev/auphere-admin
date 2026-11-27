@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Bell } from "lucide-react";
 
-import { Button, Callout, Card, CardContent, ErrorState, PageHeader } from "@nexus/ui";
+import { Button, Callout, Card, CardContent, ErrorState, PageHeader, cn } from "@nexus/ui";
 
 import { MONEY_CODES, attentionKey } from "@/components/attention/attention-model";
 import { AttentionRow } from "@/components/attention/attention-row";
@@ -14,8 +14,13 @@ import { UsageDetailPanel } from "@/components/money/usage-detail";
 import { UsageFigure } from "@/components/money/usage-figure";
 import { SeedRequested } from "@/components/money/request-balance";
 import { periodLabel } from "@/components/clients/v2/client-v2-model";
+import { ConversationsChooseClient, ConversationsSection } from "@/components/metrics/conversations-section";
+import { conversationsAccess, metricsPeriods, todayIn } from "@/components/metrics/metrics-model";
 import { getT } from "@/i18n/server";
+import { run } from "@/lib/actions";
 import { backendFor, callFor } from "@/lib/backend";
+import type { ClientReport } from "@/lib/backend/client-report";
+import { clientRecordsApi } from "@/lib/backend/client-records";
 import { moneyApi } from "@/lib/backend/money";
 import { can, type PartnerPrincipal } from "@/lib/principal";
 
@@ -36,6 +41,11 @@ type Search = { days?: string; client?: string; line?: string };
  * 4. Los avisos de dinero de la 071, cada uno con su acción.
  * 5. El detalle técnico, plegado, con Companion y teammates (D2) y «Descargar CSV».
  *
+ * Spec 083 (enmienda del 2026-11-27): la pantalla se llama Métricas. El cliente y
+ * el periodo son un solo filtro, arriba de todo (11.5), y con `conversations:read`
+ * y un cliente elegido, la sección «Conversaciones» va antes del dinero (11.2,
+ * D17 y D18). Al imprimir sale solo esa sección: el dinero del partner no (D21).
+ *
  * Las tarjetas de «quién paga qué» ya no están (4.4): cada cifra lo dice, y el
  * tope de construcción vive en la línea del Panel y en su aviso. Todas las
  * cifras salen del libro (46.7): si una lectura falla, su bloque lo dice y no
@@ -48,7 +58,8 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
   const client = (searchParams.client ?? "").slice(0, 255);
   const canWrite = can(principal.role, "usage:write");
   const api = moneyApi(callFor(principal));
-  const [summary, daily, detail, migration, bags, attention] = await Promise.all([
+  const access = conversationsAccess(principal.role, client);
+  const [summary, daily, detail, migration, bags, attention, conversations] = await Promise.all([
     api.usageSummary().catch(() => null),
     api.usageDaily({ days, client: client || undefined }).catch(() => null),
     api.usageDetail({ days, client: client || undefined }).catch(() => null),
@@ -56,7 +67,11 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
     canWrite ? null : api.listBags().catch(() => null),
     // Spec 071 (5): los avisos de dinero salen de la misma lista del Panel y de la campana.
     backendFor(principal).attention().catch(() => null),
+    access === "show" ? readConversations(principal, client, days) : null,
   ]);
+  const showConversations = conversations !== null && conversations !== "unknown";
+  // Con la sección, al imprimir sale solo ella (D21): lo demás lleva `print:hidden`.
+  const money = cn("contents", showConversations && "print:hidden");
   const notices = (attention?.items ?? []).filter((row) => MONEY_CODES.has(row.code));
   const low = new Set(notices.filter((row) => row.code === "low_balance" && row.external_client_ref).map((row) => row.external_client_ref as string));
   const pending = migrationPending(migration);
@@ -77,93 +92,126 @@ export async function PartnerUsageV2({ principal, searchParams }: { principal: P
 
   return (
     <>
-      <PageHeader
-        size="display"
-        title={t("usage.title")}
-        description={t("usage.description")}
-        actions={
-          <>
-            <Button nativeButton={false} variant="outline" render={<Link href="/usage/alerts" />}>
-              <Bell aria-hidden="true" />
-              {t("hu.usage.alerts.link")}
-            </Button>
-            {can(principal.role, "billing:manage") ? <BuyDialog accountCurrency={summary?.currency ?? null} /> : null}
-          </>
-        }
-      />
-
-      {bags ? <SeedRequested items={bags} /> : null}
-      {pending ? (
-        <Callout
-          tone="info"
-          title={t("money.migration.title")}
-          action={
-            <Button size="sm" nativeButton={false} render={<Link href="/usage/repartir" />}>
-              {t("money.migration.cta")}
-            </Button>
+      <div className={money}>
+        <PageHeader
+          size="display"
+          title={t("metrics.title")}
+          description={t("metrics.description")}
+          actions={
+            <>
+              <Button nativeButton={false} variant="outline" render={<Link href="/usage/alerts" />}>
+                <Bell aria-hidden="true" />
+                {t("hu.usage.alerts.link")}
+              </Button>
+              {can(principal.role, "billing:manage") ? <BuyDialog accountCurrency={summary?.currency ?? null} /> : null}
+            </>
           }
-        >
-          {t("money.migration.banner")}
-        </Callout>
-      ) : null}
+        />
+      </div>
 
-      <Card id="gasto" data-slot="usage-spend" className="scroll-mt-24">
-        <CardContent className="grid min-w-0 gap-4">
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold">{t("money.chart.titleDays", { days })}</h2>
-            <SpendFilters days={days} client={client} clients={options} />
-          </div>
-          <SpendByDay daily={daily} line={null} currency={currency} />
-        </CardContent>
-      </Card>
+      <div role="group" aria-label={t("metrics.filters")} className="print:hidden">
+        <SpendFilters days={days} client={client} clients={options} anchor={null} />
+      </div>
 
-      {!summary ? (
-        <ErrorState title={t("money.usage.error")} />
-      ) : (
-        <>
-          {/* Las cuatro cifras de la demo (spec 072, 4.3): sin icono, cifra grande y una nota. */}
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={t("money.figures")} data-slot="usage-figures">
-            <UsageFigure label={t("money.figure.available")} value={moneyText(summary.available, "down")} hint={t("money.figure.available.hint")} />
-            <UsageFigure
-              label={t("money.figure.inBags")}
-              value={`${summary.in_bags_approx ? `${t("money.approxPrefix")} ` : ""}${moneyText(summary.in_bags, "down")}`}
-              hint={`${t(withBag === 1 ? "money.figure.inBags.clients.one" : "money.figure.inBags.clients", { n: withBag })}${summary.in_bags_approx ? `. ${t("money.figure.inBags.otherCurrency")}` : ""}`}
-            />
-            <UsageFigure
-              label={t("money.figure.month")}
-              value={moneyText(summary.month_spend)}
-              hint={`${month} · ${t("money.figure.month.hint", { amount: moneyText(summary.projected) })}`}
-            />
-            <UsageFigure label={t("money.figure.meta")} mark={<MetaMark />} value={meta ? moneyText(meta.amount) : "—"} hint={t("money.figure.meta.hint")} />
-          </section>
-
-          <Card data-slot="usage-balance">
-            <CardContent className="grid min-w-0 gap-4">
-              <div className="grid gap-1">
-                <h2 className="text-base font-semibold">{t("money.table.title")}</h2>
-                <p className="text-sm text-pretty text-muted-foreground">{t("money.table.description")}</p>
-              </div>
-              <UsageClientsTable clients={clients} canWrite={canWrite} days={days} low={low} />
-            </CardContent>
-          </Card>
-        </>
+      {showConversations ? (
+        <ConversationsSection clientName={conversations.name} days={days} today={conversations.today} current={conversations.current} previous={conversations.previous} />
+      ) : access === "hidden" ? null : (
+        <ConversationsChooseClient />
       )}
 
-      {/* Spec 071 (5.1), como la demo aprobada: los avisos de dinero, cada uno con su acción. */}
-      {notices.length ? (
-        <Card data-slot="usage-notices">
-          <CardContent className="grid min-w-0 gap-1">
-            <h2 className="text-base font-semibold">{t("att.usage.title")}</h2>
-            <ul className="divide-y divide-border">
-              {notices.map((row) => (
-                <AttentionRow key={attentionKey(row)} row={row} />
-              ))}
-            </ul>
+      <div className={money}>
+        {bags ? <SeedRequested items={bags} /> : null}
+        {pending ? (
+          <Callout
+            tone="info"
+            title={t("money.migration.title")}
+            action={
+              <Button size="sm" nativeButton={false} render={<Link href="/usage/repartir" />}>
+                {t("money.migration.cta")}
+              </Button>
+            }
+          >
+            {t("money.migration.banner")}
+          </Callout>
+        ) : null}
+
+        <Card id="gasto" data-slot="usage-spend" className="scroll-mt-24">
+          <CardContent className="grid min-w-0 gap-4">
+            <h2 className="text-base font-semibold">{t("money.chart.titleDays", { days })}</h2>
+            <SpendByDay daily={daily} line={null} currency={currency} />
           </CardContent>
         </Card>
-      ) : null}
 
-      <UsageDetailPanel detail={detail} names={names} days={days} client={client} account={companion?.amount ?? null} />
+        {!summary ? (
+          <ErrorState title={t("money.usage.error")} />
+        ) : (
+          <>
+            {/* Las cuatro cifras de la demo (spec 072, 4.3): sin icono, cifra grande y una nota. */}
+            <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label={t("money.figures")} data-slot="usage-figures">
+              <UsageFigure label={t("money.figure.available")} value={moneyText(summary.available, "down")} hint={t("money.figure.available.hint")} />
+              <UsageFigure
+                label={t("money.figure.inBags")}
+                value={`${summary.in_bags_approx ? `${t("money.approxPrefix")} ` : ""}${moneyText(summary.in_bags, "down")}`}
+                hint={`${t(withBag === 1 ? "money.figure.inBags.clients.one" : "money.figure.inBags.clients", { n: withBag })}${summary.in_bags_approx ? `. ${t("money.figure.inBags.otherCurrency")}` : ""}`}
+              />
+              <UsageFigure
+                label={t("money.figure.month")}
+                value={moneyText(summary.month_spend)}
+                hint={`${month} · ${t("money.figure.month.hint", { amount: moneyText(summary.projected) })}`}
+              />
+              <UsageFigure label={t("money.figure.meta")} mark={<MetaMark />} value={meta ? moneyText(meta.amount) : "—"} hint={t("money.figure.meta.hint")} />
+            </section>
+
+            <Card data-slot="usage-balance">
+              <CardContent className="grid min-w-0 gap-4">
+                <div className="grid gap-1">
+                  <h2 className="text-base font-semibold">{t("money.table.title")}</h2>
+                  <p className="text-sm text-pretty text-muted-foreground">{t("money.table.description")}</p>
+                </div>
+                <UsageClientsTable clients={clients} canWrite={canWrite} days={days} low={low} />
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {/* Spec 071 (5.1), como la demo aprobada: los avisos de dinero, cada uno con su acción. */}
+        {notices.length ? (
+          <Card data-slot="usage-notices">
+            <CardContent className="grid min-w-0 gap-1">
+              <h2 className="text-base font-semibold">{t("att.usage.title")}</h2>
+              <ul className="divide-y divide-border">
+                {notices.map((row) => (
+                  <AttentionRow key={attentionKey(row)} row={row} />
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <UsageDetailPanel detail={detail} names={names} days={days} client={client} account={companion?.amount ?? null} />
+      </div>
     </>
   );
+}
+
+type Conversations = { name: string; today: string; current: ClientReport | null; previous: ClientReport | null };
+
+/**
+ * Spec 083 (enmienda, D19): las conversaciones del cliente en los últimos `days`
+ * días hasta hoy en su zona, y las de los `days` días justo antes, para comparar.
+ * Un cliente que no es de este partner (o no existe) es «unknown»: la sección pide
+ * que se elija uno. Si falla otra cosa, la sección lo dice y deja reintentar.
+ */
+async function readConversations(principal: PartnerPrincipal, ref: string, days: number): Promise<Conversations | "unknown"> {
+  const detail = await run(() => clientRecordsApi(callFor(principal)).getClientV2(ref));
+  if (!detail.ok) return detail.status === 404 ? "unknown" : { name: ref, today: todayIn("UTC"), current: null, previous: null };
+  const today = todayIn(detail.data.timezone);
+  const { current, previous } = metricsPeriods(days, today);
+  const backend = backendFor(principal);
+  const [now, before] = await Promise.all([
+    run(() => backend.clientReport(ref, current.from, current.to)),
+    run(() => backend.clientReport(ref, previous.from, previous.to)),
+  ]);
+  if (!now.ok && now.status === 404) return "unknown";
+  return { name: detail.data.name, today, current: now.ok ? now.data : null, previous: before.ok ? before.data : null };
 }

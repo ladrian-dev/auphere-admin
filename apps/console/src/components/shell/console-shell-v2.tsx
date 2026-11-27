@@ -74,8 +74,10 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
     <TooltipProvider>
       {/* `relative` aquí y en el lienzo: sin un padre posicionado, lo que es
           `absolute` (los `sr-only` de las gráficas y las tablas) se coloca contra
-          el documento, lo alarga y todo el marco subía con la rueda. */}
-      <div data-shell="v2" className="relative flex h-svh min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground shell:flex-row">
+          el documento, lo alarga y todo el marco subía con la rueda.
+          Al imprimir (spec 083, informe del cliente) el marco se suelta: sin alto
+          fijo ni desplazamiento, solo el contenido, sin menú, cabecera ni barra. */}
+      <div data-shell="v2" className="relative flex h-svh min-h-0 flex-col overflow-hidden bg-sidebar text-sidebar-foreground shell:flex-row print:block print:h-auto print:overflow-visible print:bg-background print:text-foreground">
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-(--z-toast) focus:rounded-sm focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground"
@@ -91,7 +93,7 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
           className={cn(
             // Como el prototipo: solo se desliza el ancho; el relleno no cambia,
             // así los iconos no se mueven y los textos se desvanecen.
-            "flex min-h-0 shrink-0 flex-col gap-2 overflow-hidden px-3 py-3 transition-[width] duration-(--duration-state) ease-(--ease-enter) motion-reduce:transition-none max-shell:hidden",
+            "flex min-h-0 shrink-0 flex-col gap-2 overflow-hidden px-3 py-3 transition-[width] duration-(--duration-state) ease-(--ease-enter) motion-reduce:transition-none max-shell:hidden print:hidden",
             collapsed ? "w-(--size-nav-collapsed)" : "w-(--size-nav)",
           )}
         >
@@ -126,9 +128,9 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
           </div>
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col print:block">
           {/* `shell:pl-0`: el botón del menú queda a plomo con el borde del lienzo. */}
-          <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 shell:pl-0">
+          <header className="flex min-h-14 shrink-0 flex-wrap items-center gap-x-2 gap-y-1 px-4 py-2 shell:pl-0 print:hidden">
             <BrandLockup className="shell:hidden" />
             <Button
               type="button"
@@ -153,18 +155,18 @@ export function ConsoleShellV2({ who, user, partnerName, defaultCollapsed = fals
           </header>
 
           {/* El contenido, el único que hace scroll. */}
-          <div data-slot="shell-canvas" className="relative min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card max-shell:mx-2 max-shell:mb-2 shell:mr-4 shell:mb-4">
+          <div data-slot="shell-canvas" className="relative min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-card max-shell:mx-2 max-shell:mb-2 shell:mr-4 shell:mb-4 print:m-0 print:overflow-visible print:rounded-none print:border-0">
             <main
               id="main"
               tabIndex={-1}
-              className="mx-auto flex w-full max-w-(--width-content) min-w-0 flex-col gap-5 px-4 pt-6 pb-12 outline-none md:px-12 md:pt-10 md:pb-16"
+              className="mx-auto flex w-full max-w-(--width-content) min-w-0 flex-col gap-5 px-4 pt-6 pb-12 outline-none md:px-12 md:pt-10 md:pb-16 print:max-w-none print:p-0"
             >
               {children}
             </main>
           </div>
 
           {/* Spec 074 (D1): hasta 900 px, la barra inferior es la única navegación. */}
-          <nav data-slot="shell-tabbar" aria-label={t("shell.nav.label")} className="shrink-0 px-3 pt-1 shell:hidden" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+          <nav data-slot="shell-tabbar" aria-label={t("shell.nav.label")} className="shrink-0 px-3 pt-1 shell:hidden print:hidden" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
             <div className="glass relative rounded-full p-1 ring-1 ring-foreground/10">
               {/* La lente, hermana de la lista (dentro de un `ul` solo van `li`). */}
               <SlidingLens selector='[aria-current="page"]' variant="tabs" />

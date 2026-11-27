@@ -221,7 +221,7 @@ export const onboardingMessages = {
   "cmdk.client.agent": { es: "Agente", en: "Agent" },
   "cmdk.client.channels": { es: "Canales", en: "Channels" },
   "cmdk.client.playground": { es: "Playground", en: "Playground" },
-  "cmdk.client.usage": { es: "Consumo", en: "Usage" },
+  "cmdk.client.usage": { es: "Métricas", en: "Metrics" },
   "cmdk.action.newClient": { es: "Nuevo cliente", en: "New client" },
   "cmdk.action.team": { es: "Equipo", en: "Team" },
   "cmdk.action.keys": { es: "Claves de API", en: "API keys" },
