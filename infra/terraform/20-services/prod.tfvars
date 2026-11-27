@@ -55,7 +55,11 @@ extra_certificate_arns = [
 #     NEXUS_APNS_KEY_ID NEXUS_APNS_TEAM_ID NEXUS_APNS_KEY_PEM \
 #     NEXUS_FCM_PROJECT_ID NEXUS_FCM_SERVICE_ACCOUNT_JSON
 #
-# push_secret_keys = [
-#   "NEXUS_APNS_KEY_ID", "NEXUS_APNS_TEAM_ID", "NEXUS_APNS_KEY_PEM",
-#   "NEXUS_FCM_PROJECT_ID", "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
-# ]
+# 2026-11-28: las cinco creadas en el secreto de prod, copiadas de staging
+# (misma clave APNs de FACELAD y mismo proyecto de Firebase
+# `auphere-customers` que la app de producción) y aplicadas con
+# `terraform apply`: el worker arranca con apns_configured y fcm_configured.
+push_secret_keys = [
+  "NEXUS_APNS_KEY_ID", "NEXUS_APNS_TEAM_ID", "NEXUS_APNS_KEY_PEM",
+  "NEXUS_FCM_PROJECT_ID", "NEXUS_FCM_SERVICE_ACCOUNT_JSON",
+]
