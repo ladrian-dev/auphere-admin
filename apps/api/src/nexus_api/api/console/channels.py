@@ -52,6 +52,10 @@ from nexus_api.db.models import (
 )
 from nexus_api.repositories.audit import AuditRepository
 from nexus_api.services import meta_social_service
+
+# The quota rule lives in the service, shared with the owner's link; these
+# names stay importable from here for the console modules that use them.
+from nexus_api.services.channel_quota import INTERNAL_PROVIDERS, count_connected_channels
 from nexus_api.services.channel_routing import channel_agent_enabled, channel_role
 from nexus_api.services.meta_signup_service import build_meta_client as _build_meta_client
 
@@ -74,11 +78,6 @@ from .schemas_channels import (
 log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/clients/{ref}/channels")
-
-#: Platform-internal pseudo-channels (the QA playground's ``web`` channel,
-#: ``api/qa.py::_QA_CHANNEL_PROVIDER``). Not the partner's, never shown,
-#: never counted against ``max_channels_per_client``.
-INTERNAL_PROVIDERS: frozenset[str] = frozenset({"qa_playground"})
 
 
 #: De qué conector del catálogo sale el logotipo de cada tipo de canal. Los
@@ -243,25 +242,6 @@ async def _all_channels(session: AsyncSession) -> list[Channel]:
         )
         .scalars()
         .all()
-    )
-
-
-async def count_connected_channels(session: AsyncSession) -> int:
-    """Channels that count against ``partners.max_channels_per_client``:
-    every row that is not ``disconnected``. Must run inside the tenant scope."""
-    return int(
-        await session.scalar(
-            sa.select(sa.func.count())
-            .select_from(Channel)
-            .where(
-                Channel.status != ChannelStatus.DISCONNECTED,
-                Channel.provider.not_in(INTERNAL_PROVIDERS),
-                # Spec 049: the quota is WhatsApp numbers; an Instagram
-                # account or a Page does not take a number's slot.
-                Channel.provider.not_in(tuple(META_SOCIAL_PROVIDERS)),
-            )
-        )
-        or 0
     )
 
 

@@ -821,7 +821,7 @@ async def agent_channels(
 
     if await principal_agent_id(scope.session) == agent.id:
         owned = sa.or_(owned, Channel.agent_id.is_(None))
-    from .channels import INTERNAL_PROVIDERS
+    from nexus_api.services.channel_quota import INTERNAL_PROVIDERS
 
     rows = (
         await scope.session.scalars(

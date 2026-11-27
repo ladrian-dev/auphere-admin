@@ -8,11 +8,23 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
+from fastapi import HTTPException
 
-from nexus_api.db.models import AuditLog, Channel, ChannelSignupLink, TenantConnector
+from nexus_api.core.tenant_context import tenant_scoped_session
+from nexus_api.db.base import get_sessionmaker
+from nexus_api.db.models import (
+    AuditLog,
+    Channel,
+    ChannelSignupLink,
+    ChannelStatus,
+    ChannelType,
+    Partner,
+    TenantConnector,
+)
 from nexus_api.services import meta_signup_service
 from nexus_api.services.connectors.seed_loader import load_all_seeds
 from nexus_api.services.connectors.seed_runner import apply_seeds
@@ -229,3 +241,94 @@ async def test_one_live_link_per_client_and_the_partner_revokes_it(
         .all()
     )
     assert sorted(r.after_json["reason"] for r in rows) == ["replaced", "revoked"]
+
+
+# --- La cuota del enlace es la de la consola ------------------------------------
+# Bug `el-enlace-cuenta-instagram-como-numero`: el enlace contaba Instagram y
+# Messenger como números (la consola no, spec 049) y no dejaba volver a
+# autorizar un número del cliente (la consola sí, spec 076, 4.3). El alta se
+# sustituye por una que responde 418: llegar a ella es haber pasado la cuota.
+
+
+@pytest.fixture
+def link_reaches_meta(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def reached(**_: Any) -> Any:
+        raise HTTPException(status_code=418, detail="reached the signup")
+
+    monkeypatch.setattr("nexus_api.services.channel_signup_links.complete_meta_signup", reached)
+
+
+async def _one_number_allowed_and(db_session: Any, w: dict[str, Any], channel: Channel) -> None:
+    await db_session.execute(
+        sa.update(Partner).where(Partner.id == w["partner_id"]).values(max_channels_per_client=1)
+    )
+    await db_session.commit()
+    async with get_sessionmaker()() as s, tenant_scoped_session(s, w["tenant_id"]):
+        s.add(channel)
+        await s.commit()
+
+
+async def _link_signup(client: Any, w: dict[str, Any], phone_number_id: str) -> Any:
+    made = await client.post(
+        f"/console/clients/{w['ref']}/channels/whatsapp/signup-link",
+        headers=w["headers"](),
+        json={"mode": "coexistence"},
+    )
+    assert made.status_code == 201, made.text
+    return await client.post(
+        f"/console/channel-signup/{_token(made.json()['url'])}",
+        headers=_svc(),
+        json={"code": "c", "waba_id": "WABA1", "phone_number_id": phone_number_id},
+    )
+
+
+def _number(w: dict[str, Any], phone_number_id: str) -> Channel:
+    return Channel(
+        id=uuid.uuid4(),
+        tenant_id=w["tenant_id"],
+        type=ChannelType.WHATSAPP,
+        provider="meta",
+        provider_identifier="+56999990001",
+        status=ChannelStatus.ACTIVE,
+        config={"phone_number_id": phone_number_id, "waba_id": "WABA1"},
+    )
+
+
+async def test_an_instagram_account_does_not_take_a_number_slot(
+    client, db_session, console_world, link_reaches_meta
+) -> None:
+    w = console_world["a"]
+    await _one_number_allowed_and(
+        db_session,
+        w,
+        Channel(
+            id=uuid.uuid4(),
+            tenant_id=w["tenant_id"],
+            type=ChannelType.INSTAGRAM,
+            provider="meta_instagram",
+            provider_identifier=f"ig-{uuid.uuid4().hex[:8]}",
+            status=ChannelStatus.ACTIVE,
+            config={},
+        ),
+    )
+    r = await _link_signup(client, w, "PN-new")
+    assert r.status_code == 418, r.text
+
+
+async def test_reauthorising_the_same_number_by_link_passes_the_quota(
+    client, db_session, console_world, link_reaches_meta
+) -> None:
+    w = console_world["a"]
+    await _one_number_allowed_and(db_session, w, _number(w, "PN1"))
+    r = await _link_signup(client, w, "PN1")
+    assert r.status_code == 418, r.text
+
+
+async def test_a_new_number_by_link_still_hits_the_quota(
+    client, db_session, console_world, link_reaches_meta
+) -> None:
+    w = console_world["a"]
+    await _one_number_allowed_and(db_session, w, _number(w, "PN1"))
+    r = await _link_signup(client, w, "PN2")
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "channel_quota_full"
