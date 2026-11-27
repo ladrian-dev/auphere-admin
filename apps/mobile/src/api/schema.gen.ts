@@ -2502,6 +2502,8 @@ export interface components {
             /** Name */
             name: string;
             next_booking?: components["schemas"]["NextBookingOut"] | null;
+            /** Username */
+            username?: string | null;
         };
         /** ContactIn */
         ContactIn: {

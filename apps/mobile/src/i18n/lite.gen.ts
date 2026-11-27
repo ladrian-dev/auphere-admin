@@ -434,6 +434,8 @@ export const liteMessages = {
   "inbox.settings.loading": { es: "Cargando los ajustes", en: "Loading the settings" },
   "inbox.settings.saveError": { es: "No se pudo guardar. Inténtalo de nuevo.", en: "It could not be saved. Try again." },
   "inbox.settings.saved": { es: "Guardado.", en: "Saved." },
+  "inbox.settings.sound": { es: "Sonido al llegar un mensaje", en: "Sound when a message arrives" },
+  "inbox.settings.sound.hint": { es: "Suena en cualquier pantalla de la consola, salvo en la conversación que tienes abierta. Se guarda en este navegador.", en: "It plays on any screen of the console, except in the conversation you have open. It is saved in this browser." },
   "inbox.settings.title": { es: "Ajustes de la Bandeja", en: "Inbox settings" },
   "inbox.stale": { es: "Alguien cambió esta conversación mientras la mirabas. Ya ves cómo está ahora.", en: "Someone changed this conversation while you were looking. You're seeing it as it is now." },
   "inbox.thread": { es: "Mensajes", en: "Messages" },
