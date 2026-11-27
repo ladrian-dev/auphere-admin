@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, date, datetime, time
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -170,14 +170,16 @@ async def _out(scope: ClientScope, schedule: Schedule) -> ScheduleOut:
             state="attending" if agent and agent.lifecycle == service.ATTENDING else "paused",
         ),
         when=ScheduleWhenOut(
-            cadence=schedule.cadence,
+            # La base guarda texto con su CHECK: el vocabulario es el mismo que
+            # el del tipo, y el ``cast`` dice que aquí termina esa frontera.
+            cadence=cast(Cadence, schedule.cadence),
             local_time=schedule.local_time,
             weekdays=schedule.weekdays,
             day_of_month=schedule.day_of_month,
             run_date=schedule.run_date,
         ),
         next_run_at=schedule.next_run_at,
-        state=state,
+        state=cast(State, state),
         pause_reason=reason,
         email=schedule.email,
         created_by=schedule.created_by,

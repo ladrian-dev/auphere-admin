@@ -189,7 +189,7 @@ async def create(
         name=data.name.strip(),
         instruction=data.instruction.strip(),
         cadence=data.cadence,
-        weekdays=list(data.weekdays) if data.cadence == "weekly" else None,
+        weekdays=list(data.weekdays or []) if data.cadence == "weekly" else None,
         day_of_month=data.day_of_month if data.cadence == "monthly" else None,
         run_date=data.run_date if data.cadence == "once" else None,
         local_time=data.local_time,

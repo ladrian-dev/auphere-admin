@@ -24,6 +24,7 @@ domingo es 0.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Final
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -87,7 +88,7 @@ def _candidate_days(
     weekdays: list[int] | None,
     day_of_month: int | None,
     run_date: date | None,
-):
+) -> Iterator[date]:
     if cadence == "once":
         if run_date is not None:
             yield run_date

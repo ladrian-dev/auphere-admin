@@ -9,14 +9,19 @@
 - `[P]` = se puede hacer en paralelo con la anterior.
 - Cada tarea cita sus requisitos. Una tarea sin trazabilidad no entra.
 
+**Estado** (2026-11-27): T001 a T014 entregadas en el PR #74, rama
+`082-rutinas-de-agente`, sin fusionar todavía. **T015 va a medias**: la elección
+de herramientas está hecha y probada, el bucle que llama al modelo llega con el
+manejador de la cola (T017). 70 pruebas en verde.
+
 ## Fase 1: Preparación
 
-- [ ] **T001** Exporta `NEXUS_DATABASE_URL` (`…/nexus_test_082`) y `NEXUS_REDIS_URL` (`…/12`), y comprueba que no hay ningún pytest vivo. Si las dependencias del worktree no están, `uv sync --extra dev` en `apps/api` y en `apps/worker`.
-- [ ] **T002** [P] Borra `apps/console/src/app/(console)/schedules/[id]/` y `.../new/`, las dos carpetas vacías que dejó una maqueta anterior. No están en git y responden a un modelo descartado.
+- [x] **T001** Exporta `NEXUS_DATABASE_URL` (`…/nexus_test_082`) y `NEXUS_REDIS_URL` (`…/12`), y comprueba que no hay ningún pytest vivo. Si las dependencias del worktree no están, `uv sync --extra dev` en `apps/api` y en `apps/worker`.
+- [x] **T002** [P] Borra `apps/console/src/app/(console)/schedules/[id]/` y `.../new/`, las dos carpetas vacías que dejó una maqueta anterior. No están en git y responden a un modelo descartado.
 
 ## Fase 2: Fundación — el modelo (bloquea todo lo demás)
 
-- [ ] **T003** **Garantía 1.** Prueba de aislamiento `apps/api/tests/isolation/test_082_schedules_rls.py`, en rojo:
+- [x] **T003** **Garantía 1.** Prueba de aislamiento `apps/api/tests/isolation/test_082_schedules_rls.py`, en rojo:
   - `schedules` y `schedule_runs` tienen `FORCE ROW LEVEL SECURITY` y su política por `tenant_id`.
   - Una sesión con el cliente A no ve ni una fila del cliente B, ni leyendo ni escribiendo.
   - La clave compuesta rechaza una rutina que apunte al agente de otro cliente.
@@ -24,16 +29,16 @@
   - `due_schedules` devuelve solo identificadores y horas, nunca instrucción ni respuesta.
 
   _Requisitos: 1.1, 1.3, 1.4_
-- [ ] **T004** Migración `apps/api/alembic/versions/0244_schedules.py`: las dos tablas con sus `CHECK` e índices (incluido el parcial sobre `next_run_at`), los cuatro `CHECK` ampliados (`ck_jobs_kind`, `ck_usage_source`, `ck_client_wallet_entries_kind` y el del asiento), y la función `due_schedules` como `SECURITY DEFINER`. T003 en verde.
+- [x] **T004** Migración `apps/api/alembic/versions/0244_schedules.py`: las dos tablas con sus `CHECK` e índices (incluido el parcial sobre `next_run_at`), los cuatro `CHECK` ampliados (`ck_jobs_kind`, `ck_usage_source`, `ck_client_wallet_entries_kind` y el del asiento), y la función `due_schedules` como `SECURITY DEFINER`. T003 en verde.
 
   _Requisitos: 1.1, 3.1, 7.7, 12.1_
-- [ ] **T005** [P] Modelos `apps/api/src/nexus_api/db/models/schedule.py` (`Schedule`, `ScheduleRun`), exportados en `models/__init__.py`.
+- [x] **T005** [P] Modelos `apps/api/src/nexus_api/db/models/schedule.py` (`Schedule`, `ScheduleRun`), exportados en `models/__init__.py`.
 
   _Requisitos: 1.1, 15.2_
-- [ ] **T006** Vuelve a correr `tests/isolation/test_21_rls_covers_every_tenant_table.py`, `test_22_tenant_delete_leaves_nothing.py` y `test_43_force_and_composite_fk_sweep.py`: las dos tablas nuevas tienen que entrar solas en esos barridos.
+- [x] **T006** Vuelve a correr `tests/isolation/test_21_rls_covers_every_tenant_table.py`, `test_22_tenant_delete_leaves_nothing.py` y `test_43_force_and_composite_fk_sweep.py`: las dos tablas nuevas tienen que entrar solas en esos barridos.
 
   _Requisitos: 1.1, 1.4_
-- [ ] **T007** Unitarias de `apps/worker/tests/unit/test_082_when.py`, en rojo. Sobre `when.py`, sin base de datos:
+- [x] **T007** Unitarias de `apps/worker/tests/unit/test_082_when.py`, en rojo. Sobre `when.py`, sin base de datos:
   - diaria, semanal con varios días, mensual del 1 al 28 y una sola vez;
   - la hora local que no existe el día que el reloj se adelanta corre a la primera que sí existe;
   - la hora que ocurre dos veces se ejecuta una sola vez;
@@ -42,28 +47,28 @@
   - `once` con la fecha ya pasada no devuelve ninguna.
 
   _Requisitos: 3.2, 3.4, 3.5, 3.7, 3.8_
-- [ ] **T008** Implementa `apps/api/src/nexus_api/services/schedules/when.py`: función pura con `zoneinfo` que, dada la periodicidad, la hora local y la zona, devuelve las próximas ejecuciones en absoluto. T007 en verde.
+- [x] **T008** Implementa `apps/api/src/nexus_api/services/schedules/when.py`: función pura con `zoneinfo` que, dada la periodicidad, la hora local y la zona, devuelve las próximas ejecuciones en absoluto. T007 en verde.
 
   _Requisitos: 3.2, 3.4, 3.5, 3.7_
-- [ ] **T009** Integración `apps/api/tests/integration/schedules/test_crud.py`, en rojo: alta con sus validaciones (`name_required`, `instruction_required`, `weekdays_required`, `day_of_month_out_of_range`, `limit_reached`), cambio, pausa a mano, archivar, restaurar en pausa, y que no exista `DELETE`.
+- [x] **T009** Integración `apps/api/tests/integration/schedules/test_crud.py`, en rojo: alta con sus validaciones (`name_required`, `instruction_required`, `weekdays_required`, `day_of_month_out_of_range`, `limit_reached`), cambio, pausa a mano, archivar, restaurar en pausa, y que no exista `DELETE`.
 
   _Requisitos: 2.1, 2.2, 2.3, 3.3, 12.1, 15.1, 15.3, 15.4, 15.5, 15.6_
-- [ ] **T010** Implementa `services/schedules/service.py`: alta, cambio, pausa y reanudación manual, archivar y restaurar, el tope de veinte activas, y **el estado efectivo** cruzando el de la fila con el del agente y el saldo de la bolsa. T009 en verde.
+- [x] **T010** Implementa `services/schedules/service.py`: alta, cambio, pausa y reanudación manual, archivar y restaurar, el tope de veinte activas, y **el estado efectivo** cruzando el de la fila con el del agente y el saldo de la bolsa. T009 en verde.
 
   _Requisitos: 2.1, 8.1, 8.3, 12.1, 15.1, 15.3, 15.4, 15.5, 15.6_
-- [ ] **T011** [P] Permisos `schedules:read` y `schedules:write` en `core/console_auth.py`, con los mismos roles que `agents:read` y `agents:write`, y su caso en las pruebas de permisos.
+- [x] **T011** [P] Permisos `schedules:read` y `schedules:write` en `core/console_auth.py`, con los mismos roles que `agents:read` y `agents:write`, y su caso en las pruebas de permisos.
 
   _Requisitos: 11.1, 11.2, 11.3_
-- [ ] **T012** Rutas de `apps/api/src/nexus_api/api/console/schedules.py` según [contracts/console-api.md](contracts/console-api.md): lista con filtros y cuentas, alta, detalle, cambio, pausa, reanudar, archivar, restaurar y `preview`. La consola del cliente no recibe ninguna.
+- [x] **T012** Rutas de `apps/api/src/nexus_api/api/console/schedules.py` según [contracts/console-api.md](contracts/console-api.md): lista con filtros y cuentas, alta, detalle, cambio, pausa, reanudar, archivar, restaurar y `preview`. La consola del cliente no recibe ninguna.
 
   _Requisitos: 1.2, 2.4, 2.5, 3.6, 11.4, 14.1, 14.2, 14.3_
 
 ## Fase 3: Historia 1 — escribirlo una vez y ver la respuesta (P1)
 
-- [ ] **T013** **Garantía 8.** Prueba de aislamiento `apps/api/tests/isolation/test_082_schedule_turn_has_no_end_customer.py`, en rojo. Barre el registro entero de herramientas: ninguna que tenga `conversation_id` entre sus obligatorios llega a ofrecerse en un turno de rutina, y ningún argumento del eje de cliente final queda al alcance del modelo. Una herramienta nueva con esa forma pone la suite en rojo.
+- [x] **T013** **Garantía 8.** Prueba de aislamiento `apps/api/tests/isolation/test_082_schedule_turn_has_no_end_customer.py`, en rojo. Barre el registro entero de herramientas: ninguna que tenga `conversation_id` entre sus obligatorios llega a ofrecerse en un turno de rutina, y ningún argumento del eje de cliente final queda al alcance del modelo. Una herramienta nueva con esa forma pone la suite en rojo.
 
   _Requisitos: 4.3, 4.4_
-- [ ] **T014** [P] **Garantía 2.** Unitaria `apps/worker/tests/unit/test_082_schedule_turn_tools.py`, en rojo:
+- [x] **T014** [P] **Garantía 2.** Unitaria `apps/worker/tests/unit/test_082_schedule_turn_tools.py`, en rojo:
   - la lista del turno es la intersección de siempre, nunca una suma;
   - «solo leer» deja solo lectura, «leer y escribir» deja escribir;
   - «preguntar antes de escribir» deja fuera sus escrituras y las anota en `withheld`;
@@ -71,6 +76,8 @@
 
   _Requisitos: 4.2, 4.5, 5.1, 5.2_
 - [ ] **T015** Implementa `apps/worker/src/nexus_worker/runtime/schedule_turn.py`: bucle ReAct con el `AgentBundle` de la versión publicada, la política de operador y el conocimiento, el `dispatch` con lista blanca y el tope de iteraciones. Sin clasificador, sin enrutado por intención, sin formateo de burbujas y sin escalado. La lista de herramientas sale de `activations._load_tool_policy` con las dos restas. T013 y T014 en verde.
+
+  **A medias.** `select_tools` y `tools_for_routine` están hechas y probadas: es la parte que sostiene las garantías 2 y 8. Falta el bucle que llama al modelo, que necesita el resolutor de modelo, la puerta de presupuesto y la medición, y se escribe junto a T017.
 
   _Requisitos: 4.1, 4.2, 4.3, 4.4, 4.5, 4.7_
 - [ ] **T016** Integración `apps/api/tests/integration/schedules/test_run.py`, en rojo: «Ejecutar ahora» deja la ejecución con su respuesta, lo que usó, lo que tardó y lo que costó; una herramienta retenida la deja en `partial` con `withheld` relleno; la bolsa vacía devuelve `409 bag_empty`.
