@@ -303,7 +303,9 @@ async def load_conversation_backing(
 
 
 #: What a reservation's history says when it was made or moved (spec 080, R1.1).
-_MADE_OR_MOVED: Final = ("created", "moved")
+#: Accepting a waitlist offer moves the live booking with
+#: ``move_booking(event="waitlist_accepted")``, without a ``moved``.
+_MADE_OR_MOVED: Final = ("created", "moved", "waitlist_accepted")
 
 
 async def load_customer_backing(

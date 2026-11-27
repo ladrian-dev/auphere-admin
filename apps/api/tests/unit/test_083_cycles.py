@@ -232,6 +232,23 @@ def test_who_did_what_in_the_agenda() -> None:
     assert counts.released == 1
 
 
+def test_accepting_a_waitlist_offer_for_a_live_booking_is_a_move() -> None:
+    """BE-1: con una reserva viva, aceptar la oferta la mueve
+    (``move_booking(event="waitlist_accepted")``, sin ``moved``) y cuenta como
+    movida. Sin reserva, la crea: ``created`` y ``waitlist_accepted`` en la misma
+    transacción, a la misma hora, y cuenta solo como creada."""
+    earlier, new = uuid.uuid4(), uuid.uuid4()
+    events = [
+        AgendaEvent(earlier, "created", "agent", None, at(0)),
+        AgendaEvent(earlier, "waitlist_accepted", "customer", None, at(30)),
+        AgendaEvent(new, "created", "customer", None, at(40)),
+        AgendaEvent(new, "waitlist_accepted", "customer", None, at(40)),
+    ]
+    counts = agenda_counts(events, replied_no={})
+    assert counts.created == {"agent": 1, "person": 0, "customer": 1, "total": 2}
+    assert counts.moved == {"agent": 0, "person": 0, "customer": 1, "total": 1}
+
+
 # ── D15: el eco lleva la hora de Meta ──────────────────────────────────────
 
 
