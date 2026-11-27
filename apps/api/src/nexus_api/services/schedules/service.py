@@ -47,7 +47,9 @@ __all__ = [
     "archive",
     "create",
     "effective_state",
+    "next_run_for",
     "pause",
+    "recompute_for_tenant",
     "restore",
     "resume",
     "update",
@@ -342,6 +344,31 @@ async def effective_state(
     if bag_empty:
         return "paused", "no_balance"
     return "active", None
+
+
+async def next_run_for(session: AsyncSession, schedule: Schedule) -> datetime | None:
+    """La próxima de esta rutina, o ``None`` si no está para ejecutarse. Es lo
+    que el disparador materializa en ``next_run_at``."""
+    return await _next_run(session, schedule)
+
+
+async def recompute_for_tenant(session: AsyncSession, tenant_id: uuid.UUID) -> int:
+    """Mueve la próxima de todas las rutinas activas de un cliente.
+
+    Se llama cuando cambia la **zona horaria del negocio** (requisito 3.7): la
+    hora que el partner escribió es local, así que mudarse de huso mueve el
+    instante. Sin esto, una rutina de las nueve seguiría disparándose a las
+    nueve de la zona vieja hasta que alguien la editara.
+    """
+    rows = (
+        await session.scalars(
+            sa.select(Schedule).where(Schedule.tenant_id == tenant_id, Schedule.state == "active")
+        )
+    ).all()
+    for schedule in rows:
+        schedule.next_run_at = await _next_run(session, schedule)
+    await session.flush()
+    return len(rows)
 
 
 async def due_now(
