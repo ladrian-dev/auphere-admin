@@ -361,7 +361,11 @@ Bandeja, el aviso de reservas a quien tiene Reservas (garantía 1, en
 reconecte. En la consola, `LiveStreamProvider` (`components/live/`, montado
 por `console-frame.tsx`) abre **una** línea por pestaña y la comparten la
 Bandeja, el contador y la agenda; al volver tras un corte, relee la lista, la
-conversación abierta, el contador y la agenda (`onBack`).
+conversación abierta, el contador y la agenda (`onBack`). El navegador
+reintenta solo, pero se rinde para siempre si un reintento recibe algo que no
+es un 200 con `text/event-stream` (un 502 durante un despliegue) y deja la
+fuente cerrada: entonces la consola la cierra y abre otra tras 1, 2, 5, 10 y
+como mucho 30 s, y vuelve a 1 s en cuanto una abre (`REOPEN_MS`).
 
 **La Bandeja avisa en cualquier pantalla** (spec 082, requisito 3), solo con
 el módulo. Cada entrante suena una vez (`chime.ts`, como mucho una vez cada

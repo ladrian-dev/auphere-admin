@@ -40,12 +40,20 @@ export const a = {
 };
 
 export class FakeEventSource {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  static readonly CLOSED = 2;
   static last: FakeEventSource | null = null;
+  /** Every source opened since a test emptied it (a closed line is opened again). */
+  static all: FakeEventSource[] = [];
+  readyState = FakeEventSource.CONNECTING;
+  closed = false;
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
   listeners = new Map<string, Set<(e: MessageEvent<string>) => void>>();
   constructor(public url: string) {
     FakeEventSource.last = this;
+    FakeEventSource.all.push(this);
   }
   addEventListener(name: string, fn: (e: MessageEvent<string>) => void) {
     if (!this.listeners.has(name)) this.listeners.set(name, new Set());
@@ -57,7 +65,10 @@ export class FakeEventSource {
   emit(name: string, data: unknown) {
     for (const fn of this.listeners.get(name) ?? []) fn(new MessageEvent(name, { data: JSON.stringify(data) }));
   }
-  close() {}
+  close() {
+    this.closed = true;
+    this.readyState = FakeEventSource.CLOSED;
+  }
 }
 
 export function resetActions() {

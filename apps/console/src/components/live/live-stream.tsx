@@ -18,6 +18,10 @@ import { keys } from "@/lib/query";
  * - Back after a drop (an open after an error) everything live is re-read and
  *   subscribers hear `back`, so the open Inbox re-reads its list and its
  *   conversation (R3.10).
+ * - The browser retries a dropped line on its own, but gives up for good when
+ *   a retry gets anything but a 200 with `text/event-stream` (a 502 during a
+ *   deploy): the source is left `CLOSED`. Then this closes it and opens
+ *   another after 1, 2, 5, 10 and at most 30 s, back to 1 s once one opens.
  *
  * Mounted only for a client person with the Inbox or Reservas; the API
  * forwards each person only the events of their modules (R1.11).
@@ -37,6 +41,8 @@ const NAMES: readonly LiveName[] = ["conversation.updated", "message.new", "mess
 /** A burst of notices is one re-read (R1.7, R3.7). */
 export const RESERVAS_DEBOUNCE_MS = 300;
 export const COUNTS_DEBOUNCE_MS = 400;
+/** The waits before opening a line the browser left closed; the last one repeats. */
+export const REOPEN_MS: readonly number[] = [1_000, 2_000, 5_000, 10_000, 30_000];
 
 const OFF: Live = { status: "off", subscribe: () => () => undefined };
 const Ctx = React.createContext<Live>(OFF);
@@ -48,7 +54,6 @@ export function LiveStreamProvider({ enabled, children }: { enabled: boolean; ch
 
   React.useEffect(() => {
     if (!enabled || typeof EventSource === "undefined") return;
-    const source = new EventSource(inboxStreamUrl);
     const emit = (e: LiveEvent) => {
       for (const fn of [...listeners.current]) fn(e);
     };
@@ -58,21 +63,16 @@ export function LiveStreamProvider({ enabled, children }: { enabled: boolean; ch
       timers[key] = window.setTimeout(fn, ms);
     };
     let isDown = false;
+    let failures = 0;
+    let reopen: number | undefined;
     const up = () => {
+      failures = 0;
       setStatus("live");
       if (!isDown) return;
       isDown = false;
       void qc.invalidateQueries({ queryKey: keys.reservas });
       void qc.invalidateQueries({ queryKey: keys.inbox });
       emit({ name: "back" });
-    };
-    source.onopen = up;
-    source.onerror = () => {
-      if (!isDown) {
-        isDown = true;
-        emit({ name: "down" });
-      }
-      setStatus("reconnecting");
     };
     const handlers = NAMES.map((name) => {
       const handler = (msg: MessageEvent<string>) => {
@@ -91,16 +91,42 @@ export function LiveStreamProvider({ enabled, children }: { enabled: boolean; ch
         }
         emit({ name, data });
       };
-      source.addEventListener(name, handler as EventListener);
-      return [name, handler] as const;
+      return [name, handler as EventListener] as const;
     });
-    source.addEventListener("ready", up);
+    const shut = (es: EventSource) => {
+      for (const [name, handler] of handlers) es.removeEventListener(name, handler);
+      es.removeEventListener("ready", up);
+      es.onopen = null;
+      es.onerror = null;
+      es.close();
+    };
+    let source: EventSource;
+    const open = () => {
+      const es = new EventSource(inboxStreamUrl);
+      source = es;
+      es.onopen = up;
+      es.onerror = () => {
+        if (!isDown) {
+          isDown = true;
+          emit({ name: "down" });
+        }
+        setStatus("reconnecting");
+        // CONNECTING: the browser is retrying on its own. CLOSED: it gave up for good.
+        if (es.readyState !== EventSource.CLOSED) return;
+        shut(es);
+        const wait = REOPEN_MS[Math.min(failures, REOPEN_MS.length - 1)];
+        failures += 1;
+        reopen = window.setTimeout(open, wait);
+      };
+      for (const [name, handler] of handlers) es.addEventListener(name, handler);
+      es.addEventListener("ready", up);
+    };
+    open();
     return () => {
-      for (const [name, handler] of handlers) source.removeEventListener(name, handler as EventListener);
-      source.removeEventListener("ready", up);
+      window.clearTimeout(reopen);
       window.clearTimeout(timers.reservas);
       window.clearTimeout(timers.counts);
-      source.close();
+      shut(source);
     };
   }, [enabled, qc]);
 

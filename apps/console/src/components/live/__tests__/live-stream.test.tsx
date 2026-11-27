@@ -3,9 +3,12 @@
  *
  * `reservations.changed` deja vieja la agenda (una ráfaga es una relectura,
  * 1.7); un evento de conversación deja viejo el contador (3.7); al volver
- * tras un corte se relee todo y se avisa con `back` (3.10).
+ * tras un corte se relee todo y se avisa con `back` (3.10). Si el navegador
+ * deja la línea cerrada (una reconexión que no recibe un 200 con
+ * `text/event-stream`, un 502 durante un despliegue), se abre otra con espera
+ * creciente (revisión antes de producción, UI-1).
  */
-import { act, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +45,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   heard.length = 0;
   FakeEventSource.last = null;
+  FakeEventSource.all = [];
   vi.stubGlobal("EventSource", FakeEventSource);
 });
 afterEach(() => {
@@ -89,5 +93,73 @@ describe("LiveStreamProvider", () => {
     act(() => es.emit("ready", {}));
     expect(invalidated(spy)).toEqual([JSON.stringify(keys.reservas), JSON.stringify(keys.inbox)]);
     expect(heard.at(-1)).toEqual({ name: "back" });
+  });
+
+  describe("una línea que el navegador deja cerrada se vuelve a abrir (UI-1)", () => {
+    const drop = (es: FakeEventSource) =>
+      act(() => {
+        es.readyState = FakeEventSource.CLOSED;
+        es.onerror?.();
+      });
+    const wait = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
+
+    it("la cierra y abre otra en la misma ruta, con espera de 1, 2, 5, 10 y 30 s como máximo", () => {
+      const spy = mount();
+      for (const [i, ms] of [1_000, 2_000, 5_000, 10_000, 30_000, 30_000].entries()) {
+        const es = FakeEventSource.all[i]!;
+        drop(es);
+        expect(es.closed).toBe(true);
+        wait(ms - 1);
+        expect(FakeEventSource.all).toHaveLength(i + 1);
+        wait(1);
+        expect(FakeEventSource.all).toHaveLength(i + 2);
+        expect(FakeEventSource.last?.url).toBe("/api/lite/inbox/stream");
+      }
+      expect(heard.filter((e) => e.name === "down")).toHaveLength(1);
+      // The new line carries the same ears: on opening it re-reads and says `back`, then hears events.
+      const es = FakeEventSource.last!;
+      act(() => es.onopen?.());
+      expect(heard.at(-1)).toEqual({ name: "back" });
+      act(() => es.emit("reservations.changed", { event: "reservations.changed" }));
+      wait(400);
+      expect(invalidated(spy)).toEqual([JSON.stringify(keys.reservas), JSON.stringify(keys.inbox), JSON.stringify(keys.reservas)]);
+    });
+
+    it("al abrir, la espera vuelve al principio", () => {
+      mount();
+      drop(FakeEventSource.all[0]!);
+      wait(1_000);
+      drop(FakeEventSource.all[1]!);
+      wait(2_000);
+      const third = FakeEventSource.all[2]!;
+      act(() => third.onopen?.());
+      drop(third);
+      wait(1_000);
+      expect(FakeEventSource.all).toHaveLength(4);
+    });
+
+    it("mientras el navegador reintenta por su cuenta (CONNECTING), no abre otra", () => {
+      mount();
+      act(() => FakeEventSource.last!.onerror?.());
+      wait(60_000);
+      expect(FakeEventSource.all).toHaveLength(1);
+      expect(FakeEventSource.last!.closed).toBe(false);
+    });
+
+    it("al desmontar no queda nada: ni una espera pendiente ni la línea reabierta", () => {
+      mount();
+      drop(FakeEventSource.all[0]!);
+      wait(1_000);
+      const reopened = FakeEventSource.all[1]!;
+      drop(reopened);
+      cleanup();
+      wait(60_000);
+      expect(FakeEventSource.all).toHaveLength(2);
+
+      mount();
+      const live = FakeEventSource.last!;
+      cleanup();
+      expect(live.closed).toBe(true);
+    });
   });
 });
