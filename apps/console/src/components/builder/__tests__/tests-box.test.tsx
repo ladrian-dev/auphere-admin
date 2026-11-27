@@ -126,3 +126,57 @@ describe("sin ejecutar, una sola vez y con lo que cuestan (spec 073, 3b.3)", () 
     expect(screen.queryByText(/Costarían/)).toBeNull();
   });
 });
+
+/**
+ * Bug `la-revision-ve-lo-que-no-hay`: una promesa sin herramienta ya la enseña, con su
+ * «Quitar la promesa», «No tenemos herramienta para» encima del borrador. La revisión de
+ * la tarjeta no la repite una a una: dice cuántas y lleva allí. Lo demás sigue igual.
+ */
+describe("la revisión de la tarjeta no repite lo que falta", () => {
+  const promise = (label: string, i: number) => ({
+    code: "promises_without_tool",
+    severity: "block" as const,
+    message: `Las instrucciones prometen ${label} y el agente no tiene ninguna herramienta que lo haga.`,
+    pointer: `/rules/${i}`,
+    fix: { kind: "edit" as const, pointer: `/rules/${i}` },
+  });
+  const review = {
+    version_number: 3,
+    findings: [
+      promise("cobrar con tarjeta o con enlace de pago", 0),
+      promise("enviar una factura", 1),
+      {
+        code: "forbids_agenda",
+        severity: "warn" as const,
+        message: "El agente tiene la agenda, pero este texto dice que no reserva: «No reserves».",
+        pointer: "/rules/2",
+        fix: { kind: "edit" as const, pointer: "/rules/2" },
+      },
+    ],
+    checks: [
+      { check: "skills_integrations", ok: true, findings: 0 },
+      { check: "contradictions", ok: true, findings: 0 },
+      { check: "services", ok: true, findings: 0 },
+      { check: "promises", ok: false, findings: 3 },
+    ],
+    blocking: 2,
+  };
+  const source = { review, state: "ready" as const, applying: null, load: vi.fn(), apply: vi.fn() };
+
+  it("dice cuántas promesas, enlaza a lo que falta y deja el resto", async () => {
+    const tests: Tests = { suite: suite(), running: null, pending: false, error: null, canRun: true, run: vi.fn(), ask: vi.fn(), confirm: null, reload: vi.fn() };
+    const { container } = render(
+      <LocaleProvider locale="es">
+        <TestsBox refId={REF} tests={tests} review={source} canWrite onFix={vi.fn()} onEdit={vi.fn()} onAll={vi.fn()} />
+      </LocaleProvider>,
+    );
+    const checks = within(screen.getByRole("list", { name: "Revisión automática" }));
+    expect(checks.queryByText(/cobrar con tarjeta/)).toBeNull();
+    expect(checks.queryByText(/enviar una factura/)).toBeNull();
+    expect(checks.getByText(/Su texto promete 2 cosas que ninguna herramienta hace\./)).toBeVisible();
+    expect(checks.getByRole("link", { name: "Ver cuáles" })).toHaveAttribute("href", "#agente-faltan");
+    // Lo que «No tenemos herramienta para» no enseña sigue aquí, con su texto.
+    expect(checks.getByText(/«No reserves»/)).toBeVisible();
+    expect(await axeViolations(container)).toEqual([]);
+  });
+});

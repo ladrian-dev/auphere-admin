@@ -172,6 +172,9 @@ export function useTestRun({
   };
 }
 
+/** Lo que «No tenemos herramienta para» ya enseña encima del borrador. */
+const PROMISE = "promises_without_tool";
+
 /** Las tres comprobaciones del prototipo, en su orden; las demás salen solo si encuentran algo. */
 const MAIN_CHECKS = ["skills_integrations", "contradictions", "services"] as const;
 
@@ -421,7 +424,10 @@ function ReviewChecks({
     <ul aria-label={t("agentProto.tests.checks")} className="grid min-w-0 gap-2 px-4 pb-4 text-sm" data-slot="tests-checks">
       {rows.flatMap((check) => {
         const grouped = groupNoPrice(byCheck.get(check.check) ?? []);
-        const findings = grouped.findings;
+        // Bug «la revisión ve lo que no hay»: una promesa sin herramienta ya sale, con su
+        // «Quitar la promesa», en «No tenemos herramienta para» (`#agente-faltan`).
+        const promises = grouped.findings.filter((f) => f.code === PROMISE);
+        const findings = grouped.findings.filter((f) => f.code !== PROMISE);
         if (check.ok) {
           return [
             <li key={check.check} className="flex min-w-0 items-start gap-2" data-ok="true">
@@ -446,7 +452,23 @@ function ReviewChecks({
             </span>
           </li>
         ) : null;
-        if (!findings.length && noPriceRow) return [noPriceRow];
+        const promisesRow = promises.length ? (
+          <li key={`${check.check}-promises`} className="flex min-w-0 items-start gap-2" data-ok="false" data-severity={promises.some((f) => f.severity === "block") ? "block" : "warn"} data-slot="promises-above">
+            {promises.some((f) => f.severity === "block") ? (
+              <CircleAlert aria-hidden="true" className="mt-1 size-4 shrink-0 text-destructive" />
+            ) : (
+              <TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0 text-warning" />
+            )}
+            <span className="min-w-0 text-pretty">
+              {promises.length === 1 ? t("builder.review.promises.above.one") : t("builder.review.promises.above.other", { n: promises.length })}{" "}
+              <a href="#agente-faltan" className={LINK}>
+                {t("builder.review.promises.see")}
+              </a>
+            </span>
+          </li>
+        ) : null;
+        const extra = [promisesRow, noPriceRow].filter((row): row is React.JSX.Element => row !== null);
+        if (!findings.length && extra.length) return extra;
         if (!findings.length) {
           return [
             <li key={check.check} className="flex min-w-0 items-start gap-2" data-ok="false">
@@ -471,7 +493,7 @@ function ReviewChecks({
             </span>
           </li>
         ));
-        return noPriceRow ? [...rowsOf, noPriceRow] : rowsOf;
+        return [...rowsOf, ...extra];
       })}
     </ul>
   );

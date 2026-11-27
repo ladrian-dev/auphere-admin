@@ -95,6 +95,16 @@ class Decided:
     written: SectionWritten | None
 
 
+def _confirmed(pointer: str, value: Any) -> Any:
+    """Lo que una persona decide (acepta o edita) queda confirmado. Una pregunta
+    frecuente del constructor llega con ``suggested: true`` (su «Sugerido ·
+    confirma», 18.3); aplicarla así la dejaba fuera del prompt y otra vez en «Por
+    confirmar» (bug ``aceptar-una-faq-la-deja-sugerida``)."""
+    if pointer.startswith("/faqs/") and isinstance(value, Mapping) and "suggested" in value:
+        return {k: v for k, v in value.items() if k != "suggested"}
+    return value
+
+
 def _provenance_for(source: str) -> tuple[str, str]:
     """``(source, kind)`` con que se escribe lo aceptado."""
     if source == "builder":
@@ -128,7 +138,7 @@ async def decide(
     section = section_of(row.pointer)
     written: SectionWritten | None = None
     if decision != "discard":
-        chosen = row.proposed_value if decision == "accept" else value
+        chosen = _confirmed(row.pointer, row.proposed_value if decision == "accept" else value)
         problems = client_spec.validate_value(row.pointer, chosen)
         if problems:
             raise InvalidValue(problems)

@@ -167,6 +167,7 @@ async def _attempt(
     judge_name: str | None = None,
     warnings: set[str] | None = None,
     reference: str | None = None,
+    version_prompt: str | None = None,
 ) -> bool | None:
     sm = get_sessionmaker()
     # 61.7: cada pasada empieza con la agenda simulada sembrada de nuevo.
@@ -224,6 +225,8 @@ async def _attempt(
             judge_name=judge_name,
             warnings=warnings,
             reference=reference,
+            agent_id=run.agent_id,
+            version_prompt=version_prompt,
         )
     finally:
         await close_conversation(ctx.tenant_id, conv)
@@ -243,6 +246,8 @@ async def _decide(
     judge_name: str | None,
     warnings: set[str] | None,
     reference: str | None = None,
+    agent_id: uuid.UUID | None = None,
+    version_prompt: str | None = None,
 ) -> tuple[bool | None, str | None, list[dict[str, Any]]]:
     """Lo que dice una pasada de la conversación que tuvo: si pasó, por qué no y lo
     que vio el juez. Sin modelo no dice nada (``stop = model_failed``)."""
@@ -259,11 +264,13 @@ async def _decide(
     judge_down: Exception | None = None
     # 61.5: el juez no es el modelo que respondió; si lo es, su veredicto no cuenta.
     if judge is not None and test.criteria and "judge_same_model" not in said:
+        knowledge = await _knowledge_of(ctx.tenant_id, agent_id, talk.transcript)
         messages = judge_service.judge_messages(
             criteria=test.criteria,
             transcript=talk.transcript,
             actions=[a.phrase for a in world.actions],
             reference=reference,
+            agent=judge_service.agent_reference(version_prompt, knowledge),
         )
         try:
             raw = await (judge(messages) if chosen == judge_name else judge(messages, model=chosen))
@@ -399,6 +406,52 @@ async def _business_data(tenant_id: uuid.UUID, agent_id: uuid.UUID) -> str | Non
         return None
 
 
+async def _version_prompt(tenant_id: uuid.UUID, version_id: uuid.UUID | None) -> str | None:
+    """Lo que el agente lee de verdad en las pruebas: el prompt de la versión probada
+    (``simulation.runner`` lo carga con ``bundle_of``), con sus instrucciones y «Lo que
+    sabes como este agente». Bug «el juez solo mira la ficha»."""
+    from nexus_api.db.models import AgentConfig
+
+    if version_id is None:
+        return None
+    try:
+        async with get_sessionmaker()() as session, tenant_scoped_session(session, tenant_id):
+            prompt: str | None = await session.scalar(
+                sa.select(AgentConfig.system_prompt_rendered).where(AgentConfig.id == version_id)
+            )
+        return prompt
+    except Exception as exc:
+        log.warning(
+            "tests.version_prompt_failed", tenant_id=str(tenant_id), error=type(exc).__name__
+        )
+        return None
+
+
+async def _knowledge_of(
+    tenant_id: uuid.UUID, agent_id: uuid.UUID | None, transcript: Sequence[Any]
+) -> list[str]:
+    """El conocimiento que recibió el agente en la conversación: el de cada mensaje del
+    cliente simulado, leído como lo lee el turno (``load_knowledge_for_turn``, con el
+    mensaje como consulta). Si no se puede leer, el juez sigue sin él."""
+    from nexus_worker.runtime.console_context import load_knowledge_for_turn
+
+    blocks: list[str] = []
+    for turn in transcript:
+        if not isinstance(turn, dict) or turn.get("role") != "customer":
+            continue
+        query = str(turn.get("text") or " ".join(str(b) for b in turn.get("bubbles") or []))
+        try:
+            block, _sources = await load_knowledge_for_turn(tenant_id, agent_id, query)
+        except Exception as exc:
+            log.warning(
+                "tests.knowledge_failed", tenant_id=str(tenant_id), error=type(exc).__name__
+            )
+            return blocks
+        if block and block not in blocks:
+            blocks.append(block)
+    return blocks
+
+
 async def run_suite(
     ctx: JobContext,
     run_id: uuid.UUID,
@@ -439,6 +492,9 @@ async def run_suite(
     warnings: set[str] = set()
     judge_name = judge_model() if judge is not None else None
     reference = await _business_data(ctx.tenant_id, run.agent_id) if judge is not None else None
+    version_prompt = (
+        await _version_prompt(ctx.tenant_id, run.agent_config_id) if judge is not None else None
+    )
     # T217: whether each test may start, decided once (at its first pass to get
     # the gate) and in order; once the budget runs out, no other test starts.
     decisions: dict[uuid.UUID, bool] = {}
@@ -481,6 +537,7 @@ async def run_suite(
                     judge_name=judge_name,
                     warnings=warnings,
                     reference=reference,
+                    version_prompt=version_prompt,
                 )
             await ctx.progress(
                 step="running", block={"key": f"{test.id}:{attempt}", "test_id": str(test.id)}

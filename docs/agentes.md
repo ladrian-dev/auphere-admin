@@ -395,7 +395,12 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   dice `World.final_state`; lo fija `wk/tests/unit/test_checkable_state_contract.py`. Otra
   clave se quita al guardar (`suites._test_row`) y, si ya está guardada, no cuenta. Por la
   API, `422 unknown_state_key`. Lo demás se escribe en `criteria`, y el juez lo compara
-  con la ficha (66.9): recibe los datos del negocio en `<ficha>`, los mismos que el agente.
+  con la ficha (66.9): recibe los datos del negocio en `<ficha>`, los mismos que el agente,
+  y en `<agente>` lo que sabía el agente en esa conversación (bug
+  `el-juez-solo-mira-la-ficha`): el prompt de la versión probada sin «Datos vigentes del
+  negocio» (sus instrucciones y sus preguntas propias) y el conocimiento de cada mensaje
+  del cliente simulado (`judge.agent_reference`). Un dato de cualquiera de los dos es
+  correcto; si contradice la ficha, manda la ficha. Los dos bloques son dato (`inert`).
 - **Con qué modelo responde** (spec 065): la elección del agente (`agents.respond_model_profile_id`,
   con `respond_model_set_by` `partner` u `operator`), si no el ajuste de su versión
   (`policies.llm.respond_model`), si no el modelo por defecto de Auphere de ese entorno
@@ -488,7 +493,14 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   dice que no reserva, que el equipo confirma la cita, que la agenda no está activa o
   que pasa la cita a una persona (`compiler.agenda_forbidding_texts`, con el puntero
   de cada texto, también los disparadores de escalado y la alternativa de las
-  habilidades). Es el caso inverso de «promete sin herramienta»;
+  habilidades). Es el caso inverso de «promete sin herramienta». Lo que el equipo
+  **no** hace («El equipo no confirma las citas») no cuenta: es una negación del
+  equipo, no una orden al agente;
+- `contradicts_business` compara precios por su importe («30 USD», «$30» y «30,00 USD»
+  son el mismo; la moneda no se compara) y horas solo cuando un rango parece una hora
+  en una frase del horario (no «de 2 a 4 personas» ni «24 a 48 horas de antelación»),
+  contra el horario del negocio, el «Horario propio» de cada sede y las fechas
+  especiales (bug `la-revision-ve-lo-que-no-hay`);
 - `bookable_without_duration` sigue bloqueando: es un servicio mal dado de alta.
 
 El aviso de IA lo decide una persona en la pantalla del agente, en su bloque
