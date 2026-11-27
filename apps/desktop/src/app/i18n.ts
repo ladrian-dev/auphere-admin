@@ -278,6 +278,8 @@ const COPY = {
   "shell.section.clientes": { es: "Clientes", en: "Clients" },
   "shell.section.conocimiento": { es: "Conocimiento", en: "Knowledge" },
   "shell.section.puesto": { es: "Puesto de trabajo", en: "Workstation" },
+  // Spec 082: rutinas de agente.
+  "shell.section.rutinas": { es: "Rutinas", en: "Routines" },
   "shell.section.consumo": { es: "Métricas", en: "Metrics" },
   "shell.section.auditoria": { es: "Auditoría", en: "Audit" },
   "shell.section.notificaciones": { es: "Notificaciones", en: "Notifications" },
