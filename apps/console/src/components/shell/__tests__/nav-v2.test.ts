@@ -17,7 +17,7 @@ const hrefs = (items: { href: string }[]) => items.map((i) => i.href);
 describe("navV2", () => {
   it("arriba lo de operar y abajo lo de la cuenta, en el orden del prototipo", () => {
     const nav = navV2("owner", PARTNER_MODULES);
-    expect(hrefs(nav.top)).toEqual(["/", "/clients", "/usage", "/audit", "/knowledge", "/workstation"]);
+    expect(hrefs(nav.top)).toEqual(["/", "/clients", "/schedules", "/usage", "/audit", "/knowledge", "/workstation"]);
     expect(hrefs(nav.bottom)).toEqual(["/team", "/billing", "/keys"]);
   });
 

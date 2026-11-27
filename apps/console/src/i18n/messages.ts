@@ -48,6 +48,7 @@ import { partnerViewsMessages } from "./lanes/partner-views";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
 import { metricsMessages } from "./lanes/metrics";
+import { schedulesMessages } from "./lanes/schedules";
 import { reservasMessages } from "./lanes/reservas";
 import { reservasTemplatesMessages } from "./lanes/reservas-templates";
 import { shellMessages } from "./lanes/shell";
@@ -640,6 +641,7 @@ const messages = {
   ...paymentReturnMessages,
   // Spec 083: el informe de un cliente.
   ...metricsMessages,
+  ...schedulesMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;
