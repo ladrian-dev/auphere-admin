@@ -103,7 +103,7 @@ Paginado por cursor, el más reciente primero.
 { "runs": [
     { "id": "…", "scheduled_for": "2026-11-27T12:00:00Z", "trigger": "schedule",
       "status": "done", "attempts": 1, "duration_ms": 22000,
-      "cost": {"amount_micros": 2000, "currency": "USD"},
+      "spend": {"amount_micros": 2000, "currency": "USD"},
       "answer": "Ayer se dieron de alta 14 usuarios…",
       "tools_used": ["Notion · consultar la vista Usuarios"],
       "withheld": null, "error_code": null,

@@ -60,7 +60,14 @@ class ScheduleAgentOut(BaseModel):
 
 
 class ScheduleMonthOut(BaseModel):
-    cost_micros: int
+    """Lo que la rutina lleva hecho este mes.
+
+    **Sin cifra de dinero todavía, y a propósito.** El partner ve precios,
+    nunca costes (C9): lo que puede ver es lo que salió de la bolsa de su
+    cliente, que es un asiento, no lo que nos costó el modelo. Llega como
+    ``{amount_micros, currency}`` con la tarea del cobro.
+    """
+
     runs: int
 
 
@@ -143,18 +150,13 @@ def _refused(exc: service.ScheduleError) -> HTTPException:
 
 async def _month_of(scope: ClientScope, schedule_id: uuid.UUID) -> ScheduleMonthOut:
     since = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    row = (
-        await scope.session.execute(
-            sa.select(
-                sa.func.coalesce(sa.func.sum(ScheduleRun.cost_micros), 0),
-                sa.func.count(),
-            ).where(
-                ScheduleRun.schedule_id == schedule_id,
-                ScheduleRun.scheduled_for >= since,
-            )
+    runs = await scope.session.scalar(
+        sa.select(sa.func.count()).where(
+            ScheduleRun.schedule_id == schedule_id,
+            ScheduleRun.scheduled_for >= since,
         )
-    ).one()
-    return ScheduleMonthOut(cost_micros=int(row[0]), runs=int(row[1]))
+    )
+    return ScheduleMonthOut(runs=int(runs or 0))
 
 
 async def _out(scope: ClientScope, schedule: Schedule) -> ScheduleOut:

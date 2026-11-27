@@ -75,6 +75,41 @@ _ENTRY_KINDS = (
     "debit_tests",
 )
 
+#: Lo que la Auditoría del partner dice de cada acción sobre una rutina.
+#: ``{actor}`` y ``{client}`` los rellena la consola.
+VOCABULARY: tuple[tuple[str, str, str, str], ...] = (
+    (
+        "schedule.create",
+        "info",
+        "{actor} creó una rutina para un agente de {client}.",
+        "{actor} created a routine for an agent of {client}.",
+    ),
+    (
+        "schedule.pause",
+        "info",
+        "{actor} pausó una rutina de {client}.",
+        "{actor} paused a routine of {client}.",
+    ),
+    (
+        "schedule.resume",
+        "info",
+        "{actor} reanudó una rutina de {client}.",
+        "{actor} resumed a routine of {client}.",
+    ),
+    (
+        "schedule.archive",
+        "warning",
+        "{actor} archivó una rutina de {client}: deja de ejecutarse.",
+        "{actor} archived a routine of {client}: it stops running.",
+    ),
+    (
+        "schedule.restore",
+        "info",
+        "{actor} restauró una rutina archivada de {client}, que queda en pausa.",
+        "{actor} restored an archived routine of {client}, which stays paused.",
+    ),
+)
+
 _CADENCES = ("daily", "weekly", "monthly", "once")
 _STATES = ("active", "paused", "archived")
 _PAUSE_REASONS = ("manual", "agent_unavailable", "no_balance", "failures")
@@ -240,6 +275,17 @@ def upgrade() -> None:
     )
     op.execute("GRANT EXECUTE ON FUNCTION due_schedules(integer) TO nexus_app")
 
+    # La Auditoría del partner lee estas acciones en su idioma, nunca como
+    # código: una fila sin frase se lee «Auphere · schedule.pause · schedule:…».
+    for action, severity, es, en in VOCABULARY:
+        op.execute(
+            "INSERT INTO console_audit_vocabulary "
+            "(action, category, severity, summary_es, summary_en) "
+            f"VALUES ('{action}', 'agents', '{severity}', "
+            f"'{es.replace(chr(39), chr(39) * 2)}', '{en.replace(chr(39), chr(39) * 2)}') "
+            "ON CONFLICT (action) DO NOTHING"
+        )
+
     _check("jobs", "ck_jobs_kind", f"kind IN ({_in((*_JOB_KINDS, 'schedule_run'))})")
     _check("usage_records", "ck_usage_source", f"source IN ({_in((*_SOURCES, 'schedule'))})")
     _check(
@@ -272,6 +318,7 @@ def downgrade() -> None:
         f"kind IN ({_in(_ENTRY_KINDS)})",
     )
 
+    op.execute("DELETE FROM console_audit_vocabulary WHERE action LIKE 'schedule.%'")
     op.execute("DROP FUNCTION IF EXISTS due_schedules(integer)")
     op.execute("DROP TABLE IF EXISTS schedule_runs")
     op.execute("DROP TABLE IF EXISTS schedules")
