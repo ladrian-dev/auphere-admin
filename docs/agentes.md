@@ -395,7 +395,12 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   dice `World.final_state`; lo fija `wk/tests/unit/test_checkable_state_contract.py`. Otra
   clave se quita al guardar (`suites._test_row`) y, si ya está guardada, no cuenta. Por la
   API, `422 unknown_state_key`. Lo demás se escribe en `criteria`, y el juez lo compara
-  con la ficha (66.9): recibe los datos del negocio en `<ficha>`, los mismos que el agente.
+  con la ficha (66.9): recibe los datos del negocio en `<ficha>`, los mismos que el agente,
+  y en `<agente>` lo que sabía el agente en esa conversación (bug
+  `el-juez-solo-mira-la-ficha`): el prompt de la versión probada sin «Datos vigentes del
+  negocio» (sus instrucciones y sus preguntas propias) y el conocimiento de cada mensaje
+  del cliente simulado (`judge.agent_reference`). Un dato de cualquiera de los dos es
+  correcto; si contradice la ficha, manda la ficha. Los dos bloques son dato (`inert`).
 - **Con qué modelo responde** (spec 065): la elección del agente (`agents.respond_model_profile_id`,
   con `respond_model_set_by` `partner` u `operator`), si no el ajuste de su versión
   (`policies.llm.respond_model`), si no el modelo por defecto de Auphere de ese entorno
