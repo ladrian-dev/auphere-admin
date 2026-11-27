@@ -57,6 +57,7 @@ from redis.exceptions import ResponseError
 from nexus_worker.metering.budget import add_spend
 from nexus_worker.metering.collector import (
     SOURCE_CHANNEL,
+    SOURCE_SCHEDULE,
     SOURCE_TESTS_CLIENT,
     USAGE_SOURCES,
     USAGE_STREAM,
@@ -380,6 +381,36 @@ async def _debit_channel_wallet(tenant_id: uuid.UUID, rows: list[dict[str, Any]]
             await _debit_channel_rows(tenant_id, group, agent_id)
         elif source == SOURCE_TESTS_CLIENT:
             await _debit_tests_rows(tenant_id, group, agent_id)
+        elif source == SOURCE_SCHEDULE:
+            await _debit_schedule_rows(tenant_id, group, agent_id)
+
+
+async def _debit_schedule_rows(
+    tenant_id: uuid.UUID, rows: list[dict[str, Any]], agent_id: Any
+) -> None:
+    """Spec 082 (requisito 9.1): una ejecución de rutina, a cargo de la bolsa del
+    cliente y en su propia partida. Como las pruebas a su cargo, si falta el
+    partner o el catálogo la entrada no se acusa y se reintenta: el cobro es
+    idempotente por su referencia, así que una ejecución no se queda sin cobrar
+    en silencio."""
+    partner_id = await _partner_for(tenant_id)
+    if partner_id is None:
+        raise RuntimeError(f"schedule run without a partner: tenant {tenant_id}")
+    from nexus_api.services.wallet.schedules import charge_schedule
+
+    weights = lane_weights_from(await get_catalog())
+    if not weights:
+        raise RuntimeError("schedule run without a catalog to price it")
+    for turn, qty in _turn_quota(rows, weights).items():
+        if qty <= 0:
+            continue
+        await charge_schedule(
+            partner_id=partner_id,
+            tenant_id=tenant_id,
+            agent_id=uuid.UUID(str(agent_id)) if agent_id else None,
+            amount_usd=qty,
+            usage_ref=f"{SOURCE_SCHEDULE}:{turn}",
+        )
 
 
 async def _debit_tests_rows(

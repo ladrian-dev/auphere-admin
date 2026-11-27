@@ -44,13 +44,23 @@ from nexus_api.services.console_reporting import reporting_transaction
 from nexus_api.services.wallet import fx
 from nexus_api.services.wallet.bags import as_client
 
-Line = Literal["conversations", "client_tests", "meta", "build", "companion"]
+Line = Literal["conversations", "client_tests", "schedules", "meta", "build", "companion"]
 Payer = Literal["client_bag", "business_meta", "auphere", "account"]
-LINES: Final[tuple[Line, ...]] = ("conversations", "client_tests", "meta", "build", "companion")
+LINES: Final[tuple[Line, ...]] = (
+    "conversations",
+    "client_tests",
+    # Spec 082: lo que gastan las rutinas del cliente, aparte de lo que
+    # gastan sus agentes atendiendo.
+    "schedules",
+    "meta",
+    "build",
+    "companion",
+)
 #: Quién paga cada partida (46.4).
 PAYER: Final[dict[Line, Payer]] = {
     "conversations": "client_bag",
     "client_tests": "client_bag",
+    "schedules": "client_bag",
     "meta": "business_meta",
     "build": "auphere",
     "companion": "account",
@@ -59,6 +69,7 @@ PAYER: Final[dict[Line, Payer]] = {
 _BAG_ENTRY: Final[dict[str, str]] = {
     "conversations": "debit_turn",
     "client_tests": "debit_tests",
+    "schedules": "debit_schedule",
 }
 #: Precio = coste por 2,2; en cien milésimas.
 PRICE_MULTIPLIER: Final = Decimal("2.2")

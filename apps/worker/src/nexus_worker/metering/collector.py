@@ -92,6 +92,9 @@ SOURCE_READER = "reader"
 SOURCE_INDEXER = "indexer"
 SOURCE_SUGGESTIONS = "suggestions"
 SOURCE_CERTIFICATION = "certification"
+# Spec 082: una ejecución de rutina. No es «Construcción y pruebas»: la paga
+# la bolsa del cliente, en su propia partida.
+SOURCE_SCHEDULE = "schedule"
 USAGE_SOURCES: frozenset[str] = frozenset(USAGE_LINE_BY_SOURCE)
 
 # Spec 047 (requisito 40.1): la taxonomía de tareas del router, versión 1
