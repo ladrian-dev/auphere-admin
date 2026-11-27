@@ -6,6 +6,7 @@ import { axeViolations } from "@nexus/ui/test/axe";
 
 import { LocaleProvider } from "@/i18n/client";
 import type { AgentKnowledge } from "@/lib/backend/agent-knowledge-types";
+import { withQuery } from "@/test/query";
 
 import { DOC, DOC2, RECEPCION, REF, fail, knowledge, ok, source } from "./channel-fixtures";
 
@@ -35,11 +36,14 @@ function panel(data: AgentKnowledge | null = knowledge(), over: Partial<Actions>
     forget: vi.fn(async () => ok(null)),
     ...over,
   };
+  // Spec 082 (D2): «onTaught» is now «onChanged», heard on every change; the list lives in React Query.
   const onTaught = vi.fn();
   const view = render(
-    <LocaleProvider locale="es">
-      <AgentKnowledgePanel refId={REF} agentId={RECEPCION} agentName="Recepción" knowledge={data} canWrite={canWrite} onTaught={onTaught} actions={actions} />
-    </LocaleProvider>,
+    withQuery(
+      <LocaleProvider locale="es">
+        <AgentKnowledgePanel refId={REF} agentId={RECEPCION} agentName="Recepción" knowledge={data} canWrite={canWrite} onChanged={onTaught} actions={actions} />
+      </LocaleProvider>,
+    ),
   );
   return { ...view, actions, onTaught };
 }
@@ -70,8 +74,9 @@ describe("la sección Conocimiento del agente", () => {
 
   it("si no se pudo leer, lo dice y deja reintentar", async () => {
     const user = userEvent.setup();
-    const { actions } = panel(null, { reload: vi.fn(async () => ok(knowledge())) });
-    expect(screen.getByText(/No pudimos cargar el conocimiento/)).toBeVisible();
+    // Spec 082: without the server's read it reads at once; that read fails too.
+    const { actions } = panel(null, { reload: vi.fn().mockResolvedValueOnce(fail(500)).mockResolvedValue(ok(knowledge())) });
+    expect(await screen.findByText(/No pudimos cargar el conocimiento/)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(actions.reload).toHaveBeenCalledWith({ ref: REF, agent: RECEPCION });
     expect(await screen.findByText("Tarifas mayoristas")).toBeVisible();
