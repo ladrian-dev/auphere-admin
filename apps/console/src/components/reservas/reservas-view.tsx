@@ -42,6 +42,12 @@ export type ReservasInitial = {
   hasInbox: boolean;
   /** `?booking={id}`: the booking to open on arrival (the Panel's link, T026). */
   booking?: string | null;
+  /**
+   * The URL carried no `date`: the screen is the business's today, and a
+   * re-read asks for today again instead of the first paint's day (spec 064,
+   * 2.6). Absent, the screen stays on `url.date`.
+   */
+  followsToday?: boolean;
 };
 
 /** Spec 064 (2.6): how often the open screen reads again, while the tab is visible. */
@@ -77,10 +83,12 @@ function useLastGood(initial: ReservasInitial): { shown: ReservasInitial; kept: 
  */
 function useScreen(initial: ReservasInitial): { read: ReservasInitial; failed: boolean; again: () => void } {
   const qc = useQueryClient();
-  const key = keys.reservasScreen(urlKey(initial.url));
+  // Without a date on the URL the screen is «today», whatever day it was painted on.
+  const follows = initial.followsToday === true;
+  const key = keys.reservasScreen(urlKey(follows ? { ...initial.url, date: "today" } : initial.url));
   const q = useQuery({
     queryKey: key,
-    queryFn: async () => unwrap(await reservasScreenAction(initial.url)),
+    queryFn: async () => unwrap(await reservasScreenAction(follows ? { ...initial.url, date: null } : initial.url)),
     initialData: initial,
     initialDataUpdatedAt: () => Date.now(),
     staleTime: FRESH_MS,

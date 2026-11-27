@@ -89,20 +89,21 @@ const weekHours = z.object(Object.fromEntries(WEEKDAYS.map((d) => [d, dayHours])
  * Query calls this on every re-read (after a write, on a `reservations.changed`
  * notice, every 45 s); it reads **exactly** what the page painted first,
  * through `readReservas`. `booking` is not part of it: the page's link opens a
- * panel once, a re-read never does.
+ * panel once, a re-read never does. `date: null` is a URL without a date: the
+ * business's today at the time of the re-read, not of the first paint.
  */
 const screenSchema = z.object({
   tab: z.enum(["agenda", "waitlist", "settings"]),
   view: z.enum(["grid", "list"]),
   period: z.enum(["day", "week", "month"]),
-  date: day,
+  date: day.nullable(),
   staff: id.nullable(),
 });
 export async function reservasScreenAction(raw: unknown): Promise<ActionResult<ReservasInitial>> {
-  const { staff, ...rest } = screenSchema.parse(raw);
+  const { staff, date, ...rest } = screenSchema.parse(raw);
   const principal = await reservasPrincipal();
   if (!principal) return forbidden;
-  const sp: SearchParams = staff ? { ...rest, staff } : rest;
+  const sp: SearchParams = { ...rest, ...(date ? { date } : {}), ...(staff ? { staff } : {}) };
   return run(() => readReservas(principal, sp, new Date().toISOString()));
 }
 

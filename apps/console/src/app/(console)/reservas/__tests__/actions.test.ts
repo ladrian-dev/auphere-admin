@@ -6,6 +6,7 @@ vi.mock("@/lib/backend", () => h.backendModule);
 vi.mock("next/cache", () => h.cacheModule);
 
 const actions = await import("../actions");
+const { servicesSettings } = await import("@/components/reservas/model/__tests__/fixtures");
 
 const ID = "5b0a5f0e-7c2d-4c39-9d6f-1e1c9f3a1b22";
 const STAFF = "8c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f";
@@ -261,6 +262,27 @@ describe("reservas actions", () => {
     await expect(actions.reservasScreenAction({ ...screen, tab: "bookings" })).rejects.toThrow();
     await expect(actions.reservasScreenAction({ ...screen, date: "22/10/2026" })).rejects.toThrow();
     await expect(actions.reservasScreenAction({ ...screen, staff: "not-a-uuid" })).rejects.toThrow();
+  });
+
+  it("revisión UI-2: without a date the re-read is the business's today; with one it stays on it", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      // 02:00 UTC on the 24th is still 23:00 on the 23rd in Santiago: «today» is the business's.
+      vi.setSystemTime(new Date("2026-10-24T02:00:00Z"));
+      h.setClient(["reservas"]);
+      h.backend.reservasSettings.mockResolvedValue(servicesSettings());
+      const screen = { tab: "agenda", view: "grid", period: "day", staff: null };
+      expect(await actions.reservasScreenAction({ ...screen, date: null })).toMatchObject({
+        ok: true,
+        data: { url: { ...screen, date: "2026-10-23" }, followsToday: true },
+      });
+      expect(await actions.reservasScreenAction({ ...screen, date: "2026-10-22" })).toMatchObject({
+        ok: true,
+        data: { url: { ...screen, date: "2026-10-22" }, followsToday: false },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("validates before asking: no write leaves without its key, a name, a real day", async () => {

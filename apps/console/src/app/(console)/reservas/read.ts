@@ -2,7 +2,7 @@ import "server-only";
 
 import type { ReservasData } from "@/components/reservas/context";
 import { addDays, localClock, periodRange } from "@/components/reservas/model/dates";
-import { parseBookingParam, parseReservasUrl, type SearchParams } from "@/components/reservas/model/url-state";
+import { parseBookingParam, parseReservasUrl, urlHasDate, type SearchParams } from "@/components/reservas/model/url-state";
 import type { ReservasInitial } from "@/components/reservas/reservas-view";
 import { backendFor } from "@/lib/backend";
 import type { ClientPrincipal } from "@/lib/principal";
@@ -29,7 +29,8 @@ export async function readReservas(principal: ClientPrincipal, sp: SearchParams,
   const settings = await api.reservasSettings().catch(() => null);
   if (!settings) {
     const today = localClock(new Date(nowIso), "UTC").date;
-    return { url: parseReservasUrl(sp, { today, mode: "services" }), nowIso, data: null, errors: [], hasInbox, booking };
+    const url = parseReservasUrl(sp, { today, mode: "services" });
+    return { url, nowIso, data: null, errors: [], hasInbox, booking, followsToday: !urlHasDate(sp, url) };
   }
 
   const today = localClock(new Date(nowIso), settings.timezone).date;
@@ -73,5 +74,5 @@ export async function readReservas(principal: ClientPrincipal, sp: SearchParams,
   ]);
 
   const data: ReservasData = { settings, staff, services: catalog, bookings, occupancy, blocks, waitlist, offers };
-  return { url, nowIso, data, errors, hasInbox, booking };
+  return { url, nowIso, data, errors, hasInbox, booking, followsToday: !urlHasDate(sp, url) };
 }

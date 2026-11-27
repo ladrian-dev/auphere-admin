@@ -95,8 +95,15 @@ export function url(o: Partial<ReservasUrl> = {}): ReservasUrl {
 }
 
 /** What `reservasScreenAction` answers: the screen of `url()` read again at `nowIso`. */
-export function screenRead(data: ReservasData | null, nowIso: string, o: { url?: Partial<ReservasUrl>; errors?: string[] } = {}) {
-  return { ok: true as const, data: { url: url(o.url), nowIso, data, errors: o.errors ?? [], hasInbox: true, booking: null } };
+export function screenRead(
+  data: ReservasData | null,
+  nowIso: string,
+  o: { url?: Partial<ReservasUrl>; errors?: string[]; followsToday?: boolean } = {},
+) {
+  return {
+    ok: true as const,
+    data: { url: url(o.url), nowIso, data, errors: o.errors ?? [], hasInbox: true, booking: null, followsToday: o.followsToday ?? false },
+  };
 }
 
 /**
@@ -114,6 +121,8 @@ export function renderView(
     booking?: string | null;
     live?: boolean;
     client?: QueryClient;
+    /** The URL carried no `date`: re-reads ask for the business's today. */
+    followsToday?: boolean;
   } = {},
 ) {
   const View = ViewRef.current!;
@@ -128,7 +137,17 @@ export function renderView(
   }
   const view = render(
     <LocaleProvider locale={o.locale ?? "es"}>
-      <View initial={{ url: url(o.url), nowIso: NOW_ISO, data, errors: o.errors ?? [], hasInbox: o.hasInbox ?? true, booking: o.booking ?? null }} />
+      <View
+        initial={{
+          url: url(o.url),
+          nowIso: NOW_ISO,
+          data,
+          errors: o.errors ?? [],
+          hasInbox: o.hasInbox ?? true,
+          booking: o.booking ?? null,
+          followsToday: o.followsToday ?? false,
+        }}
+      />
     </LocaleProvider>,
     { wrapper: Wrapper },
   );

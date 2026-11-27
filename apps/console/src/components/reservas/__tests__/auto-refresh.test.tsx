@@ -57,6 +57,32 @@ afterEach(() => vi.useRealTimers());
 
 /** Spec 064 (2.6 a 2.9): the open agenda reads again on its own, and says when it could not. */
 describe("Reservas · la agenda se pone al día sola (spec 064)", () => {
+  // Revisión antes de producción (UI-2): a tab opened on Monday without a date
+  // on its URL is today's agenda, and on Tuesday it must read Tuesday's.
+  it("without a date on the URL, a re-read the next day asks for the business's today, not the first paint's day", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-23T12:00:00Z"));
+    const tomorrow = { date: "2026-10-23" };
+    a.reservasScreenAction.mockResolvedValue(screenRead(data(), "2026-10-23T12:00:45Z", { url: tomorrow, followsToday: true }));
+    renderView(data(), { followsToday: true });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(45_000)));
+    expect(a.reservasScreenAction).toHaveBeenCalledTimes(1);
+    expect(a.reservasScreenAction).toHaveBeenCalledWith({ ...url(), date: null });
+    // The day it brought does not pin the next re-read either.
+    await act(async () => void (await vi.advanceTimersByTimeAsync(45_000)));
+    expect(a.reservasScreenAction).toHaveBeenCalledTimes(2);
+    expect(a.reservasScreenAction).toHaveBeenLastCalledWith({ ...url(), date: null });
+  });
+
+  it("with a date on the URL, a re-read the next day stays on that day", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-23T12:00:00Z"));
+    a.reservasScreenAction.mockResolvedValue(screenRead(data(), "2026-10-23T12:00:45Z", { url: { date: "2026-10-21" } }));
+    renderView(data(), { url: { date: "2026-10-21" }, followsToday: false });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(45_000)));
+    expect(a.reservasScreenAction).toHaveBeenCalledWith(url({ date: "2026-10-21" }));
+  });
+
   it("reads again every 45 s while the tab is visible, without dimming the screen", async () => {
     vi.useFakeTimers();
     // Spec 082: each pass is a re-read through the action, in the background.

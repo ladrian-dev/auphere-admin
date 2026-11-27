@@ -353,7 +353,10 @@ relee al instante:
 - **al volver la línea** tras un corte.
 
 Además, con la pestaña visible relee cada 45 s, y al volver a verse o al volver la
-red (`online`) si la lectura tiene más de 15 s. Nada de eso atenúa la pantalla, así que un diálogo abierto y lo
+red (`online`) si la lectura tiene más de 15 s. Una URL sin `date` es «hoy»: la
+relectura pide el hoy del negocio de ese momento (`date: null` en
+`reservasScreenAction`), así que una pestaña abierta el lunes muestra el martes
+el martes; con `date` en la URL, se queda en ese día. Nada de eso atenúa la pantalla, así que un diálogo abierto y lo
 escrito en él siguen ahí. Mientras sale un cambio de estado, y hasta que llega la
 relectura de la ficha, sus botones están ocupados: con los botones viejos a la
 vista se repetía el 412. Si la relectura llega vacía, con una parte en error o
