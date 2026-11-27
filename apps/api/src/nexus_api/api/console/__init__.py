@@ -159,6 +159,8 @@ router.include_router(teammates.router)
 router.include_router(capabilities.router)
 router.include_router(support.router)
 router.include_router(whatsapp.router)
+# Spec 085: after WhatsApp's, which keeps ``/whatsapp/signup-link``.
+router.include_router(meta_social.link_router)
 router.include_router(templates.router)
 # lane agent-tools (CP-11/13/14/15/31)
 router.include_router(agent_settings.router)

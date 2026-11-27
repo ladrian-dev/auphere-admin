@@ -12,10 +12,15 @@ credential behind.
   ``choose`` with the list; ``/connect/complete`` connects the one picked.
 - A connection that cannot work is a 409 ``{code, help}`` with the exact step
   to fix it (requirement 5.2). Nothing was created.
+
+Spec 085: ``POST …/{instagram|messenger}/signup-link`` mints the link the
+business owner opens to connect the channel themselves (``link_router``,
+mounted after WhatsApp's so ``/whatsapp/signup-link`` keeps its own route).
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -27,7 +32,6 @@ from redis.asyncio import Redis
 
 from nexus_api.api.deps import get_redis
 from nexus_api.db.models import Channel
-from nexus_api.repositories.audit import AuditRepository
 from nexus_api.services import meta_social_service
 
 from .channels import _detail, channel_logos
@@ -35,6 +39,9 @@ from .deps import ClientScope, client_scope
 from .schemas_channels import ChannelDetailOut
 
 router = APIRouter(prefix="/clients/{ref}/channels")
+#: Spec 085. Its own router: ``/{kind}/signup-link`` would also match
+#: ``/whatsapp/signup-link``, so it is mounted after the WhatsApp routes.
+link_router = APIRouter(prefix="/clients/{ref}/channels")
 
 Kind = Literal["instagram", "messenger"]
 
@@ -86,17 +93,12 @@ async def _answer(scope: ClientScope, kind: Kind, outcome: ConnectOutcome) -> Co
     assert outcome.channel_id is not None and outcome.account is not None
     channel = await scope.session.get(Channel, outcome.channel_id)
     assert channel is not None
-    await AuditRepository(scope.session).record(
+    await meta_social_service.audit_connect(
+        scope.session,
         actor=scope.principal.actor,
-        action=f"channel.{kind}.connect",
-        target=f"channel:{channel.id}",
-        before=None,
-        after={
-            "display_name": (
-                f"@{outcome.account.username}" if outcome.account.username else outcome.account.name
-            ),
-            "account_id": outcome.account.id,
-        },
+        kind=kind,
+        channel_id=channel.id,
+        account=outcome.account,
     )
     return ConnectOut(
         status="connected", channel=_detail(channel, await channel_logos(scope.session))
@@ -147,3 +149,31 @@ async def complete(
             status_code=status.HTTP_502_BAD_GATEWAY, detail="Meta did not answer"
         ) from exc
     return await _answer(scope, kind, outcome)
+
+
+class SignupLinkOut(BaseModel):
+    """Spec 085: the URL is shown only here; Auphere keeps its fingerprint."""
+
+    url: str
+    channel: Kind
+    expires_at: datetime
+
+
+@link_router.post(
+    "/{kind}/signup-link", response_model=SignupLinkOut, status_code=status.HTTP_201_CREATED
+)
+async def signup_link(
+    kind: Kind,
+    scope: ClientScope = Depends(client_scope("channels:write")),
+) -> SignupLinkOut:
+    """Spec 085 (1.1, 1.2, 1.3, 1.6): the link the business owner opens to connect
+    Instagram or Messenger themselves. Nothing to choose: the owner picks how
+    to sign in to Meta on their page. It replaces the client's earlier unused
+    link of this channel, and only that one."""
+    from nexus_api.services.channel_signup_links import mint_link
+
+    _require_enabled(scope, kind)
+    minted = await mint_link(
+        scope.session, tenant_id=scope.tenant.id, channel=kind, actor=scope.principal.actor
+    )
+    return SignupLinkOut(url=minted.url, channel=kind, expires_at=minted.link.expires_at)
