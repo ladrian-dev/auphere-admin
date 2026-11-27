@@ -153,10 +153,13 @@ lado de lo que hay, marcada «Sugerido · confirma» y con su procedencia
 | `/faqs/-` | Preguntas frecuentes | En «Por confirmar», la pregunta y su respuesta |
 | `/business/sector` | Datos básicos | «Propuesto: {sector}» al lado del sector, solo «Aceptar» y «Descartar» |
 
-Una pregunta guardada con `suggested: true` (sugerida, fuera del prompt) también
-sale en «Por confirmar»: aceptarla es `PATCH …/faqs/{id}` con `suggested: false`
-y descartarla, archivarla. Nada sugerido entra en el prompt de un agente hasta que
-una persona lo acepta (60.7).
+Aceptar o editar una propuesta de `/faqs/…` la deja **confirmada**: el valor que se
+aplica no lleva `suggested`, aunque la propuesta lo traiga (`suggestions._confirmed`;
+bug `aceptar-una-faq-la-deja-sugerida`), y la pregunta entra en el prompt en la misma
+escritura. Una pregunta guardada con `suggested: true` (sugerida, fuera del prompt)
+también sale en «Por confirmar»: aceptarla es `PATCH …/faqs/{id}` con
+`suggested: false` y descartarla, archivarla. Nada sugerido entra en el prompt de un
+agente hasta que una persona lo acepta (60.7).
 
 ## El historial y el deshacer
 
