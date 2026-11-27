@@ -488,7 +488,14 @@ herramientas, las pruebas ni las reglas del validador. Decisiones en
   dice que no reserva, que el equipo confirma la cita, que la agenda no está activa o
   que pasa la cita a una persona (`compiler.agenda_forbidding_texts`, con el puntero
   de cada texto, también los disparadores de escalado y la alternativa de las
-  habilidades). Es el caso inverso de «promete sin herramienta»;
+  habilidades). Es el caso inverso de «promete sin herramienta». Lo que el equipo
+  **no** hace («El equipo no confirma las citas») no cuenta: es una negación del
+  equipo, no una orden al agente;
+- `contradicts_business` compara precios por su importe («30 USD», «$30» y «30,00 USD»
+  son el mismo; la moneda no se compara) y horas solo cuando un rango parece una hora
+  en una frase del horario (no «de 2 a 4 personas» ni «24 a 48 horas de antelación»),
+  contra el horario del negocio, el «Horario propio» de cada sede y las fechas
+  especiales (bug `la-revision-ve-lo-que-no-hay`);
 - `bookable_without_duration` sigue bloqueando: es un servicio mal dado de alta.
 
 El aviso de IA lo decide una persona en la pantalla del agente, en su bloque

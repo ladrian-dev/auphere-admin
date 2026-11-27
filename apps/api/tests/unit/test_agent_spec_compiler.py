@@ -26,6 +26,7 @@ from nexus_api.services.agent_spec.legacy import (
 )
 from nexus_api.services.agent_spec.schema import AgentSpec
 from nexus_api.services.business.compilation import TAG, Facts, compile_prompt, instructions_of
+from nexus_api.services.business.services_catalog import format_amount
 from tests.unit.test_agent_spec_contract import STRUCTURED
 
 TODAY = "Eres el asistente de la Barbería Cultor.\n\nResponde siempre en español, de tú."
@@ -35,7 +36,8 @@ FACTS = Facts(
     timezone="Europe/Madrid",
     hours="De lunes a viernes de 10:00 a 20:00.",
     locations=("Cultor Centro · Calle Mayor 1",),
-    services=("Corte de pelo · 30 min · 15,00 € · se reserva",),
+    # Como lo escribe la ficha (``load_facts``): el importe con ``format_amount``.
+    services=(f"Corte de pelo · 30 min · {format_amount(1500, 'EUR')} · se reserva",),
 )
 CATALOG = {"reservas.find_slots", "reservas.create", "payments.create_link"}
 
@@ -357,3 +359,128 @@ def test_an_agent_with_the_agenda_whose_text_forbids_it_is_incoherent() -> None:
     assert [i for i in without if i.code == "forbids_agenda"] == []
     # Y un agente con agenda y un texto que no la prohíbe, tampoco.
     assert [i for i in incoherences(_spec(), FACTS, CATALOG) if i.code == "forbids_agenda"] == []
+
+
+# ── Bug «la revisión ve lo que no hay» (.specify/bugs/la-revision-ve-lo-que-no-hay) ──
+
+#: El texto de Recepción de Jemma's Hair (prod, 2026-11-26) que la revisión marcaba.
+JEMMA_TEAM = "El equipo no confirma las citas."
+
+
+def _with_body(body: str) -> AgentSpec:
+    doc = copy.deepcopy(STRUCTURED)
+    doc["instructions"]["sections"].append({"title": "Datos", "body": body})
+    return AgentSpec.model_validate(doc)
+
+
+def _contradictions(body: str, facts: Facts) -> set[str]:
+    return {
+        i.detail
+        for i in incoherences(_with_body(body), facts, CATALOG)
+        if i.code == "contradicts_business"
+    }
+
+
+def test_the_team_not_confirming_does_not_forbid_the_agenda() -> None:
+    from nexus_api.services.agent_spec import compiler
+
+    assert not compiler.forbids_agenda(JEMMA_TEAM)
+    # Cada una de las dos ramas que lo marcaban, por separado.
+    assert not compiler._refuses_slots(JEMMA_TEAM)
+    assert not compiler._team_checks(JEMMA_TEAM)
+    for text in (
+        "Nuestro equipo nunca confirma las citas por teléfono.",
+        "El personal no revisa la disponibilidad: la ves tú.",
+    ):
+        assert not compiler.forbids_agenda(text), text
+    # Lo que sí se la prohíbe sigue marcado.
+    for text in (
+        "El equipo confirma las citas.",
+        "No confirmes las citas.",
+        "Las citas las confirma el equipo.",
+        "No ofrezcas huecos: el equipo te los da.",
+    ):
+        assert compiler.forbids_agenda(text), text
+
+
+def _usd(minor: int) -> Facts:
+    return Facts(
+        name="Jemma's Hair",
+        hours=FACTS.hours,
+        locations=FACTS.locations,
+        services=(f"Corte · 45 min · {format_amount(minor, 'USD')} · se reserva",),
+    )
+
+
+def test_a_price_said_another_way_is_the_same_price() -> None:
+    facts = _usd(3000)  # «30,00 USD», como la ficha
+    for said in (
+        "El corte cuesta 30 USD.",
+        "El corte cuesta $30.",
+        "El corte cuesta US$ 30.",
+        "El corte cuesta 30 dólares.",
+        "El corte cuesta 30,00 USD.",
+        "El corte cuesta 30.00 USD.",
+    ):
+        assert _contradictions(said, facts) == set(), said
+    assert _contradictions("El corte cuesta 35 USD.", facts) == {"precio «35 USD»"}
+    assert _contradictions("El corte cuesta $35.", facts) == {"precio «$35»"}
+    # «1500 USD» se lee entero, no «500 USD».
+    assert _contradictions("El tinte cuesta 1500 USD.", _usd(150_000)) == set()
+    assert _contradictions("El tinte cuesta 1500 USD.", facts) == {"precio «1500 USD»"}
+
+
+def test_the_currencies_the_ficha_writes_are_read() -> None:
+    for minor, code, said in (
+        (1500, "EUR", "El corte cuesta 15 €."),
+        (1500, "EUR", "El corte cuesta 15 euros."),
+        (15_000, "CLP", "El corte cuesta 15.000 pesos."),
+        (15_000, "CLP", "El corte cuesta 15000 CLP."),
+        (25_000, "MXN", "El corte cuesta 250 MXN."),
+    ):
+        facts = Facts(
+            name="X",
+            hours=FACTS.hours,
+            locations=FACTS.locations,
+            services=(f"Corte · {format_amount(minor, code)}",),
+        )
+        assert _contradictions(said, facts) == set(), (code, said)
+    eur = Facts(
+        name="X",
+        hours=FACTS.hours,
+        locations=FACTS.locations,
+        services=(f"Corte · {format_amount(1500, 'EUR')}",),
+    )
+    assert _contradictions("El corte cuesta 18 EUR.", eur) == {"precio «18 EUR»"}
+
+
+def test_a_range_that_is_not_a_time_is_not_an_hour() -> None:
+    for body in (
+        "Atendemos grupos de 2 a 4 personas.",
+        "Abrimos la agenda con 24 a 48 horas de antelación.",
+        "Atendemos pedidos de 2 a 3 días.",
+        "Horario: cancela con 12 a 24 h de antelación.",
+    ):
+        assert _contradictions(body, FACTS) == set(), body
+    # Un horario distinto sigue avisando, también sin «h».
+    assert _contradictions("Abrimos de 9 a 21.", FACTS) == {"horario «de 9 a 21»"}
+    assert _contradictions("Abrimos de 10:00 a 20:00.", FACTS) == set()
+    # La hora de 12: «de 10 a 8» es de 10:00 a 20:00.
+    assert _contradictions("Abrimos de 10 a 8.", FACTS) == set()
+
+
+def test_the_hours_of_a_location_or_a_special_date_are_hours_of_the_ficha() -> None:
+    facts = Facts(
+        name="X",
+        hours=FACTS.hours,
+        locations=(
+            "Cultor Norte · Calle Sol 21 · +34600111222 · Horario propio: Abrimos de lunes a "
+            "sábado de 08:00 a 14:00.",
+        ),
+        special_dates=("24/12/2026 (Nochebuena): de 09:00 a 13:00.",),
+        services=FACTS.services,
+    )
+    assert _contradictions("En Cultor Norte abrimos de 8 a 14.", facts) == set()
+    assert _contradictions("En Nochebuena abrimos de 9 a 13.", facts) == set()
+    # Los dígitos de la dirección o del teléfono de la sede no son horas.
+    assert _contradictions("Abrimos de 21 a 22.", facts) == {"horario «de 21 a 22»"}

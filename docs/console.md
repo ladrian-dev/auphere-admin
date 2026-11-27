@@ -592,8 +592,10 @@ consola no inventa ni promete lo que no tenemos.
   entera y sin línea de papel. La consola no decide nada con él.
 - **La revisión y la puerta.** `promises_without_tool` llega como bloqueante con
   `fix {kind: "edit", pointer}`: «Arreglar en el borrador» lleva al texto que
-  promete, en la revisión, en la tarjeta de pruebas y en la hoja de «Por qué no se
-  guardó» (si el bloqueante trae `pointer`). `no_applicable_tests` en `gate.hard`
+  promete, en la revisión y en la hoja de «Por qué no se guardó» (si el bloqueante
+  trae `pointer`). La tarjeta de pruebas no las repite una a una: ya salen encima, en
+  «No tenemos herramienta para», y ahí van en una sola línea con «Ver cuáles»
+  (`#agente-faltan`; bug `la-revision-ve-lo-que-no-hay`). `no_applicable_tests` en `gate.hard`
   se dice con las palabras de la consola («Este agente no tiene ninguna prueba que
   le aplique. Añade una antes de guardar.») y «Añadir una prueba» cierra la hoja,
   abre «Más ajustes» y la lista de pruebas con su formulario abierto y el foco en
