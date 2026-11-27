@@ -150,7 +150,7 @@ describe("la revisión de la tarjeta no repite lo que falta", () => {
         severity: "warn" as const,
         message: "El agente tiene la agenda, pero este texto dice que no reserva: «No reserves».",
         pointer: "/rules/2",
-        fix: { kind: "agenda_proposal" as const },
+        fix: { kind: "edit" as const, pointer: "/rules/2" },
       },
     ],
     checks: [
