@@ -454,6 +454,24 @@ quedaron abiertas en staging aún se ven y se deciden igual. «Aceptar» dice en
 revisión queda el borrador y la pantalla lo vuelve a leer; publicar sigue pasando por «Guardar». «Descartar» pide
 el motivo (3–300). Sin `agents:write` no hay botones; cada parte falla sola.
 
+**Cómo cuenta Rendimiento** (spec 083, requisito 9; `services/improvement/performance.py`).
+Con la misma regla que el [Informe del cliente](#informe-del-cliente), para que las
+dos páginas digan lo mismo:
+- **Una conversación es un ciclo**: de que se crea, o la reabre el contacto o un
+  aviso, a que se resuelve a mano o por inactividad. Si una persona la reabre a mano,
+  deshace la resolución y sigue el mismo ciclo. Solo cuenta si el contacto escribió
+  en él, y su día es el de su primer mensaje **en la zona del cliente**, no en UTC.
+- **«Pasada a una persona» sale del historial**, no del estado de hoy: hubo en ese
+  ciclo un escalado, un takeover (Bandeja, panel de operador o una persona que
+  escribe, también desde la app en coexistencia) o un freno de reservas. Una
+  conversación tomada y devuelta al agente cuenta como pasada.
+- **La lista** da el resultado con esa misma regla y, como motivo, el código de su
+  último escalado o, si no lo hubo, `taken_by_person` («la tomó una persona»).
+
+Antes de la 083 contaba filas de `conversations` por su estado actual y agrupaba en
+UTC: una conversación devuelta al agente salía «resuelta sin persona» y un mensaje
+de las 23:30 de Caracas caía en el día siguiente.
+
 **Recepción** (spec 047, historia 33; `components/builder/reception-section.tsx`):
 la sección `reception` del AgentSpec en la pantalla del agente —marcarlo,
 elegir a qué agentes vivos de este cliente deriva y cuándo derivar a cada uno
@@ -769,6 +787,85 @@ Sin bloque no hay sección ni entrada en el índice.
 
 **Pruebas:** `tests/integration/test_076_ad_measurement_endpoint.py` y
 `components/builder/__tests__/ad-measurement-section.test.tsx`.
+
+## Informe del cliente
+
+Spec [083](../specs/083-informe-del-piloto/spec.md). La ficha de un cliente con la
+consola nueva tiene la pestaña **Informe** (`/clients/{ref}/report`), después de
+Anuncios. Dice lo que hizo su agente en unas fechas, para enseñarlo al cliente o
+guardarlo en PDF al cerrar un piloto.
+
+**Quién la ve:** quien tiene `conversations:read` y `usage:read` (owner, admin,
+builder y analyst). Sin los dos, la pestaña no existe. Con la consola de hoy, la
+dirección vuelve al cliente.
+
+**Los filtros** (`components/report/report-filters.tsx`): el cliente (lleva a su
+informe con las mismas fechas), desde y hasta en días del calendario del cliente,
+los atajos de 7, 30 y 90 días e «Imprimir». El periodo viaja en la dirección
+(`?from=&to=`). Sin él, los últimos 30 días hasta hoy en la zona del cliente. Los
+campos no dejan pedir un periodo al revés, de más de 92 días o que acabe después de
+hoy. La API contesta 422 con un código (`range_reversed`, `range_too_long`,
+`range_in_future`) si llega uno.
+
+**La lectura** (`GET /console/clients/{ref}/report?from=&to=`,
+`api/console/client_report.py` y `services/client_report.py`, contrato en
+`specs/083-informe-del-piloto/contracts/console-api.md`). Los ciclos los pone el
+mismo constructor que Rendimiento del agente (`period_cycles`):
+- **Conversaciones**: los ciclos con un mensaje del contacto, por el día de su
+  primer mensaje en la zona del cliente. No cuentan ni el Playground ni lo importado
+  del historial. La serie por día, partida en «sin persona» y «con persona».
+- **Resueltas sin persona**: sin escalado, takeover ni freno (aunque el agente lo
+  corrigiera) en el ciclo, frente al objetivo del 70 %. Sin conversaciones, sin
+  porcentaje.
+- **Primera respuesta**: del primer mensaje del contacto al primer envío del agente
+  que el proveedor aceptó (hora de creación más `latency_ms`), con los 3 s de
+  agrupación dentro. El porcentaje en 60 s o menos frente al 95 %, la mediana y el
+  percentil 90. Los ciclos sin ningún envío del agente no entran: se cuentan aparte.
+- **Incidencias**: cada escalado y cada freno que no pasó la conversación, con su
+  motivo como código (`cause`). Nunca el texto que escribió el agente. Un freno que
+  la pasó cuenta una vez, como `booking_unbacked`. Está resuelta si la conversación
+  se resolvió en ese ciclo.
+- **Freno de reservas**: cuántas veces paró una respuesta, cuántas la corrigió el
+  agente y cuántas pasó la conversación. Solo sale con Reservas o si actuó.
+- **Agenda y recordatorios**, solo con Reservas: altas, cambios y cancelaciones por
+  quién (agente, persona, cliente). Las liberadas sin confirmar van aparte y la
+  importación no cuenta. Una cancelación de «cliente» sin su «contestó que no» es
+  del agente. Recordatorios y peticiones de confirmación: enviados, fallidos y
+  omitidos.
+- **Gasto**: la misma cifra que la fila del cliente en Consumo, en la moneda de la
+  cuenta, con la estimación de Meta aparte y «aprox.» y el gasto por conversación.
+  Si no se puede leer, llega `spend: null` y el resto del informe sale igual.
+
+Cada bloque lleva su definición corta en la página. Un objetivo no alcanzado se dice
+con palabras, no con ámbar. Si el cliente no cierra conversaciones por inactividad,
+una nota avisa de que una conversación abierta cuenta una sola vez.
+
+**Lo que no lleva:** cuerpos de mensaje, nombres, teléfonos ni el texto libre de un
+escalado. Tampoco identificadores de tenant ni de partner. Un cliente ajeno es el
+mismo 404 que uno inexistente.
+
+**Estados:**
+- Carga con el esqueleto del tamaño final (`report/loading.tsx`), también mientras
+  llega otro periodo.
+- Vacío: ceros y una explicación de que no hubo conversaciones en esas fechas.
+- Error con «Reintentar».
+- Parcial: el gasto que no se pudo leer, con su propio «Reintentar».
+
+**Imprimir:** sale solo el informe, con su encabezado (cliente, periodo, zona y
+cuándo se generó). El marco (`console-shell-v2.tsx`), la cabecera del cliente y los
+filtros llevan `print:hidden`. Mientras dura el diálogo, el tema pasa a claro, y las
+barras conservan su color (`print-color-adjust: exact`). Para que 30 días quepan
+en dos A4 con los márgenes de Chrome (10 mm), el informe se imprime al 90 %
+(`print:[zoom:0.9]`), las filas de sus tablas se compactan y solo salen las 10
+incidencias más recientes, no la lista entera. Sin eso salían tres páginas.
+
+**Textos:** carril `i18n/lanes/report.ts`, que incluye `clients.v2.tab.report`.
+
+**Pruebas:** `tests/unit/test_083_cycles.py`,
+`tests/integration/console/test_client_report.py`,
+`tests/integration/improvement/test_suggestions.py` (Rendimiento),
+`tests/isolation/test_client_report_scope.py`,
+`components/report/__tests__/*` y `client-header-report.test.tsx`.
 
 ## Reglas que no se negocian
 
