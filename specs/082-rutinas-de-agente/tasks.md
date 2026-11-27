@@ -107,16 +107,16 @@ se retienen hasta que exista la pregunta desde la consola, que es spec aparte.
 
 ## Fase 4: Historia 2 — que se repita sola, a la hora del negocio (P2)
 
-- [ ] **T022** Integración `apps/api/tests/integration/schedules/test_dispatch.py`, en rojo: con el reloj en la hora del negocio nace una ejecución con `trigger: "schedule"`, con el reloj en otra zona no nace ninguna, `next_run_at` queda en la siguiente, y una rutina `once` queda sin próxima al terminar.
+- [x] **T022** Integración `apps/api/tests/integration/schedules/test_dispatch.py`, en rojo: con el reloj en la hora del negocio nace una ejecución con `trigger: "schedule"`, con el reloj en otra zona no nace ninguna, `next_run_at` queda en la siguiente, y una rutina `once` queda sin próxima al terminar.
 
   _Requisitos: 3.2, 3.8_
-- [ ] **T023** [P] Unitaria del disparo doble: dos barridos simultáneos sobre la misma rutina crean una sola ejecución, por el `UNIQUE (tenant_id, schedule_id, scheduled_for)`.
+- [x] **T023** [P] Unitaria del disparo doble: dos barridos simultáneos sobre la misma rutina crean una sola ejecución, por el `UNIQUE (tenant_id, schedule_id, scheduled_for)`.
 
   _Requisitos: 7.7_
-- [ ] **T024** Implementa `apps/worker/src/nexus_worker/streams/schedule_dispatch_cron.py` y regístralo en la familia del scheduler en `bootstrap.py`. Lee lo vencido con `due_schedules`, abre una transacción por ejecución con su cliente puesto, crea la fila y encola el trabajo. No llama al modelo. T022 y T023 en verde.
+- [x] **T024** Implementa `apps/worker/src/nexus_worker/streams/schedule_dispatch_cron.py` y regístralo en la familia del scheduler en `bootstrap.py`. Lee lo vencido con `due_schedules`, abre una transacción por ejecución con su cliente puesto, crea la fila y encola el trabajo. No llama al modelo. T022 y T023 en verde.
 
   _Requisitos: 3.2, 7.7_
-- [ ] **T025** `next_run_at` se recalcula al guardar, al cambiar la rutina, al cerrar cada ejecución y cuando cambia la zona del negocio.
+- [x] **T025** `next_run_at` se recalcula al guardar, al cambiar la rutina, al cerrar cada ejecución y cuando cambia la zona del negocio.
 
   _Requisitos: 3.7, 3.8_
 
@@ -128,10 +128,10 @@ se retienen hasta que exista la pregunta desde la consola, que es spec aparte.
 - [ ] **T027** Ruta `GET …/{id}/runs` y la lectura del detalle.
 
   _Requisitos: 4.7_
-- [ ] **T028** **Medidor, segunda parte.** La partida `schedules` en `services/wallet/usage_lines.py`: entrada en `LINES`, `PAYER` a `client_bag` y su asiento en `_BAG_ENTRY`. Con su prueba de que la suma de las partidas cuadra con lo cobrado de la bolsa.
+- [x] **T028** **Medidor, segunda parte.** La partida `schedules` en `services/wallet/usage_lines.py`: entrada en `LINES`, `PAYER` a `client_bag` y su asiento en `_BAG_ENTRY`. Con su prueba de que la suma de las partidas cuadra con lo cobrado de la bolsa.
 
   _Requisitos: 9.3, 9.6_
-- [ ] **T029** [P] La partida en la pantalla de Consumo del partner, junto a Conversaciones, Construcción y pruebas, Meta y Companion.
+- [x] **T029** [P] La partida en la pantalla de Consumo del partner, junto a Conversaciones, Construcción y pruebas, Meta y Companion.
 
   _Requisitos: 9.6_
 - [ ] **T030** Consola: el hilo del detalle, una tarjeta por ejecución con su respuesta, lo que usó y lo que costó, y el panel de consumo partido en conversaciones y rutinas sobre la bolsa. Importes con el componente `Money`, «12,80 US$».

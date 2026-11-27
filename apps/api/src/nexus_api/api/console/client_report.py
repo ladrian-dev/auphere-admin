@@ -155,10 +155,13 @@ class AgendaOut(_Out):
 
 class SpendOut(_Out):
     currency: str
-    #: Lo que pagó la bolsa del cliente: conversaciones y pruebas a su cargo.
+    #: Lo que pagó la bolsa del cliente: conversaciones, pruebas a su cargo y
+    #: rutinas.
     total: MoneyOut
     conversations: MoneyOut
     client_tests: MoneyOut
+    #: Spec 082: lo que gastaron las rutinas del cliente.
+    schedules: MoneyOut
     #: La estimación de los mensajes de Meta (siempre «aprox.»).
     meta: MoneyOut
     #: Lo de la bolsa pasó por un cambio de moneda.

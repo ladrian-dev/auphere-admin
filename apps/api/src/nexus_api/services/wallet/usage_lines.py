@@ -65,6 +65,10 @@ PAYER: Final[dict[Line, Payer]] = {
     "build": "auphere",
     "companion": "account",
 }
+#: Las partidas que salen de la bolsa del cliente. Se derivan de ``PAYER`` y no
+#: se escriben a mano: cada sitio que las listaba por su cuenta era un sitio
+#: donde una partida nueva se quedaba fuera de la suma sin que nadie lo notara.
+BAG_LINES: Final[tuple[Line, ...]] = tuple(line for line in LINES if PAYER[line] == "client_bag")
 #: El asiento de la bolsa de cada partida que paga la bolsa.
 _BAG_ENTRY: Final[dict[str, str]] = {
     "conversations": "debit_turn",
@@ -296,6 +300,7 @@ async def spend(
 
 
 __all__ = [
+    "BAG_LINES",
     "BUILD_SOURCES",
     "LINES",
     "PAYER",

@@ -75,6 +75,7 @@ const CURRENT: Report = {
     total: money(41_280_000),
     conversations: money(40_100_000),
     client_tests: money(1_180_000),
+    schedules: money(0),
     meta: money(3_020_000),
     approx: false,
     per_conversation: money(192_897),
