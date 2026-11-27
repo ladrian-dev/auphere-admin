@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -7,8 +8,10 @@ import * as React from "react";
 
 import { Alert, AlertDescription, Button, Callout, ErrorState, PageHeader, StatusDot, cn } from "@nexus/ui";
 
+import { reservasScreenAction } from "@/app/(console)/reservas/actions";
 import { useLocale, useT } from "@/i18n/client";
 import type { Booking } from "@/lib/backend/reservas";
+import { keys, unwrap } from "@/lib/query";
 
 import { BookingDetailSheet } from "./booking-detail";
 import { CancelDialog } from "./cancel-dialog";
@@ -65,15 +68,48 @@ function useLastGood(initial: ReservasInitial): { shown: ReservasInitial; kept: 
 }
 
 /**
- * Spec 064 (2.6 a 2.8): the server reads again every 45 s while the tab is
- * visible, and at once when it is seen again after a while. `router.refresh()`
- * keeps the state of the client components, so an open dialog and what is typed
- * in it stay; it runs outside the transition that dims the screen. `read` is the
- * server's instant of the read on screen: when it stops changing, the screen
- * says so (`true`).
+ * Spec 082 (R1.1, R1.2, R1.10): the screen reads from React Query. The first
+ * paint is the page's read (`initialData`); every re-read goes through
+ * `reservasScreenAction`, the same read, under `["reservas","screen",url]`.
+ * When the server paints the page again with a newer read than the cache's
+ * (a link, the back button), that read wins. `booking` stays the page's: a
+ * re-read never opens a panel.
+ */
+function useScreen(initial: ReservasInitial): { read: ReservasInitial; failed: boolean; again: () => void } {
+  const qc = useQueryClient();
+  const key = keys.reservasScreen(urlKey(initial.url));
+  const q = useQuery({
+    queryKey: key,
+    queryFn: async () => unwrap(await reservasScreenAction(initial.url)),
+    initialData: initial,
+    initialDataUpdatedAt: () => Date.now(),
+    staleTime: FRESH_MS,
+    // `useAutoRefresh` says when: 45 s while visible, on coming back, on reconnecting.
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const cached = q.data;
+  const newer = Date.parse(initial.nowIso) > Date.parse(cached.nowIso);
+  React.useEffect(() => {
+    if (newer) qc.setQueryData(key, initial);
+  }, [newer, initial, qc, key]);
+  const shown = newer ? initial : cached;
+  const read = React.useMemo(() => ({ ...shown, booking: initial.booking ?? null }), [shown, initial.booking]);
+  const refetch = q.refetch;
+  const again = React.useCallback(() => void refetch(), [refetch]);
+  return { read, failed: q.isError, again };
+}
+
+/**
+ * Spec 064 (2.6 a 2.8), spec 082 (R1.8, R1.9): the screen reads again every
+ * 45 s while the tab is visible, at once when it is seen again after a while,
+ * and when the connection comes back. A re-read is React Query's, in the
+ * background: an open dialog and what is typed in it stay, and nothing dims.
+ * `read` is the server's instant of the read on screen: when it stops changing
+ * for 150 s, the screen says so (`true`).
  */
 function useAutoRefresh(read: string): boolean {
-  const router = useRouter();
+  const qc = useQueryClient();
   const readAt = React.useRef(0);
   const [overdue, setOverdue] = React.useState(false);
   const [seen, setSeen] = React.useState(read);
@@ -86,22 +122,26 @@ function useAutoRefresh(read: string): boolean {
   }, [read]);
   React.useEffect(() => {
     const visible = () => document.visibilityState === "visible";
-    const again = () => {
+    // A read already on its way is enough: a tick does not start another.
+    const again = () => void qc.invalidateQueries({ queryKey: keys.reservas }, { cancelRefetch: false });
+    const tick = () => {
       if (Date.now() - readAt.current > STALE_MS) setOverdue(true);
-      router.refresh();
+      again();
     };
     const id = window.setInterval(() => {
-      if (visible()) again();
+      if (visible()) tick();
     }, REFRESH_MS);
-    const onVisibility = () => {
-      if (visible() && Date.now() - readAt.current > FRESH_MS) again();
+    const ifOld = () => {
+      if (visible() && Date.now() - readAt.current > FRESH_MS) tick();
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("visibilitychange", ifOld);
+    window.addEventListener("online", ifOld);
     return () => {
       window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("visibilitychange", ifOld);
+      window.removeEventListener("online", ifOld);
     };
-  }, [router]);
+  }, [qc]);
   return overdue;
 }
 
@@ -119,28 +159,32 @@ function useNow(iso: string): Date {
  * Reservas (spec 043, T022–T025): one screen, in the mode Auphere chose for
  * the client. The URL holds where it is; the server reads what it shows;
  * writes go through Server Actions and then read again. A status change is
- * painted at once and undone if the API says no.
+ * painted at once and undone if the API says no. Spec 082: the reads live in
+ * React Query, so a write, a notice of the live line and the 45 s pass all
+ * re-read the same source.
  */
 export function ReservasView({ initial }: { initial: ReservasInitial }) {
   const t = useT();
-  const router = useRouter();
-  const { shown, kept } = useLastGood(initial);
-  const overdue = useAutoRefresh(initial.nowIso);
+  const { read, failed, again } = useScreen(initial);
+  const { shown, kept } = useLastGood(read);
+  const overdue = useAutoRefresh(read.nowIso);
   if (shown.data === null) {
     return (
       <>
         <PageHeader title={t("reservas.title")} size="compact" />
-        <ErrorState title={t("reservas.error.title")} description={t("reservas.error.body")} onRetry={() => router.refresh()} retryLabel={t("common.retry")} />
+        <ErrorState title={t("reservas.error.title")} description={t("reservas.error.body")} onRetry={again} retryLabel={t("common.retry")} />
       </>
     );
   }
-  return <Loaded initial={shown} data={shown.data} stale={kept || overdue} />;
+  // A re-read that failed outright keeps what is on screen, and says it may be old (R1.10).
+  return <Loaded initial={shown} data={shown.data} stale={kept || overdue || failed} />;
 }
 
 function Loaded({ initial, data, stale }: { initial: ReservasInitial; data: ReservasData; stale: boolean }) {
   const t = useT();
   const locale = useLocale();
   const router = useRouter();
+  const qc = useQueryClient();
   const [pending, startTransition] = React.useTransition();
   const now = useNow(initial.nowIso);
   const settings = data.settings;
@@ -179,7 +223,8 @@ function Loaded({ initial, data, stale }: { initial: ReservasInitial; data: Rese
       href: (patch) => reservasHref(initial.url, patch, hrefCtx),
       go: (patch) => startTransition(() => router.push(reservasHref(initial.url, patch, hrefCtx), { scroll: false })),
       pending,
-      refresh: () => startTransition(() => router.refresh()),
+      // Spec 082 (R1.1, R1.2): the agenda and an open booking, both under `["reservas"]`.
+      refresh: () => void qc.invalidateQueries({ queryKey: keys.reservas }),
       open: setOverlay,
       touch: (id, patch) =>
         setMarked((m) => {
@@ -189,7 +234,7 @@ function Loaded({ initial, data, stale }: { initial: ReservasInitial; data: Rese
           return { base, marks };
         }),
     };
-  }, [data, settings, initial.url, initial.hasInbox, clock.date, clock.minutes, now, locale, t, base, bookings, pending, router]);
+  }, [data, settings, initial.url, initial.hasInbox, clock.date, clock.minutes, now, locale, t, base, bookings, pending, router, qc]);
 
   return (
     <ReservasProvider value={ctx}>

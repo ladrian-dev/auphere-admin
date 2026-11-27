@@ -337,13 +337,29 @@ un `noshow` cuya hora de fin ya pasó. Ese `undo` deja `done`, no `confirmed`. C
 corrección queda en el historial con la persona y no escribe al cliente final. En
 Aforo no se ofrece: allí `done` llega después de que alguien marcara «Llegó».
 
-**La pantalla se pone al día sola** (`reservas-view.tsx`): con la pestaña visible
-relee cada 45 s, y al volver a verse si la lectura tiene más de 15 s. Lo hace con
-`router.refresh()`, fuera de la transición que atenúa la pantalla, así que un
-diálogo abierto y lo escrito en él siguen ahí. Si la relectura llega vacía o con
-una parte en error, se conserva la última lectura entera de ese periodo y la
-pantalla dice «Puede que esto no esté al día», igual que si pasan más de 150 s sin
-una lectura nueva.
+**La pantalla se pone al día sola** (`reservas-view.tsx`, spec 082). La agenda y
+la ficha son consultas de React Query (`["reservas","screen",url]` y
+`["reservas","booking",id]`) que releen con `reservasScreenAction`, la misma
+lectura que la página (`read.ts`) para la URL que se mira (pestaña, vista,
+periodo, día y persona): pasada la medianoche sigue en el día que se mira. Se
+relee al instante:
+
+- **tras cada escritura propia**: la API confirma antes de responder (spec 082,
+  1.1) y la pantalla invalida `["reservas"]`;
+- **con el aviso `reservations.changed`**, que llega por la línea en vivo de la
+  consola cuando cambia algo por detrás (el agente, la app, otra pestaña). Una
+  ráfaga de avisos es una sola relectura (ver «Tiempo real» en
+  [`consola-lite.md`](consola-lite.md));
+- **al volver la línea** tras un corte.
+
+Además, con la pestaña visible relee cada 45 s, y al volver a verse o al volver la
+red (`online`) si la lectura tiene más de 15 s. Nada de eso atenúa la pantalla, así que un diálogo abierto y lo
+escrito en él siguen ahí. Mientras sale un cambio de estado, y hasta que llega la
+relectura de la ficha, sus botones están ocupados: con los botones viejos a la
+vista se repetía el 412. Si la relectura llega vacía, con una parte en error o
+falla del todo, se conserva la última lectura entera de ese periodo y la pantalla
+dice «Puede que esto no esté al día», igual que si pasan más de 150 s sin una
+lectura nueva.
 
 ## API (`/console/lite/reservas/*`)
 

@@ -16,7 +16,7 @@ import {
   staff,
   waitlistEntry,
 } from "../model/__tests__/fixtures";
-import { ViewRef, a, renderView, resetMocks, router, toasts } from "./harness";
+import { ViewRef, a, renderView, resetMocks, toasts } from "./harness";
 
 vi.mock("@/app/(console)/reservas/actions", async () => (await import("./harness")).a);
 vi.mock("@/app/(console)/reservas/templates-actions", async () => (await import("./harness")).a);
@@ -152,7 +152,7 @@ describe("Lista de espera", () => {
       ),
     );
     expect(toasts.success).toHaveBeenCalledWith("Inés Rubio está en la lista de espera.");
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Apuntar en la lista de espera" })).toBeNull());
   });
 
@@ -277,7 +277,7 @@ describe("Ajustes · Servicios", () => {
     await userEvent.click(screen.getByRole("switch", { name: "Recordatorio por WhatsApp 24 horas antes" }));
     await waitFor(() => expect(a.patchSettingsAction).toHaveBeenCalledWith({ version: 4, patch: { reminder_enabled: false } }));
     expect(toasts.error).toHaveBeenCalledWith("Alguien cambió esto mientras tanto. Te enseñamos lo último.");
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
     a.patchSettingsAction.mockResolvedValueOnce({ ok: true, data: servicesSettings({ version: 5 }) });
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Antelación mínima para avisar" }), "240");
     await waitFor(() => expect(a.patchSettingsAction).toHaveBeenLastCalledWith({ version: 4, patch: { waitlist: { lead_minutes: 240 } } }));
@@ -303,7 +303,7 @@ describe("Ajustes · Servicios", () => {
     a.patchBusinessHoursAction.mockResolvedValueOnce({ ok: true, data: fichaHours() });
     await userEvent.click(save);
     await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Horario guardado."));
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
   });
 
   it("business hours (spec 056): someone saved meanwhile, said and reloaded", async () => {
@@ -314,7 +314,7 @@ describe("Ajustes · Servicios", () => {
     await userEvent.click(within(within(dialog).getByRole("group", { name: "Domingo" })).getByRole("button", { name: "Añadir turno" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Guardar" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Alguien cambió esto mientras tanto. Te enseñamos lo último.");
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
   });
 
   it("business hours (spec 056): a stored time off the step says «Revísalo», and a location's own hours are only read", async () => {

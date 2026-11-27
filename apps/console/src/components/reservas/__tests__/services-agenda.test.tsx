@@ -129,7 +129,7 @@ describe("Servicios · Agenda", () => {
     const { unmount } = renderView(null);
     expect(screen.getByRole("alert")).toHaveTextContent("No pudimos cargar Reservas");
     await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
     unmount();
 
     renderView(data({ bookings: null }), { errors: ["bookings"] });
@@ -250,7 +250,7 @@ describe("Servicios · detail", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Marcar confirmada" }));
     await waitFor(() => expect(a.bookingTransitionAction).toHaveBeenCalledWith({ id: b.id, version: b.version, action: "confirm" }));
     await waitFor(() => expect(toasts.success).toHaveBeenCalledWith("Reserva confirmada."));
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
   });
 
   it("a stale version is told and the screen reads again", async () => {
@@ -262,7 +262,7 @@ describe("Servicios · detail", () => {
     const sheet = await screen.findByRole("dialog", { name: "Reserva de Pedro Soto" });
     await userEvent.click(await within(sheet).findByRole("button", { name: "Marcar confirmada" }));
     await waitFor(() => expect(toasts.error).toHaveBeenCalledWith("Alguien cambió esto mientras tanto. Te enseñamos lo último."));
-    expect(router.refresh).toHaveBeenCalled();
+    expect(a.reservasScreenAction).toHaveBeenCalled();
   });
 });
 

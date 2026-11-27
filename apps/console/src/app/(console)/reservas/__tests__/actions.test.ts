@@ -245,6 +245,24 @@ describe("reservas actions", () => {
     expect(h.backend.reservasCreateBooking).not.toHaveBeenCalled();
   });
 
+  it("spec 082 (1.1, 1.2): reservasScreenAction reads the screen of a URL again, the same read as the page", async () => {
+    h.backend.reservasSettings.mockClear();
+    h.setClient(["panel", "inbox"]);
+    const screen = { tab: "waitlist", view: "list", period: "week", date: "2026-10-22", staff: STAFF };
+    expect(await actions.reservasScreenAction(screen)).toEqual(forbidden);
+    expect(h.backend.reservasSettings).not.toHaveBeenCalled();
+    h.setClient(["reservas"]);
+    // Without the settings there is no mode: the read says so (data null) and keeps the URL.
+    h.backend.reservasSettings.mockRejectedValue(new Error("down"));
+    const r = await actions.reservasScreenAction(screen);
+    expect(r).toMatchObject({ ok: true, data: { url: screen, data: null, errors: [], booking: null } });
+    expect(h.backend.reservasSettings).toHaveBeenCalledTimes(1);
+    // Only the screen's own shape: no booking to open, no free-form query.
+    await expect(actions.reservasScreenAction({ ...screen, tab: "bookings" })).rejects.toThrow();
+    await expect(actions.reservasScreenAction({ ...screen, date: "22/10/2026" })).rejects.toThrow();
+    await expect(actions.reservasScreenAction({ ...screen, staff: "not-a-uuid" })).rejects.toThrow();
+  });
+
   it("validates before asking: no write leaves without its key, a name, a real day", async () => {
     h.setClient(["reservas"]);
     await expect(
