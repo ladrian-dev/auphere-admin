@@ -86,7 +86,7 @@ Decisión del owner, 2026-11-20: abrir la enmienda para que Instagram se conecte
   - `auditoria-docs-oficiales.md` deja de decir que `1157578836735566` tiene la marca de compatible: la perdió con INC-53.
   - En verde el 2026-11-20: consola (vitest de `src/lib`, `channels`, `builder` e `i18n`, 916; `tsc --noEmit`; `eslint --max-warnings=0` de lo tocado), API (`test_endpoint_console_meta_social.py`, 18) y `verify.sh lint`. Sin navegador: `prompt=login` llegando a la ventana desde `FB.login` se comprueba en T072.
   _Req: 8.1, 8.2, 8.5_
-- [ ] T072 Staging, en vivo, con el owner. Antes de empezar:
+- [x] T072 Staging, en vivo, con el owner. Antes de empezar: _(Hecho el 2026-11-27, según Luis: Gali entró en producción con su cuenta de Instagram y sus DMs llegan. Lo comprueba la T008 de la 081.)_
   - staging está despierto (se aparca de noche);
   - la cuenta de prueba es pública y no está conectada en producción, porque producción se queda los eventos de sus cuentas y no los reenvía a staging;
   - los comentarios se escriben desde otra cuenta.

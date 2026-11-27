@@ -187,6 +187,8 @@ async def whatsapp_signup_link(
 
 class _SignupLinkRow(BaseModel):
     id: uuid.UUID
+    #: Spec 085: ``whatsapp``, ``instagram`` or ``messenger``; one list for all.
+    channel: str
     mode: str
     #: ``valid``, ``used``, ``revoked`` or ``expired``.
     state: str
@@ -206,6 +208,7 @@ async def whatsapp_signup_links(
     return [
         _SignupLinkRow(
             id=r.id,
+            channel=r.channel,
             mode=r.mode,
             state=link_state(r),
             created_at=r.created_at,

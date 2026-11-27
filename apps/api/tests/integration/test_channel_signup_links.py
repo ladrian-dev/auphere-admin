@@ -78,6 +78,7 @@ async def test_operator_link_connects_on_the_owners_device(
     assert info.status_code == 200, info.text
     body = info.json()
     assert body["state"] == "valid"
+    assert body["channel"] == "whatsapp"
     assert body["mode"] == "coexistence"
     assert body["business_name"]
     assert body["meta_config_id"]
@@ -119,12 +120,14 @@ async def test_operator_link_connects_on_the_owners_device(
     assert (await client.get(f"/console/channel-signup/{token}", headers=_svc())).json() == {
         "state": "used",
         "business_name": None,
+        "channel": None,  # spec 085: a dead link does not say which channel it was
         "mode": None,
         "expires_at": None,
         "meta_app_id": None,
         "meta_config_id": None,
         "meta_graph_version": None,
         "meta_signup_version": None,
+        "meta_page_config_id": None,
     }
 
 

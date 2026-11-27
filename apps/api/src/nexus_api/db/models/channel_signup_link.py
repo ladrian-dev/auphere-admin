@@ -1,7 +1,8 @@
-"""A shareable link to connect WhatsApp from the business owner's device (spec 040).
+"""A shareable link to connect a channel from the business owner's device.
 
-See migration 0160 for why the table has no RLS: the public page only knows
-the token. Only the token's SHA-256 is stored.
+WhatsApp since spec 040; Instagram and Messenger since spec 085 (0244). See
+migration 0160 for why the table has no RLS: the public page only knows the
+token. Only the token's SHA-256 is stored.
 """
 
 from __future__ import annotations
@@ -28,8 +29,11 @@ class ChannelSignupLink(UUIDPrimaryKey, Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    #: ``whatsapp``, ``instagram`` or ``messenger`` (0244): one channel per link.
     channel: Mapped[str] = mapped_column(String(16), nullable=False, default="whatsapp")
-    #: ``coexistence`` (the owner keeps the WhatsApp Business app) or ``cloud_api``.
+    #: WhatsApp: ``coexistence`` (the owner keeps the WhatsApp Business app),
+    #: ``cloud_api`` or ``whatsapp_login``. Instagram and Messenger:
+    #: ``meta_login`` — the owner picks how to sign in on their page (0244).
     mode: Mapped[str] = mapped_column(String(16), nullable=False)
     #: ``operator:<email>`` or ``console:<email>`` — who sent it.
     created_by: Mapped[str] = mapped_column(String(320), nullable=False)

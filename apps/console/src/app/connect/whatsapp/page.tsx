@@ -31,7 +31,9 @@ export default async function OwnerConnectPage() {
   if (!TOKEN_SHAPE.test(token)) return dead("unknown");
   const info = await consoleService.channelSignupInfo(token).catch(() => null);
   if (!info) return <EmptyState title={t("connect.error.generic")} readonly />;
-  if (info.state !== "valid" || !info.mode || !info.meta_app_id || !info.meta_config_id) return dead(info.state);
+  // Spec 085: an Instagram or Messenger link has its own page; here it does not exist.
+  if (info.state !== "valid" || (info.channel ?? "whatsapp") !== "whatsapp") return dead(info.state);
+  if (!info.mode || info.mode === "meta_login" || !info.meta_app_id || !info.meta_config_id) return dead(info.state);
   return (
     <OwnerConnect
       name={info.business_name ?? ""}

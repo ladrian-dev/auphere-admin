@@ -39,6 +39,9 @@ describe("lo que un desconocido tiene que poder abrir", () => {
     ["/no-access", "explicar por qué no entras no puede exigir entrar"],
     ["/healthz", "una sonda no tiene cookies"],
     ["/connect/whatsapp/un-token", "el dueño del negocio conecta su WhatsApp sin cuenta (spec 040)"],
+    ["/connect/instagram/un-token", "spec 085: y su Instagram, con el mismo enlace por canal"],
+    ["/connect/messenger/un-token", "spec 085: y su Messenger"],
+    ["/connect/instagram", "spec 085: la página adonde el enlace redirige, ya sin el token"],
     ["/pago-recibido", "spec 077: quien paga la membresía en Stripe vuelve aquí, sin cuenta"],
     ["/pago-recibido?estado=cancelado", "spec 077: y aquí si no completó el pago"],
     [

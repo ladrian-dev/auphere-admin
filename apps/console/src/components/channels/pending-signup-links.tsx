@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The client's WhatsApp link that still works (owner, 2026-10-20).
+ * The client's links that still work (owner, 2026-10-20), one per channel
+ * since spec 085: each line says its channel.
  *
  * Before, every «Enviar enlace al cliente» left another valid link around and
  * the console could neither see nor revoke any of them. Now a new link
@@ -21,6 +22,9 @@ import { useLocale, useT } from "@/i18n/client";
 import { actionErrorText } from "@/lib/action-error";
 import type { SignupLinkRow } from "@/lib/backend/channels";
 
+/** Brand names: the same in every language. */
+const CHANNEL_NAME = { whatsapp: "WhatsApp", instagram: "Instagram", messenger: "Messenger" } as const;
+
 export function PendingSignupLinks({
   refId,
   links,
@@ -36,6 +40,8 @@ export function PendingSignupLinks({
   const [confirm, setConfirm] = React.useState<string | null>(null);
   const live = links.filter((l) => l.state === "valid");
   if (live.length === 0) return null;
+  const confirming = live.find((l) => l.id === confirm);
+  const confirmingChannel = confirming?.channel ?? "whatsapp";
 
   function revoke(id: string) {
     start(async () => {
@@ -56,10 +62,16 @@ export function PendingSignupLinks({
           <span className="flex min-w-0 items-center gap-2">
             <Link2 className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
             <span>
-              {t("ch.link.pending.line", {
-                mode: t(`ch.connect.mode.${l.mode}`),
-                date: formatDateTime(l.expires_at, locale),
-              })}
+              {(l.channel ?? "whatsapp") === "whatsapp"
+                ? t("ch.link.pending.line", {
+                    channel: CHANNEL_NAME.whatsapp,
+                    mode: t(`ch.connect.mode.${l.mode as "coexistence" | "cloud_api" | "whatsapp_login"}`),
+                    date: formatDateTime(l.expires_at, locale),
+                  })
+                : t("ch.link.pending.line.social", {
+                    channel: CHANNEL_NAME[l.channel ?? "whatsapp"],
+                    date: formatDateTime(l.expires_at, locale),
+                  })}
             </span>
           </span>
           {manage ? (
@@ -73,7 +85,9 @@ export function PendingSignupLinks({
         open={confirm !== null}
         onOpenChange={(o) => !o && setConfirm(null)}
         title={t("ch.link.revoke.title")}
-        description={t("ch.link.revoke.body")}
+        description={
+          confirmingChannel === "whatsapp" ? t("ch.link.revoke.body") : t("ch.link.revoke.body.social", { channel: CHANNEL_NAME[confirmingChannel] })
+        }
         confirmLabel={t("ch.link.revoke")}
         destructive
         onConfirm={() => {
