@@ -414,6 +414,30 @@ async def test_the_report_of_a_pilot(client, db_session, console_world) -> None:
     nxt = (BASE + timedelta(days=1)).isoformat()
     assert series[nxt] == {"day": nxt, "without_person": 1, "with_person": 0}
 
+    # Enmienda 2026-11-27 (13.1): por hora local del primer mensaje y por día de la
+    # semana (ISO, lunes = 1). A cuenta dos veces a las 12 (dos ciclos), B a las 12:01,
+    # C a H de 14 a 20 con persona y K a las 23:30 de Caracas, no a las 3:30 UTC.
+    by_hour = {row["hour"]: (row["without_person"], row["with_person"]) for row in conv["by_hour"]}
+    assert [row["hour"] for row in conv["by_hour"]] == list(range(24))
+    assert {hr: v for hr, v in by_hour.items() if v != (0, 0)} == {
+        12: (2, 1),
+        14: (0, 1),
+        15: (0, 1),
+        16: (0, 1),
+        18: (0, 1),
+        19: (0, 1),
+        20: (0, 1),
+        23: (1, 0),
+    }
+    by_weekday = {
+        row["weekday"]: (row["without_person"], row["with_person"]) for row in conv["by_weekday"]
+    }
+    assert [row["weekday"] for row in conv["by_weekday"]] == list(range(1, 8))
+    assert {wd: v for wd, v in by_weekday.items() if v != (0, 0)} == {
+        BASE.isoweekday(): (2, 7),
+        (BASE + timedelta(days=1)).isoweekday(): (1, 0),
+    }
+
     first = body["first_response"]
     assert first == {
         "answered": 7,
@@ -523,6 +547,14 @@ async def test_an_empty_period(client, console_world) -> None:
     body = r.json()
     assert body["conversations"]["total"] == 0
     assert body["conversations"]["without_person_pct"] is None
+    # Los desgloses salen enteros, a cero (13.1).
+    assert (
+        len(body["conversations"]["by_hour"]) == 24
+        and len(body["conversations"]["by_weekday"]) == 7
+    )
+    assert all(
+        r["without_person"] == r["with_person"] == 0 for r in body["conversations"]["by_hour"]
+    )
     assert body["first_response"]["within_target_pct"] is None
     assert body["first_response"]["median_seconds"] is None
     assert body["incidents"]["total"] == 0 and body["incidents"]["items"] == []

@@ -166,12 +166,31 @@ class DayRow:
 
 
 @dataclass(frozen=True)
+class HourRow:
+    #: La hora local del primer mensaje del contacto, de 0 a 23.
+    hour: int
+    without_person: int
+    with_person: int
+
+
+@dataclass(frozen=True)
+class WeekdayRow:
+    #: ISO: 1 es lunes y 7, domingo.
+    weekday: int
+    without_person: int
+    with_person: int
+
+
+@dataclass(frozen=True)
 class Conversations:
     total: int
     without_person: int
     with_person: int
     without_person_pct: float | None
     series: list[DayRow]
+    #: Enmienda 2026-11-27 (13.1): cuándo escriben, para cubrir esas horas.
+    by_hour: list[HourRow]
+    by_weekday: list[WeekdayRow]
 
 
 @dataclass(frozen=True)
@@ -278,13 +297,21 @@ def _pct(part: int, whole: int) -> float | None:
     return round(part / whole * 100, 1) if whole else None
 
 
-def _conversations(cycles: Sequence[perf.Cycle], day_from: date, day_to: date) -> Conversations:
+def _conversations(
+    cycles: Sequence[perf.Cycle], day_from: date, day_to: date, zone: ZoneInfo
+) -> Conversations:
     by_day: dict[date, list[int]] = {
         day_from + timedelta(days=i): [0, 0] for i in range((day_to - day_from).days + 1)
     }
+    by_hour = [[0, 0] for _ in range(24)]
+    by_weekday = [[0, 0] for _ in range(7)]
     for cycle in cycles:
         if cycle.day in by_day:
-            by_day[cycle.day][1 if cycle.with_person else 0] += 1
+            column = 1 if cycle.with_person else 0
+            by_day[cycle.day][column] += 1
+            local = cycle.first_contact_at.astimezone(zone)
+            by_hour[local.hour][column] += 1
+            by_weekday[local.isoweekday() - 1][column] += 1
     without = sum(v[0] for v in by_day.values())
     with_person = sum(v[1] for v in by_day.values())
     total = without + with_person
@@ -294,6 +321,8 @@ def _conversations(cycles: Sequence[perf.Cycle], day_from: date, day_to: date) -
         with_person=with_person,
         without_person_pct=_pct(without, total),
         series=[DayRow(d, v[0], v[1]) for d, v in sorted(by_day.items())],
+        by_hour=[HourRow(hour, v[0], v[1]) for hour, v in enumerate(by_hour)],
+        by_weekday=[WeekdayRow(i + 1, v[0], v[1]) for i, v in enumerate(by_weekday)],
     )
 
 
@@ -514,7 +543,7 @@ async def build_report(
     zone = perf.zone_of(tenant.timezone)
     since, until = period_window(day_from, day_to, zone, now)
     cycles = await perf.period_cycles(session, since=since, until=until, zone=zone)
-    conversations = _conversations(cycles, day_from, day_to)
+    conversations = _conversations(cycles, day_from, day_to, zone)
     incidents, brake = await _incidents(session, since, until)
     agenda = await _agenda(session, tenant.id, since, until)
     autoclose = await _autoclose(session, tenant.id)

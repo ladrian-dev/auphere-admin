@@ -65,12 +65,30 @@ class DayOut(_Out):
     with_person: int
 
 
+class HourOut(_Out):
+    #: La hora local del primer mensaje del contacto, de 0 a 23.
+    hour: int
+    without_person: int
+    with_person: int
+
+
+class WeekdayOut(_Out):
+    #: ISO: 1 es lunes y 7, domingo.
+    weekday: int
+    without_person: int
+    with_person: int
+
+
 class ConversationsOut(_Out):
     total: int
     without_person: int
     with_person: int
     without_person_pct: float | None = None
     series: list[DayOut]
+    #: 24 filas, de las 0 a las 23 en la zona del cliente (enmienda 2026-11-27).
+    by_hour: list[HourOut]
+    #: 7 filas, del lunes al domingo.
+    by_weekday: list[WeekdayOut]
 
 
 class FirstResponseOut(_Out):
