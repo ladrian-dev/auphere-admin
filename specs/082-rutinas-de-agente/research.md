@@ -30,7 +30,7 @@ Lo que sí se reutiliza, pieza a pieza: el `AgentBundle` (`runtime/agent_loader.
 
 `_tool_requires_conversation` (`runtime/pipeline.py:1859`) mira si `conversation_id` está entre los obligatorios de la herramienta. En una rutina no hay conversación que inyectar, así que esas herramientas quedan fuera por construcción. Son, hoy, exactamente las que hablan con un cliente final: `escalate.*`, los diez `notification.send_*`, `payments.request_review` y `operator.consult_owner`.
 
-Esto coincide con la frontera que el owner ya cerró cuando descartó la salida a WhatsApp, y refuerza la garantía 8 en vez de aflojarla.
+Esto coincide con la frontera que Pedro ya cerró cuando descartó la salida a WhatsApp, y refuerza la garantía 8 en vez de aflojarla.
 
 **D3. Una rutina hereda el permiso de la activación, sin degradarlo ni ampliarlo** *(Pedro, 2026-11-27)*.
 
@@ -102,9 +102,11 @@ La pausa que pone una persona es distinta: esa se guarda con motivo `manual` y e
 - Asiento `debit_schedule` en la bolsa, por `bags.debit_turn(kind=...)`, que ya acepta el parámetro.
 - `charge_schedule` en `services/wallet/schedules.py`, calcado de `charge_tests`: **no suma al tope del agente**, porque ese tope habla de lo que gasta atendiendo, pero sí pausa a los agentes si la bolsa llega a cero, porque sin dinero no hay turno que cobrar.
 
-**D13. La partida se ve siempre sobre la bolsa del cliente. En la pantalla de Consumo del partner, pendiente del owner.**
+**D13. La partida se ve en los dos sitios** *(Pedro, 2026-11-27)*.
 
-Es la marca de aclaración que la spec deja abierta (criterio 9.6). El diseño no cambia según la respuesta: `LINES` y `PAYER` crecen igual. Lo que cambia es si la pantalla la pinta.
+Sobre la bolsa del cliente dentro de Rutinas, y como partida propia en la pantalla de Consumo del partner, junto a Conversaciones, Construcción y pruebas, Meta y Companion.
+
+`LINES`, `PAYER` y `_BAG_ENTRY` crecen con una entrada cada uno, y la pantalla pinta una partida más. Como todas las partidas que paga la bolsa salen de los asientos y no de restar topes, la cifra cuadra sola con lo cobrado.
 
 ## 7. La auditoría
 

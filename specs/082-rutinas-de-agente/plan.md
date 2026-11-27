@@ -53,7 +53,7 @@ Dos tablas nuevas por cliente, un disparador en el scheduler, un tipo de trabajo
 | VI | Por API `console.*`, nunca navegando la consola de Auphere | ☑ | No aplica: aquí no hay ningún agente operando la plataforma. |
 | VII | Test primero; el criterio de aceptación es el test; nada de `skip` | ☑ | Cada criterio de la spec se cita en `tasks.md` y se ve en rojo antes de implementar. |
 | VIII | Licencias leídas enteras | ☑ | Ninguna dependencia nueva. |
-| IX | La KB es dueña del porqué; la spec enlaza a su nota | ☐ | **Pendiente**: la nota la pone el owner al aprobar la spec. Es la única fila que no está en verde, y va con la marca de aclaración que la spec deja abierta. |
+| IX | La KB es dueña del porqué; la spec enlaza a su nota | ☑ | **No hay nota, y es a propósito** *(Pedro, 2026-11-27)*: esta pieza se decidió trabajando, no en la KB. El porqué está en la tabla de decisiones de la spec y en el `research.md` de esta carpeta, con quién decidió cada cosa y cuándo. |
 
 ### Las tres puertas que `/speckit-tasks` comprueba
 
@@ -61,7 +61,7 @@ Dos tablas nuevas por cliente, un disparador en el scheduler, un tipo de trabajo
 |---|---|---|
 | **Aislamiento** — ¿qué garantías toca? | **1** (dos tablas nuevas por cliente), **2** (la lista de herramientas del turno) y **8** (el turno no tiene cliente final, y se refuerza: ni siquiera hay conversación que inyectar). | `test_082_schedules_rls.py`, `test_082_schedule_turn_tools.py` y `test_082_schedule_turn_has_no_end_customer.py`, más `test_21`, `test_22` y `test_43`, que recogen las tablas nuevas al volver a correr. |
 | **Licencias** — ¿qué dependencia nueva entra? | Ninguna. `zoneinfo` es de la biblioteca estándar. | — |
-| **Medidor** — ¿qué gasta y dónde lo ve el partner? | **Modelo**. Cada ejecución es un turno de agente, medido por tokens con `source = "schedule"`, cobrado de la bolsa del cliente con el asiento `debit_schedule` y mostrado como partida `schedules`. El partner lo ve sobre la bolsa del cliente, en Rutinas. Si además es una partida de la pantalla de Consumo, lo decide el owner (criterio 9.6). | La tarea del medidor y la del panel de consumo de Rutinas. |
+| **Medidor** — ¿qué gasta y dónde lo ve el partner? | **Modelo**. Cada ejecución es un turno de agente, medido por tokens con `source = "schedule"`, cobrado de la bolsa del cliente con el asiento `debit_schedule` y mostrado como partida `schedules`. El partner lo ve en dos sitios: sobre la bolsa del cliente dentro de Rutinas, y como partida propia en la pantalla de Consumo, junto a las otras cuatro (criterio 9.6). | La tarea del medidor, la de la partida en `usage_lines.py` y la de la columna en la pantalla de Consumo. |
 
 ## Project Structure
 
@@ -103,7 +103,7 @@ apps/worker/src/nexus_worker/
 apps/console/src/app/(console)/schedules/       # la página, el alta y el detalle
 ```
 
-**Structure Decision**: no hay estructura nueva. Cada pieza cae donde ya vive su familia: los modelos y servicios en `nexus_api`, el turno en `runtime`, el manejador en `jobs/handlers` junto a los otros nueve, el barrido en `streams` junto a los demás crons, y la página en el grupo `(console)`. Las dos carpetas vacías que dejó una maqueta anterior en `apps/console/src/app/(console)/schedules/` se borran: no están en git y responden a un modelo que el owner descartó.
+**Structure Decision**: no hay estructura nueva. Cada pieza cae donde ya vive su familia: los modelos y servicios en `nexus_api`, el turno en `runtime`, el manejador en `jobs/handlers` junto a los otros nueve, el barrido en `streams` junto a los demás crons, y la página en el grupo `(console)`. Las dos carpetas vacías que dejó una maqueta anterior en `apps/console/src/app/(console)/schedules/` se borran: no están en git y responden a un modelo que Pedro descartó.
 
 ## Fases
 

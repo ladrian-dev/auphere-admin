@@ -2,7 +2,7 @@
 
 **Rama**: `082-rutinas-de-agente` · **Creada**: 2026-11-27 · **Estado**: Borrador
 
-**Entrada**: maqueta aprobada por el owner y las decisiones que la acompañan. La maqueta vive en `https://claude.ai/artifact/U6foMycEUSAjVbpZuvkXqP`, que es **privado de la cuenta del owner**: quien no tenga acceso tiene lo que importa en la tabla de decisiones de más abajo. Los dos ejemplos que el owner puso como criterio de si la pieza sirve: «revisa la vista de usuarios de Notion y dame la lista de los que se dieron de alta ayer», todos los días a las nueve. Y «crea un informe del rendimiento y la cobertura del agente de Jemma Hair sobre el desempeño del servicio en los últimos quince días», una sola vez, dentro de quince días.
+**Entrada**: maqueta aprobada por Pedro y las decisiones que la acompañan. La maqueta vive en `https://claude.ai/artifact/U6foMycEUSAjVbpZuvkXqP`, que es **privado de la cuenta de Pedro**: quien no tenga acceso tiene lo que importa en la tabla de decisiones de más abajo. Los dos ejemplos que Pedro puso como criterio de si la pieza sirve: «revisa la vista de usuarios de Notion y dame la lista de los que se dieron de alta ayer», todos los días a las nueve. Y «crea un informe del rendimiento y la cobertura del agente de Jemma Hair sobre el desempeño del servicio en los últimos quince días», una sola vez, dentro de quince días.
 
 ## Encabezado Auphere *(obligatorio)*
 
@@ -10,7 +10,7 @@
 |---|---|
 | **Superficie de confianza** | `0` API de la consola. No se abre ninguna superficie nueva: la ejecución corre en el mismo worker, con el mismo grafo de herramientas y el mismo proxy de modelos que un turno de conversación. Lo nuevo es quién dispara el turno y que al otro lado no hay nadie. |
 | **Garantías de aislamiento tocadas** | **1** (dos tablas nuevas por cliente, con RLS forzada y clave foránea compuesta al agente), **2** (la lista de herramientas del turno se construye con la misma intersección de siempre), **6** (todo lo que se registra lleva su cliente) y la **8**, que se refuerza en vez de aflojarse: sin conversación, ninguna herramienta que nombre a un cliente final llega siquiera a ofrecerse. |
-| **Nota de KB que la justifica** | Pendiente: la pone el owner al aprobar. Hasta entonces hace de entrada la maqueta enlazada arriba. |
+| **Nota de KB que la justifica** | Ninguna. Esta se decidió trabajando, no en la KB: el origen es la maqueta aprobada y la tabla de decisiones de más abajo, que está aquí para que no vivan en un chat. |
 | **Qué se mide** | Modelo. Cada ejecución es un turno de agente y se mide por tokens como cualquier otro, con origen propio (`schedule`) y cobrada de la bolsa del cliente. |
 
 > La superficie es la que ya está abierta. Una rutina no da al agente ninguna herramienta que no tuviera, no abre ningún canal nuevo y no habla con nadie de fuera: reparte en el tiempo lo que el agente ya sabe hacer, y la respuesta la lee el partner dentro de la consola.
@@ -32,7 +32,7 @@ Lo que no existe, y es el único trabajo de fondo de esta spec: **un turno de ag
 
 ### Decisiones de partida
 
-Son del owner y no se reabren en esta spec.
+Son de Pedro y no se reabren en esta spec.
 
 | | Decisión |
 |---|---|
@@ -61,7 +61,7 @@ El partner entra en Rutinas, elige un cliente, escribe el nombre y la instrucci�
 
 **Escenarios de aceptación**:
 
-1. **Dado** un agente que atiende y tiene Notion entre sus herramientas, **cuando** el partner guarda la instrucción del ejemplo del owner y pulsa «Ejecutar ahora», **entonces** el historial de esa rutina muestra una ejecución hecha, con el texto de la respuesta y las herramientas que usó.
+1. **Dado** un agente que atiende y tiene Notion entre sus herramientas, **cuando** el partner guarda la instrucción del ejemplo de Pedro y pulsa «Ejecutar ahora», **entonces** el historial de esa rutina muestra una ejecución hecha, con el texto de la respuesta y las herramientas que usó.
 2. **Dado** el mismo agente, **cuando** la ejecución termina, **entonces** la bolsa del cliente tiene un cargo por ese importe y el consumo lo imputa a rutinas, no a conversaciones.
 3. **Dado** un agente cuyas herramientas no incluyen Notion, **cuando** la instrucción le pide mirar Notion, **entonces** el turno no le ofrece ninguna herramienta de Notion, la ejecución queda marcada parcial y deja escrito qué no se pudo hacer.
 
@@ -255,7 +255,7 @@ La respuesta avisa en la campana de la consola, y si el partner lo pidió, tambi
 3. El sistema DEBE enseñar, sobre la bolsa del cliente, lo gastado en conversaciones y lo gastado en rutinas por separado, con su importe y su parte del total.
 4. El sistema NO DEBE sumar lo que gasta una rutina al tope del agente, que habla de lo que gasta atendiendo.
 5. El sistema DEBE escribir los importes como ya los escribe la consola, «12,80 US$».
-6. [NEEDS CLARIFICATION: ¿Rutinas es también una partida visible en la pantalla de Consumo del partner, junto a Conversaciones, Construcción y pruebas, Meta y Companion, o solo se ve dentro de Rutinas y en la bolsa del cliente? Lo decide el owner.]
+6. El sistema DEBE enseñar Rutinas como una partida propia en la pantalla de Consumo del partner, junto a Conversaciones, Construcción y pruebas, Meta y Companion, con su importe y con la bolsa del cliente como quien la paga *(Pedro, 2026-11-27)*.
 
 ### Requisito 10 — dónde aterriza la respuesta
 
@@ -332,8 +332,8 @@ La respuesta avisa en la campana de la consola, y si el partner lo pidió, tambi
 
 ## Criterios de éxito *(obligatorio)*
 
-- **CE-001**: el partner escribe el primer ejemplo del owner, lo deja puesto, y a la mañana siguiente la respuesta está en la consola sin que nadie haya tocado nada.
-- **CE-002**: el segundo ejemplo del owner, el informe a quince días, se programa una vez, se ejecuta ese día y no vuelve a ejecutarse.
+- **CE-001**: el partner escribe el primer ejemplo de Pedro, lo deja puesto, y a la mañana siguiente la respuesta está en la consola sin que nadie haya tocado nada.
+- **CE-002**: el segundo ejemplo de Pedro, el informe a quince días, se programa una vez, se ejecuta ese día y no vuelve a ejecutarse.
 - **CE-003**: ante un cliente que pregunta por su factura, el partner puede decir cuánto de la bolsa se fue en conversaciones y cuánto en rutinas, y las dos cifras suman lo cobrado.
 - **CE-004**: una rutina cuyo agente se pausa no gasta nada mientras está pausado, y vuelve sola sin intervención.
 - **CE-005**: una rutina que no puede hacer parte de lo que se le pidió lo dice en su respuesta, y nunca aparece como hecha.
@@ -345,14 +345,14 @@ La respuesta avisa en la campana de la consola, y si el partner lo pidió, tambi
 - **Que la respuesta salga por WhatsApp o avise a un móvil** — abre un camino hacia clientes finales, y esta pieza no abre esa frontera.
 - **Encadenar rutinas, condiciones o ramas** — eso es un workflow, y ese camino ya se intentó.
 - **Las rutinas en la consola del cliente** — hoy el negocio ve panel, bandeja, reservas y consumo. Meterlas sería un módulo nuevo y una decisión aparte.
-- **Periodicidades libres tipo cron** — decisión 4 del owner.
+- **Periodicidades libres tipo cron** — decisión 4 de Pedro.
 - **Editar la instrucción de una ejecución ya hecha** — el historial es lo que pasó, no se reescribe.
 
 ## Supuestos
 
 - Una rutina hereda el permiso de cada conexión tal como está, sin degradarlo ni ampliarlo por ser una rutina *(decidido con Pedro el 2026-11-27)*.
 - La ventana de gracia de una ejecución que se saltó es de una hora. Pasada, se da por no ejecutada.
-- Rutinas se ve como una partida propia sobre la bolsa del cliente, dentro de Rutinas. Si además es una partida de la pantalla de Consumo del partner está abierto en el criterio 9.6, y es lo único que bloquea el paso a planificar.
+- Rutinas es una partida propia en los dos sitios: sobre la bolsa del cliente dentro de Rutinas, y en la pantalla de Consumo del partner junto a las otras cuatro (criterio 9.6).
 - El correo de la primera ola es un aviso con enlace a la consola, no la respuesta entera: la plantilla genérica de hoy admite titular, una frase y un botón.
 - El tope de veinte rutinas activas por cliente es un valor de partida, no un límite técnico.
 - Una rutina archivada se consulta y se puede restaurar, y al restaurarse queda en pausa. Es el mismo trato que ya reciben los agentes, así que no abre una decisión nueva.
