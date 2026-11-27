@@ -45,13 +45,11 @@ export default async function ClientLayout({ params, children }: { params: Promi
     const legacy = await getClientCached(principal, ref).catch(() => null);
     return (
       <div className="grid min-w-0 gap-6">
-        {/* Spec 056 (requisito 3.2): la pestaña Acceso solo existe para owner y admin.
-            Spec 083 (requisito 1.6): la pestaña Informe, para quien lee conversaciones y consumo. */}
+        {/* Spec 056 (requisito 3.2): la pestaña Acceso solo existe para owner y admin. */}
         <ClientHeaderV2
           client={detail}
           servingSince={legacy?.serving_since ?? null}
           canManageAccess={can(principal.role, "client_access:manage")}
-          canReadReport={can(principal.role, "conversations:read") && can(principal.role, "usage:read")}
         />
         {children}
       </div>

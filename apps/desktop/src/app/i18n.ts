@@ -278,7 +278,7 @@ const COPY = {
   "shell.section.clientes": { es: "Clientes", en: "Clients" },
   "shell.section.conocimiento": { es: "Conocimiento", en: "Knowledge" },
   "shell.section.puesto": { es: "Puesto de trabajo", en: "Workstation" },
-  "shell.section.consumo": { es: "Consumo", en: "Usage" },
+  "shell.section.consumo": { es: "Métricas", en: "Metrics" },
   "shell.section.auditoria": { es: "Auditoría", en: "Audit" },
   "shell.section.notificaciones": { es: "Notificaciones", en: "Notifications" },
   "shell.section.equipo": { es: "Equipo", en: "Team" },

@@ -50,6 +50,10 @@ export type ClientReport = {
     without_person_pct: number | null;
     /** Un día por fecha del periodo. */
     series: { day: string; without_person: number; with_person: number }[];
+    /** 24 filas: la hora local del primer mensaje del contacto (enmienda 2026-11-27, 13.1). */
+    by_hour: { hour: number; without_person: number; with_person: number }[];
+    /** 7 filas, ISO: 1 es lunes y 7, domingo. */
+    by_weekday: { weekday: number; without_person: number; with_person: number }[];
   };
   first_response: {
     /** Conversaciones con algún envío del agente: el denominador del porcentaje. */

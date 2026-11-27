@@ -42,43 +42,23 @@ const DETAIL: ClientDetailV2 = {
 };
 
 /**
- * Spec 083 (T007; requisitos 1.1 y 1.6, D1): la pestaña «Informe» va después de
- * «Anuncios» y solo existe para quien puede leer conversaciones y consumo.
+ * Spec 083, enmienda del 2026-11-27 (T023; requisito 11.7, D22): la ficha del
+ * cliente ya no tiene la pestaña «Informe». Las cifras viven en Métricas, y
+ * `/clients/{ref}/report` lleva allí (prueba de `report/page.tsx`).
  */
-describe("ClientHeaderV2 · la pestaña Informe", () => {
-  it("con los dos permisos, va después de Anuncios, con su dirección", () => {
+describe("ClientHeaderV2 · sin la pestaña Informe", () => {
+  it("las pestañas son las de antes de la 083, también con todos los permisos", () => {
     render(
       <LocaleProvider locale="es">
-        <ClientHeaderV2 client={DETAIL} canReadReport canManageAccess />
+        <ClientHeaderV2 client={DETAIL} canManageAccess />
       </LocaleProvider>,
     );
     const tabs = screen.getByRole("navigation", { name: "Secciones del cliente" });
-    expect(Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent)).toEqual(["Panel", "Negocio", "Agentes", "Anuncios", "Informe", "Acceso"]);
-    const report = screen.getByRole("link", { name: "Informe" });
-    expect(report).toHaveAttribute("href", "/clients/barberia-cultor/report");
-    expect(report).toHaveAttribute("aria-current", "page");
-  });
-
-  it("sin ellos, no existe", () => {
-    render(
-      <LocaleProvider locale="es">
-        <ClientHeaderV2 client={DETAIL} />
-      </LocaleProvider>,
-    );
+    expect(Array.from(tabs.querySelectorAll("a")).map((a) => a.textContent)).toEqual(["Panel", "Negocio", "Agentes", "Anuncios", "Acceso"]);
     expect(screen.queryByRole("link", { name: "Informe" })).toBeNull();
   });
 
-  it("la ruta /report es la pestaña Informe", () => {
-    expect(activeTab("/clients/barberia-cultor/report", "barberia-cultor")).toBe("report");
-    expect(activeTab("/clients/barberia-cultor/reports", "barberia-cultor")).toBeNull();
-  });
-
-  it("la cabecera del cliente no sale al imprimir: el informe lleva la suya", () => {
-    const { container } = render(
-      <LocaleProvider locale="es">
-        <ClientHeaderV2 client={DETAIL} canReadReport />
-      </LocaleProvider>,
-    );
-    expect(container.querySelector("[data-slot=client-header-v2]")!.className).toMatch(/print:hidden/);
+  it("la ruta /report no es una pestaña", () => {
+    expect(activeTab("/clients/barberia-cultor/report", "barberia-cultor")).toBeNull();
   });
 });

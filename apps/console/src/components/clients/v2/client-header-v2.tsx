@@ -25,7 +25,6 @@ export function activeTab(pathname: string, ref: string): ClientTab | null {
   if (pathname.startsWith(`${base}/business`)) return "business";
   if (pathname.startsWith(`${base}/agents`)) return "agents";
   if (pathname === `${base}/ads` || pathname.startsWith(`${base}/ads/`)) return "ads";
-  if (pathname === `${base}/report` || pathname.startsWith(`${base}/report/`)) return "report";
   if (pathname === `${base}/access` || pathname.startsWith(`${base}/access/`)) return "access";
   return null;
 }
@@ -34,7 +33,7 @@ export function activeTab(pathname: string, ref: string): ClientTab | null {
  * La cabecera de un cliente con la consola nueva, como el prototipo aprobado
  * («Consola de partners v2»): el nombre grande, el nicho y desde cuándo atiende,
  * y debajo la barra de pestañas en vidrio (Panel · Negocio · Agentes, sin número, y
- * Acceso para owner y admin: spec 056; Informe para quien lee conversaciones y consumo: spec 083) con «Nuevo agente» a la derecha. Las pestañas son enlaces (`aria-current`), no un
+ * Acceso para owner y admin: spec 056) con «Nuevo agente» a la derecha. Las pestañas son enlaces (`aria-current`), no un
  * `tablist`: cada una es una página con su propia URL. Activo, no lleva
  * insignia ni «⋯» (archivar y borrar están en la lista); en pausa o archivado
  * lo dice y deja sus acciones.
@@ -43,17 +42,14 @@ export function ClientHeaderV2({
   client,
   servingSince = null,
   canManageAccess = false,
-  canReadReport = false,
 }: {
   client: ClientDetailV2;
   servingSince?: string | null;
   /** Spec 056 (requisito 3.2, D4): owner y admin (`client_access:manage`). Sin él, la pestaña Acceso no existe. */
   canManageAccess?: boolean;
-  /** Spec 083 (requisito 1.6): `conversations:read` y `usage:read`. Sin los dos, la pestaña Informe no existe. */
-  canReadReport?: boolean;
 }) {
   const t = useT();
-  const tabs: readonly ClientTab[] = [...TABS, ...(canReadReport ? (["report"] as const) : []), ...(canManageAccess ? (["access"] as const) : [])];
+  const tabs: readonly ClientTab[] = canManageAccess ? [...TABS, "access"] : TABS;
   const locale = useLocale();
   const pathname = usePathname() ?? "";
   const ref = client.external_client_ref;
@@ -64,8 +60,7 @@ export function ClientHeaderV2({
   // agente, como en el prototipo: la ficha solo deja su nombre en las migas.
   if (pathname.startsWith(`${clientHref(ref, "agents")}/`)) return <CrumbName id={ref} label={client.name} />;
   return (
-    // Al imprimir no sale: el informe (spec 083) lleva su propio encabezado.
-    <header className="grid min-w-0 gap-6 print:hidden" data-slot="client-header-v2">
+    <header className="grid min-w-0 gap-6" data-slot="client-header-v2">
       {/* Las migas dicen el nombre: la referencia la deriva la consola. */}
       <CrumbName id={ref} label={client.name} />
       <div className="flex min-w-0 items-start justify-between gap-3 border-b border-border pb-6">

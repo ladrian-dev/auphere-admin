@@ -47,7 +47,7 @@ import { onboardingMessages } from "./lanes/onboarding";
 import { partnerViewsMessages } from "./lanes/partner-views";
 import { playgroundMessages } from "./lanes/playground";
 import { recordMessages } from "./lanes/record";
-import { reportMessages } from "./lanes/report";
+import { metricsMessages } from "./lanes/metrics";
 import { reservasMessages } from "./lanes/reservas";
 import { reservasTemplatesMessages } from "./lanes/reservas-templates";
 import { shellMessages } from "./lanes/shell";
@@ -639,7 +639,7 @@ const messages = {
   // Spec 077: la página pública a la que vuelve quien paga en Stripe.
   ...paymentReturnMessages,
   // Spec 083: el informe de un cliente.
-  ...reportMessages,
+  ...metricsMessages,
 } as const;
 
 export type MessageKey = keyof typeof messages;

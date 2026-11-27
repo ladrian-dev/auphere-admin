@@ -18,7 +18,7 @@ export type Crumb = { href: string | null; label: CrumbLabel };
 
 /** Las secciones de primer nivel y su nombre. */
 const SECTION: Record<string, MessageKey> = {
-  usage: "nav.usage",
+  usage: "nav.metrics",
   audit: "nav.audit",
   knowledge: "nav.knowledge",
   workstation: "nav.workstation",
