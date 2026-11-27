@@ -63,6 +63,25 @@ export const schedulesMessages = {
     en: "What you would tell its agent in a chat, but set to an hour and repeated on its own.",
   },
 
+  "schedules.noclients.title": {
+    es: "Todavía no tienes clientes",
+    en: "You have no clients yet",
+  },
+  "schedules.noclients.body": {
+    es: "Una rutina es de un agente, y un agente es de un cliente. Crea tu primer cliente y su agente, y vuelve.",
+    en: "A routine belongs to an agent, and an agent to a client. Create your first client and its agent, then come back.",
+  },
+  "schedules.noclients.action": { es: "Ir a Clientes", en: "Go to Clients" },
+  "schedules.noagents.title": {
+    es: "{client} todavía no tiene ningún agente",
+    en: "{client} has no agent yet",
+  },
+  "schedules.noagents.body": {
+    es: "No hay a quién vincular la rutina. Crea el agente de este cliente y vuelve.",
+    en: "There is nobody to attach the routine to. Create this client's agent and come back.",
+  },
+  "schedules.noagents.action": { es: "Ver este cliente", en: "Open this client" },
+
   "schedules.tools.note": {
     es: "Una rutina no añade herramientas: reparte en el tiempo las que el agente ya tiene.",
     en: "A routine adds no tools: it spreads over time the ones the agent already has.",

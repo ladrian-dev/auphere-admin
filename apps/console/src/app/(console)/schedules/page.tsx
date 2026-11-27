@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@nexus/ui";
 
 import { ClientPicker } from "@/components/schedules/client-picker";
+import { NoAgentState } from "@/components/schedules/no-agent-state";
 import { ScheduleList } from "@/components/schedules/schedule-list";
 import { pageTitle } from "@/i18n/metadata";
 import { getT } from "@/i18n/server";
@@ -39,17 +40,41 @@ export default async function SchedulesPage({
     return (
       <>
         <PageHeader size="display" title={t("schedules.title")} description={t("schedules.description")} />
-        <ClientPicker clients={clients.items} lead={t("schedules.pick.lead")} title={t("schedules.pick.title")} />
+        <ClientPicker
+          clients={clients.items}
+          copy={{
+            title: t("schedules.pick.title"),
+            lead: t("schedules.pick.lead"),
+            empty: {
+              title: t("schedules.noclients.title"),
+              body: t("schedules.noclients.body"),
+              action: t("schedules.noclients.action"),
+            },
+          }}
+        />
       </>
     );
   }
 
   // El nombre del cliente, no su referencia: «flor-y-encanto todavía no tiene
   // ninguna rutina» se lee como un identificador, no como un negocio.
-  const name = await api
-    .getClient(client)
-    .then((c) => c.name ?? client)
-    .catch(() => client);
+  const detail = await api.getClient(client).catch(() => null);
+  const name = detail?.name ?? client;
+  // Sin agente no hay a quién vincular una rutina, y decirlo aquí evita que
+  // alguien llegue al alta para encontrarse un desplegable vacío.
+  if (detail && detail.setup?.agent === false) {
+    return (
+      <>
+        <PageHeader size="display" title={t("schedules.title")} description={t("schedules.description")} />
+        <NoAgentState
+          title={t("schedules.noagents.title", { client: name })}
+          body={t("schedules.noagents.body")}
+          action={t("schedules.noagents.action")}
+          href={`/clients/${encodeURIComponent(client)}`}
+        />
+      </>
+    );
+  }
   const page = await api.listSchedules(client, {
     agent,
     state: state === "active" || state === "paused" || state === "archived" ? state : undefined,
