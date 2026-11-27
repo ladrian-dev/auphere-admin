@@ -1,6 +1,6 @@
 # Especificación: el informe del piloto
 
-**Carpeta**: `specs/083-informe-del-piloto` · **Creada**: 2026-11-26 · **Estado**: Lista para implementar (definiciones aceptadas por Luis el 2026-11-26; el resto, decidido en la spec y pendiente de su revisión final)
+**Carpeta**: `specs/083-informe-del-piloto` · **Creada**: 2026-11-26 · **Enmendada**: 2026-11-27 (las cifras pasan a la pantalla Métricas, antes Consumo; ver «Enmienda 2026-11-27») · **Estado**: Lista para implementar (definiciones aceptadas por Luis el 2026-11-26; el resto, decidido en la spec y pendiente de su revisión final)
 
 **Entrada**: Neliana (partner Autprod) cierra el piloto de Jemma's Hair hacia el 7 de diciembre y necesita un informe que enseñar al cliente para anclar el precio. Luis pidió dejar listos y probados los P0 y P1 de la beta; esta es la P1 «informe del piloto». Sirve para cualquier partner y cualquier cliente.
 
@@ -51,6 +51,34 @@ Luis no aprueba pasos intermedios. Estas decisiones se tomaron con el código de
 - **D13. El periodo, como mucho 92 días.** Un trimestre cubre cualquier piloto; más largo, la lectura se encarece sin que nadie lo haya pedido.
 - **D14. La página Rendimiento del agente usa los mismos ciclos.** Un solo constructor de ciclos alimenta el informe y Rendimiento: las dos dicen lo mismo de las conversaciones del agente. El Panel del cliente conserva su regla de hoy (fuera de alcance).
 - **D15. El eco lleva la hora de Meta.** *(Decidido en la implementación, 2026-11-26.)* El eco de la app de WhatsApp Business guarda la hora a la que Meta dice que se envió; la fila que crea, o la reapertura que provoca, lleva la hora de la plataforma, segundos después. Sin una regla, una persona que escribe primero desde la app a un contacto nuevo (o a una conversación resuelta) dejaría su mensaje fuera del ciclo, y ese ciclo contaría «sin persona». La regla: una señal de persona que cae hasta **10 minutos antes** de que empiece un ciclo, y fuera del anterior, es de ese ciclo. Más atrás, no: un takeover sobre una conversación resuelta que el contacto reabre días después no cuenta, porque la reapertura devuelve la conversación al agente.
+
+### Enmienda 2026-11-27 (Luis, antes de fusionar el PR 73)
+
+Luis vio la pestaña y la descartó: «Informe» suena hecho por IA, y no tiene sentido elegir otro cliente desde la ficha de un cliente. Su encargo: quitar la pestaña, llevar las cifras a la pantalla Consumo con otro nombre, y que la vista sirva para ver patrones y decidir con números, sin enseñar cosas ni contestar preguntas que no hacen falta.
+
+Lo que se mantiene: las definiciones de arriba (ciclo, sin persona, incidencia, primera respuesta), los requisitos 2–7, 9 y 10, y la API. Lo que cambia, decidido sin Luis (lo revisa al final):
+
+- **D16. El nombre: «Métricas»** (en inglés, «Metrics»). Es lo que la pantalla enseña, el dinero y las conversaciones, y es como se llama esta vista en cualquier consola. No promete un relato. La ruta sigue siendo `/usage`, para no romper los enlaces, la paleta ni la app de escritorio. Cambian las etiquetas que llevan a la pantalla del partner: la navegación, el título, el buscador, la paleta y la sección de la app de escritorio. La consola del cliente (Acceso y lite) y la membresía siguen diciendo «Consumo», porque allí solo hay consumo.
+- **D17. Qué ve cada rol.** La pantalla, como hoy, con `usage:read`. La sección «Conversaciones», además con `conversations:read`: owner, admin, builder y analyst. Billing ve solo el dinero, y para él la sección no existe. Así lo pedía la pestaña (1.6) y así lo exige la API.
+- **D18. Un solo filtro.** El cliente y el periodo de la pantalla (`?client=&days=`, 7, 30 o 90 días) mandan en todas las secciones. Se suben encima de todo, y el gasto por día deja de llevar su propio selector. Las conversaciones son de un cliente, porque la lectura es por cliente. Sin cliente elegido, la sección pide que se elija uno y no enseña cifras. Sumar todos los clientes de un partner queda fuera de alcance.
+- **D19. El periodo.** Los últimos N días hasta hoy en la zona del cliente, comparados con los N días justo anteriores: dos lecturas del mismo endpoint. Desaparecen las fechas a mano y su validación en pantalla; la API la conserva.
+- **D20. Lo que se queda y lo que se va.** Cada bloque se queda solo si ayuda a decidir algo:
+  - Se quedan:
+    - **Arriba, con su diferencia** frente al periodo anterior: conversaciones; resueltas sin persona frente al 70 %; respondidas en 60 s o menos frente al 95 %; mediana de la primera respuesta; incidencias; coste por conversación.
+    - **Por día**, sin persona y con persona: la tendencia.
+    - **Por hora del día y por día de la semana**, sin persona y con persona: cuándo cubrir con personas.
+    - **Incidencias por motivo**, con su parte y su diferencia: qué arreglar en el agente o en el canal.
+    - **Agenda por quién**: cuánto trabajo quita el agente.
+    - **Recordatorios fallidos u omitidos**.
+    - **Freno de reservas**: cuántas veces se equivocó el agente con una cita.
+  - Se van:
+    - La lista de las incidencias recientes: son horas sueltas y no deciden nada.
+    - El encabezado «Informe del periodo».
+    - El gasto del informe. El dinero ya tiene su sección; del informe solo queda el coste por conversación.
+    - Las definiciones en párrafo bajo cada bloque, que pasan a un solo bloque plegado, «Cómo se cuenta».
+- **D21. Imprimir.** Se mantiene (la vista imprimible fue decisión de Luis), pero solo la sección de conversaciones del cliente elegido, con su encabezado. Nunca el dinero del partner: el saldo y las bolsas de otros clientes no se enseñan a un cliente.
+- **D22. La pestaña se va.** La ficha del cliente deja de tener «Informe». `/clients/{ref}/report` lleva a `/usage?client={ref}`, para no romper enlaces.
+- **D23. La API.** El mismo endpoint, con dos desgloses más: `conversations.by_hour` (24 filas, la hora local del primer mensaje del contacto) y `conversations.by_weekday` (7 filas, del lunes al domingo), cada fila partida en sin persona y con persona. La prueba de aislamiento de la ruta lo sigue cubriendo.
 
 ## Escenarios de usuario y pruebas *(obligatorio)*
 
@@ -126,11 +154,11 @@ La página Rendimiento de un agente cuenta con los mismos ciclos, el mismo «con
 
 #### Criterios de aceptación
 
-1. El sistema DEBE ofrecer el informe como una pestaña del cliente, «Informe», después de «Anuncios», en la consola nueva.
-2. El informe DEBE tener dos filtros: el cliente (un selector con los clientes del partner, que lleva al informe del elegido con las mismas fechas) y el periodo (desde y hasta, en días del calendario del cliente).
+1. ~~El sistema DEBE ofrecer el informe como una pestaña del cliente, «Informe», después de «Anuncios», en la consola nueva.~~ *Enmendado el 2026-11-27: las cifras van en la pantalla Métricas (requisito 11).*
+2. ~~El informe DEBE tener dos filtros: el cliente (un selector con los clientes del partner, que lleva al informe del elegido con las mismas fechas) y el periodo (desde y hasta, en días del calendario del cliente).~~ *Enmendado el 2026-11-27: el filtro es el de la pantalla, cliente y 7, 30 o 90 días (11.5 y 11.6).*
 3. El periodo DEBE viajar en la dirección de la página, para que recargarla o compartirla dé el mismo informe.
 4. Sin periodo, el informe DEBE abrir con los últimos 30 días, hoy incluido.
-5. IF el periodo acaba antes de empezar, pasa de 92 días o acaba después de hoy THEN la API DEBE contestar 422 con un código, y la página NO DEBE permitir pedirlo.
+5. IF el periodo acaba antes de empezar, pasa de 92 días o acaba después de hoy THEN la API DEBE contestar 422 con un código, y la página NO DEBE permitir pedirlo. *Desde la enmienda, la pantalla solo pide 7, 30 o 90 días.*
 6. El informe DEBE pedir los permisos de leer conversaciones y consumo. Quien no los tenga NO DEBE ver la pestaña.
 7. Los días DEBEN ser los de la zona horaria del cliente, y el informe DEBE decir cuál es.
 
@@ -179,7 +207,7 @@ La página Rendimiento de un agente cuenta con los mismos ciclos, el mismo «con
 1. Cada escalado del periodo DEBE ser una incidencia, con su motivo como código cerrado (D7).
 2. Cada freno de reservas del periodo que no pasó la conversación a nadie DEBE ser una incidencia con el motivo «freno de reservas». El que la pasó DEBE ser una sola incidencia, la de su escalado (D6).
 3. Una incidencia DEBE darse por resuelta cuando se resuelve la conversación en el ciclo en que ocurrió. Si no, sigue abierta.
-4. El informe DEBE dar el total, cuántas están resueltas y cuántas abiertas, el recuento por motivo y la lista de las más recientes con su hora local, su motivo y cuándo se resolvió.
+4. El informe DEBE dar el total, cuántas están resueltas y cuántas abiertas, el recuento por motivo y la lista de las más recientes con su hora local, su motivo y cuándo se resolvió. *Enmendado el 2026-11-27: la API sigue dando la lista, pero la pantalla no la enseña (13.4).*
 5. El informe NO DEBE dar el texto del motivo que escribió el agente, ni nada que identifique al cliente final.
 6. El bloque de freno DEBE decir cuántas veces paró una respuesta, cuántas lo corrigió el agente y cuántas pasó la conversación a una persona.
 7. El bloque de freno DEBE decir que es una aproximación a «ninguna cita sin registrar»: no detecta una cita confirmada a mano sin pasar por la agenda.
@@ -213,13 +241,13 @@ La página Rendimiento de un agente cuenta con los mismos ciclos, el mismo «con
 
 #### Criterios de aceptación
 
-1. La página DEBE abrir con las cifras (conversaciones, resueltas sin persona, primera respuesta y gasto) y, debajo, la gráfica, la agenda, los recordatorios y las incidencias.
+1. ~~La página DEBE abrir con las cifras (conversaciones, resueltas sin persona, primera respuesta y gasto) y, debajo, la gráfica, la agenda, los recordatorios y las incidencias.~~ *Enmendado el 2026-11-27:* la sección DEBE abrir con las cifras de D20 con su diferencia (12.1) y, debajo, por día, por hora y día de la semana, las incidencias por motivo, la agenda, los recordatorios y el freno.
 2. Las cifras DEBEN ir en números tabulares y los importes con el código detrás («412,80 USD»).
 3. La gráfica DEBE ser de barras macizas con las dos series en los dos verdes del sistema, distinguidos por luminosidad.
 4. El ámbar DEBE usarse solo para avisos reales. Un objetivo no alcanzado se dice con la palabra, no con ámbar.
-5. Cada bloque DEBE llevar su definición corta.
+5. ~~Cada bloque DEBE llevar su definición corta.~~ *Enmendado el 2026-11-27:* las definiciones DEBEN estar en un solo bloque plegado, «Cómo se cuenta» (13.4).
 6. La página DEBE tener sus cinco estados: cargando (del tamaño final), vacío, error con reintento, parcial e ideal.
-7. WHEN se imprime THEN DEBE salir solo el informe con su encabezado (cliente, periodo, zona horaria y fecha de generación), sin navegación, pestañas ni filtros, en tema claro y con los colores de la gráfica.
+7. WHEN se imprime THEN DEBE salir solo la sección de conversaciones del cliente elegido con su encabezado (cliente, periodo, zona horaria y fecha de generación), sin navegación, filtros ni nada del dinero del partner (D21), en tema claro y con los colores de las gráficas.
 8. La página DEBE cumplir WCAG 2.2 AA y funcionar de 360 px a escritorio.
 
 ### Requisito 9 — Rendimiento del agente con la misma regla
@@ -243,6 +271,43 @@ La página Rendimiento de un agente cuenta con los mismos ciclos, el mismo «con
 3. La lectura NO DEBE aceptar un identificador de tenant ni de partner, y su respuesta NO DEBE llevar ninguno.
 4. La respuesta NO DEBE llevar cuerpos de mensaje, nombres ni teléfonos de clientes finales, ni el texto libre de un escalado.
 
+### Requisito 11 — Las cifras viven en Métricas *(enmienda 2026-11-27)*
+
+**Historia de usuario:** Como partner, quiero las cifras de conversaciones de un cliente junto a su consumo, en una sola pantalla, para decidir con números.
+
+#### Criterios de aceptación
+
+1. La pantalla de partner `/usage` DEBE llamarse «Métricas» en la navegación, en su título, en el buscador, en la paleta y en la app de escritorio (D16).
+2. WHEN el partner tiene `conversations:read` y `usage:read` y hay un cliente elegido THEN la pantalla DEBE enseñar la sección «Conversaciones» de ese cliente, con el periodo de la pantalla.
+3. IF el partner no tiene `conversations:read` THEN la sección «Conversaciones» NO DEBE existir (D17).
+4. WHEN no hay un cliente elegido THEN la sección DEBE pedir que se elija uno y NO DEBE enseñar cifras (D18).
+5. El cliente y el periodo (7, 30 o 90 días) DEBEN ser un solo filtro para toda la pantalla, encima de todas las secciones, y DEBEN viajar en la dirección (`?client=&days=`).
+6. El periodo DEBE ser los últimos N días hasta hoy en la zona del cliente; el anterior, los N días justo antes (D19).
+7. La ficha del cliente NO DEBE tener la pestaña «Informe» (D22).
+8. WHEN se abre `/clients/{ref}/report` THEN el sistema DEBE llevar a `/usage?client={ref}`.
+
+### Requisito 12 — Frente al periodo anterior *(enmienda 2026-11-27)*
+
+**Historia de usuario:** Como partner, quiero ver si cada cifra mejora o empeora, para saber dónde actuar.
+
+#### Criterios de aceptación
+
+1. Cada cifra de arriba DEBE llevar su diferencia frente al periodo anterior: en porcentaje para los recuentos, en puntos para los porcentajes y en segundos para los tiempos.
+2. IF el periodo anterior no tiene conversaciones, o la cifra no existe en uno de los dos, THEN esa diferencia NO DEBE darse.
+3. IF la lectura del periodo anterior falla THEN las cifras DEBEN salir sin diferencia y la sección DEBE decir que no se pudo comparar (estado parcial).
+4. La diferencia DEBE decirse con su signo y su número, sin rojo ni verde: si es buena o mala lo dice el objetivo con palabras (8.4).
+
+### Requisito 13 — Desgloses para actuar *(enmienda 2026-11-27)*
+
+**Historia de usuario:** Como partner, quiero ver cuándo y por qué el agente necesita a una persona, para cubrir esas horas o corregir el agente.
+
+#### Criterios de aceptación
+
+1. La API DEBE dar las conversaciones del periodo por hora local del primer mensaje del contacto (24 filas) y por día de la semana (7 filas, del lunes al domingo), cada fila partida en sin persona y con persona (D23).
+2. La sección DEBE enseñar las conversaciones por hora del día y por día de la semana.
+3. La sección DEBE enseñar las incidencias por motivo, cada una con su parte del total y su diferencia frente al periodo anterior.
+4. La sección NO DEBE enseñar la lista de incidencias recientes ni definiciones en párrafo bajo cada bloque. Las definiciones DEBEN estar en un solo bloque plegado, «Cómo se cuenta» (D20).
+
 ### Entidades clave
 
 - **Conversación (ciclo)**: el tramo de una fila de `conversations` entre su apertura (o reapertura por el contacto o un aviso) y su resolución. Se cuenta si el contacto escribió en él.
@@ -265,7 +330,7 @@ La página Rendimiento de un agente cuenta con los mismos ciclos, el mismo «con
 - **El Panel del cliente** (`client_overview.month_conversations`) sigue con su regla de hoy: cuenta filas y mira el estado actual. Pasarlo a ciclos e historial es otra spec; mientras, su cifra puede diferir de la del informe.
 - **Arreglar la autoría de las cancelaciones del agente**: es de la spec 080. El informe lee bien los datos de antes y de después (D11).
 - **Exportar a CSV o a PDF desde el servidor.** La vista imprimible basta (decisión de Luis).
-- **Comparar con otro periodo** o con otros clientes.
+- **Comparar con otros clientes, o sumar todos los clientes de un partner.** Comparar con el periodo anterior sí entra desde la enmienda del 2026-11-27 (requisito 12).
 - **Medir la entrega en el teléfono del cliente** de un recordatorio: «enviado» es que el canal lo aceptó.
 - **Detectar citas cerradas fuera de la agenda.** El freno es la aproximación; detectar lo demás necesitaría leer conversaciones.
 

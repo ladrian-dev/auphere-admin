@@ -12,15 +12,21 @@ uv run pytest tests/unit/test_083_cycles.py tests/integration/console/test_clien
 ```
 
 ```bash
-pnpm --dir apps/console exec vitest run src/components/report src/components/clients/v2
+pnpm --dir apps/console exec vitest run src/components/metrics src/components/clients/v2
 ```
 
 ## En staging (cuando esté desplegado)
 
-1. Entrar en la consola como owner de Autprod y abrir Jemma's Hair → «Informe».
-2. Elegir del 10 de noviembre a hoy. Comprobar a mano tres cifras contra la Bandeja: una conversación tomada y devuelta cuenta «con persona»; un mensaje de la noche cuenta en su día de Caracas; una cancelación hecha por el agente cuenta como del agente.
-3. «Imprimir» → guardar como PDF: sin navegación ni filtros, tema claro, barras visibles, dos páginas A4 o menos.
-4. Con un analyst del partner, la pestaña está; con un billing, no.
+*Enmendado el 2026-11-27: las cifras están en Métricas, no en una pestaña del cliente.*
+
+1. Entrar en la consola como owner de Autprod, abrir **Métricas** y elegir Jemma's Hair y 30 días. `/clients/jemma-hair/report` tiene que llevar al mismo sitio.
+2. Comprobar a mano tres cifras contra la Bandeja:
+   - una conversación tomada y devuelta cuenta «con persona»;
+   - un mensaje de la noche cuenta en su día y su hora de Caracas;
+   - una cancelación hecha por el agente cuenta como del agente.
+3. Las diferencias frente a los 30 días anteriores, y las gráficas por hora y por día de la semana, cuadran con lo que se ve en la Bandeja.
+4. En la sección, «Imprimir → Guardar como PDF» desde el diálogo de Chrome: solo la sección, sin dinero del partner, tema claro, barras visibles y dos A4 o menos.
+5. Con un analyst del partner, la sección está; con un billing, solo el dinero.
 
 ## Comprobación de consistencia (`/speckit-analyze`, 2026-11-26)
 

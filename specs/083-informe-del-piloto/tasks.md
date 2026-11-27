@@ -72,6 +72,61 @@ Formato: `[ID] [P?] Descripción` · `_Requisitos: n.m_`. `[P]` = puede ir en pa
 - [X] **T019** El guion de commits en `.claude/commits/2026-11-26-083.sh`.
   - *Cierre 2026-11-27:* tres commits, sin atribuciones ni `uv.lock`: la spec; el backend con `docs/console.md`; y la consola. `bash -n` limpio y comprobado contra `git status`: cubre los 32 cambios y solo deja fuera `HANDOFF.md`. Sin ejecutar: lo corre Luis.
 
+## Fase 5 — Enmienda 2026-11-27: las cifras en Métricas
+
+Lo que pidió Luis antes de fusionar el PR 73. Decisiones D16–D23 en la spec. Los commits van encima de los tres de la rama.
+
+- [X] **T020** [P] `tests/integration/console/test_client_report.py`: `conversations.by_hour` (24 filas) y `by_weekday` (7, el lunes primero), con el mensaje de las 23:30 de Caracas en la hora 23 de su día local y una conversación con persona en su columna. En rojo antes. _Requisitos: 13.1_
+  - *Avance 2026-11-27:* en `test_the_report_of_a_pilot` (las horas y los días de cada ciclo de la siembra) y en `test_an_empty_period` (24 y 7 filas a cero). Rojo visto: 2 de 2, sin `by_hour`.
+- [X] **T021** `services/client_report.py` y `api/console/client_report.py`: los dos desgloses, con su modelo y el contrato (`contracts/console-api.md`). T020 en verde, y también `test_client_report_scope.py` y `test_console_scope.py`. _Requisitos: 13.1_
+  - *Avance 2026-11-27:* `HourRow`, `WeekdayRow` y sus modelos de salida; `_conversations` recibe la zona. Juntas `test_083_cycles.py`, `test_client_report.py`, `test_client_report_scope.py` y `test_console_scope.py`: **1 718 en verde**. ruff, formato y `mypy --strict` limpios.
+- [X] **T022** [P] Pruebas de la consola, en rojo antes:
+  - la sección «Conversaciones» en Métricas: con `conversations:read` y un cliente sale; sin el permiso (billing) no existe; sin cliente pide uno y no da cifras;
+  - el filtro único encima de todo;
+  - las diferencias en %, puntos y segundos; sin diferencia si el periodo anterior está vacío; parcial si su lectura falla;
+  - las incidencias por motivo con su parte, y sin la lista de recientes;
+  - «Cómo se cuenta» plegado;
+  - al imprimir, solo la sección.
+  
+  _Requisitos: 11.2–11.6, 12.1–12.4, 13.2–13.4, 8.7_
+  - *Avance 2026-11-27:* `components/metrics/__tests__/metrics-model.test.ts` (periodos, quién ve, diferencias, columnas, etiquetas) y `conversations-section.test.tsx` (cifras y diferencias, objetivo con palabras, sin comparar, desgloses, sin recientes, «Cómo se cuenta», cinco estados, imprimir). Rojo visto en la sección (no existía) y en las etiquetas (decían «Consumo»). El modelo se escribió antes que su prueba: sus casos pasaron a la primera, salvo uno de coma flotante.
+- [X] **T023** [P] Pruebas: la cabecera del cliente sin la pestaña `report`; `clients/[ref]/report` lleva a `/usage?client=<ref>`; las etiquetas dicen «Métricas» (consola y escritorio). En rojo antes. _Requisitos: 11.1, 11.7, 11.8_
+  - *Avance 2026-11-27:* `client-header-report.test.tsx` reescrita (sin la pestaña; `activeTab` de `/report` es `null`) y `clients/[ref]/report/__tests__/page.test.ts` (redirección con la guarda). Rojo visto en las dos. Las etiquetas, en `metrics-model.test.ts`.
+- [X] **T024** La consola:
+  - el modelo (periodo de N días y el anterior, diferencias);
+  - la sección `components/metrics/` (sale de `components/report/`);
+  - `usage/page.tsx` y `usage-v2.tsx` con el filtro arriba y las dos lecturas;
+  - las etiquetas.
+  
+  T022 en verde. _Requisitos: 11.1–11.6, 12, 13.2–13.4, 8.1, 8.5, 8.7_
+  - *Avance 2026-11-27:*
+    - `metrics-model.ts`, `conversations-section.tsx` y el carril `i18n/lanes/metrics.ts`, que sustituye a `report.ts`.
+    - `usage-v2.tsx`: el filtro único arriba, las dos lecturas en paralelo con las del dinero y, con la sección, el dinero `print:hidden`.
+    - `SpendFilters` con `anchor`, el título de la pestaña del navegador por principal y `nav.metrics` en la navegación del partner y en las migas.
+    - El buscador, la paleta y la app de escritorio dicen «Métricas».
+    - Se borraron `components/report/*`.
+- [X] **T025** Quitar la pestaña: `routes-v2.ts`, `client-header-v2.tsx`, `clients/[ref]/layout.tsx`, la página que redirige, y las claves y pruebas que sobran. T023 en verde. _Requisitos: 11.7, 11.8_
+  - *Avance 2026-11-27:* `routes-v2.ts`, `client-header-v2.tsx` y `clients/[ref]/layout.tsx` vuelven a su contenido de antes de la 083. `report/page.tsx` solo redirige, tras `requirePartnerPrincipal`; `loading.tsx` y `error.tsx` de esa ruta, fuera.
+- [X] **T026** Puertas (`ui-states-checklist`, `a11y-audit`, `responsive-audit` y `design-tokens`), pasada viva con la consola en un puerto libre, e imprimir 30 días en dos A4. _Requisitos: 8.6–8.8, CE-004_
+  - *Avance 2026-11-27:* pasada viva con `next dev` en el 3183 contra la API simulada del scratchpad, con los mismos clientes por estado que en T017.
+    - **Redirección y permisos**: `/clients/jemma-hair/report` → `/usage?client=jemma-hair`. Con billing no hay sección y el dinero sí; su enlace viejo acaba en el Panel, porque la ficha del cliente ya lo echaba.
+    - **Sin cliente**: sin cliente o con uno ajeno, la sección pide elegir uno; con un fallo, «Reintentar».
+    - **Arreglado en la pasada, con prueba en rojo antes**:
+      - las gráficas por hora y por día de la semana marcaban la última columna como hoy (`today: false`);
+      - «Igual frente a…» pasa a «Igual que los N días anteriores»;
+      - a 360 px, el motivo de las incidencias se partía letra a letra (`min-w-40`);
+      - al imprimir, la Agenda perdía la columna Total (agenda y recordatorios, uno debajo del otro).
+    - **Imprimir** (PDF A4 de Chromium, márgenes de 10 mm, partiendo del tema oscuro): solo la sección, en claro y con las barras en color. Dos A4 para Jemma, el nombre alemán, sin Reservas y vacío; 90 días, tres.
+    - **Accesibilidad**: axe-core 4.13 sin violaciones sobre `main` en claro, oscuro, 360 px, sin cliente, vacío y error.
+    - **A 360 px**, lo único que sobresale es la tabla de saldo por cliente, que ya existía y se desplaza en su caja.
+    - **Tokens**: sin hex, `rgb`, estilos en línea ni paleta por defecto en lo nuevo.
+- [X] **T027** `./scripts/verify.sh lint`, `./scripts/verify.sh js` y pytest de lo tocado. _Constitución §VII_
+  - *Avance 2026-11-27:* `verify.sh lint`, 15 de 15 en verde. `verify.sh js` entero en verde: consola vitest **2 619 de 2 619**, su `tsc`, eslint y `next build`; `@nexus/ui` 332; companion-ui; escritorio; el panel, 861 y su `next build`. pytest de lo tocado: los 1 718 de T021, con aislamiento. Después no cambió nada de Python.
+- [X] **T028** `docs/console.md` (Métricas, sin la pestaña) y la nota de KB. _Constitución §IX_
+  - *Avance 2026-11-27:* `docs/console.md`: la sección «Métricas: las conversaciones de un cliente» sustituye a «Informe del cliente», con el ancla de Rendimiento y la lista de pantallas puestas al día. También `quickstart.md` y el contrato.
+- [X] **T029** El guion `.claude/commits/2026-11-27-083-enmienda.sh`, encima de los tres commits de la rama.
+  - *Avance 2026-11-27:* tres commits (la spec; la API; la consola con `docs/console.md` y la app de escritorio). Empieza con `cd`, comprueba la rama y el índice vacío, y no lleva atribuciones ni `uv.lock`. Sin ejecutar: lo corre Luis.
+
 ## Dependencias
 
 T001–T007 primero (en rojo). T008 → T009 → T010 → T011. T012 → T013 → T014. T015–T019 al final.

@@ -37,7 +37,10 @@ Spec 083. Una lectura de la consola de partners, bajo el cliente `{ref}` del par
     "without_person": 163,
     "with_person": 51,
     "without_person_pct": 76.2,          // null sin conversaciones
-    "series": [ { "day": "2026-11-10", "without_person": 6, "with_person": 2 } ]  // un día por fecha del periodo
+    "series": [ { "day": "2026-11-10", "without_person": 6, "with_person": 2 } ],  // un día por fecha del periodo
+    // Enmienda 2026-11-27 (13.1): por la hora y el día de la semana locales del primer mensaje del contacto.
+    "by_hour": [ { "hour": 0, "without_person": 0, "with_person": 0 } ],           // 24 filas, de 0 a 23
+    "by_weekday": [ { "weekday": 1, "without_person": 9, "with_person": 3 } ]      // 7 filas, ISO: 1 lunes … 7 domingo
   },
 
   "first_response": {
