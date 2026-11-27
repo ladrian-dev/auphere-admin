@@ -1343,7 +1343,9 @@ async def add_waitlist(
                     contact_phone=(body.phone or "").strip() or None,
                     joined_by_kind="in_person" if body.in_person else "person",
                     joined_by_name=_actor(scope).name,
-                    customer_id=await contact_customer(scope.session, ctx, body.phone, body.name),
+                    customer_id=await contact_customer(
+                        scope.session, ctx, body.phone, body.name, by_person=True
+                    ),
                     party_size=body.party_size,
                     desired_day=body.date,
                     desired_time=_hm(body.time) if body.time else None,

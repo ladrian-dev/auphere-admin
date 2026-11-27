@@ -258,7 +258,12 @@ frontera. Lo que impide que sea un agujero:
   16 MB (415/413 con el límite), comprobados también en la BFF antes de subir.
 - **Eventos** (`conversation_events`): escalado (con motivo y resumen del
   agente), control tomado, devuelta, resuelta, reabierta. Alimentan el hilo y
-  la actividad del panel. **Nunca texto de mensajes.**
+  la actividad del panel. **Nunca texto de mensajes.** El panel enseña el
+  resumen del último escalado solo si no hay un `resolved` posterior y el
+  escalado no es anterior a `context_from` (spec 082, requisito 4): tras
+  Resolver, o cuando la conversación vuelve a empezar, desaparece. Un escalado
+  nuevo trae el suyo. Es una comparación de fechas en `inbox_view.detail`, sin
+  modelo.
 - **Auditoría** `inbox.*` con `client:<correo>` y sin contenido: longitudes y
   nombres de etiqueta, nunca el texto ni la nota.
 
@@ -342,6 +347,49 @@ comprueba al abrir la línea, no después: por eso la de un **teléfono** (spec
 031) se corta sola a los 5 minutos (`PHONE_LINE_SECONDS`) y un teléfono
 cerrado deja de recibir eventos dentro del plazo de R7.2. La de la web no se
 corta (lo fija `tests/isolation/test_phone_revocation.py`).
+
+**La misma línea lleva Reservas, y la consola abre una sola** (spec 082,
+contrato `specs/082-datos-al-dia/contracts/realtime-082.md`). Toda escritura
+de Reservas que deja historial (`core.add_event`) marca la sesión
+(`reservations/live.mark_changed`), y tras el commit sale
+`reservations.changed` por `inbox:{tenant_id}`, sin datos y una vez por
+transacción. La SSE admite a quien tenga `inbox` **o** `reservas` y reenvía a
+cada persona solo lo de sus módulos: las conversaciones a quien tiene la
+Bandeja, el aviso de reservas a quien tiene Reservas (garantía 1, en
+`tests/isolation/test_082_reservations_changed_scope.py`). La ruta BFF declara
+`maxDuration = 300`, para que la plataforma la corte limpia y el navegador
+reconecte. En la consola, `LiveStreamProvider` (`components/live/`, montado
+por `console-frame.tsx`) abre **una** línea por pestaña y la comparten la
+Bandeja, el contador y la agenda; al volver tras un corte, relee la lista, la
+conversación abierta, el contador y la agenda (`onBack`).
+
+**La Bandeja avisa en cualquier pantalla** (spec 082, requisito 3), solo con
+el módulo. Cada entrante suena una vez (`chime.ts`, como mucho una vez cada
+3 s), salvo si esa conversación está abierta y la pestaña se ve; con la
+pestaña oculta sí suena. El sonido se apaga en los ajustes de la Bandeja y se
+guarda en ese navegador (encendido por defecto); si el navegador aún no deja
+sonar, calla sin error hasta el primer toque. El título de la pestaña empieza
+por «(N) » con las no leídas («99+» desde 100). El contador
+(`use-inbox-unread.ts`, `useQuery(["inbox","counts"])`) se relee con cada
+aviso, y cada 60 s solo con la línea caída; con la barra plegada, el número va
+en la esquina del icono, oculto al lector, que ya lee el de la insignia. Verde
+o neutro, nunca ámbar.
+
+**Cada contacto se reconoce** (spec 082, requisito 5). Sin foto, el avatar
+(`contact-avatar.tsx`) lleva las iniciales sobre uno de seis tonos de
+`@nexus/ui` (verdes, el neutro y el azul de información; ni ámbar ni rojo),
+elegido por un hash del id de la conversación: el mismo en la lista, la
+cabecera, el panel y cada mensaje del contacto. Todos pasan 4,5:1 en claro y
+en oscuro (`contact-avatar.test.tsx` lo mide sobre `tokens.css`, y la prueba
+de navegador sobre el color pintado). Un nombre sin letras (solo un número)
+lleva el icono de persona, nunca «·». El detalle trae `contact.username`, y la
+cabecera y el panel lo pintan como «@usuario». El nombre sigue al perfil de
+WhatsApp: `upsert_customer(profile_name=…)` guarda el último en
+`customers.preferences.profile_name` y, si cambia, cambia el nombre, salvo
+que lo haya escrito una persona del equipo (`preferences.name_by: "person"`:
+un alta desde Reservas con el nombre escrito, o la agenda del teléfono del
+negocio que rellena un contacto sin nombre). El agente no marca. Sin
+migración.
 
 **Consola**: lista de 320 px, hilo flexible y panel de contacto plegable (por
 defecto plegado bajo 1280 px, recordado por navegador con respaldo en memoria
