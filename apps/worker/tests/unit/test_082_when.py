@@ -16,7 +16,6 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
-
 from nexus_api.services.schedules.when import next_runs
 
 MADRID = "Europe/Madrid"

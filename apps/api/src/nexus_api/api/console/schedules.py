@@ -44,7 +44,7 @@ Cadence = Literal["daily", "weekly", "monthly", "once"]
 State = Literal["active", "paused", "archived"]
 
 
-class WhenOut(BaseModel):
+class ScheduleWhenOut(BaseModel):
     cadence: Cadence
     local_time: time
     weekdays: list[int] | None = None
@@ -52,14 +52,14 @@ class WhenOut(BaseModel):
     run_date: date | None = None
 
 
-class AgentOut(BaseModel):
+class ScheduleAgentOut(BaseModel):
     id: uuid.UUID
     name: str
     #: ``attending`` o la vida del agente tal cual: la pantalla lo traduce.
     state: str
 
 
-class MonthOut(BaseModel):
+class ScheduleMonthOut(BaseModel):
     cost_micros: int
     runs: int
 
@@ -68,27 +68,27 @@ class ScheduleOut(BaseModel):
     id: uuid.UUID
     name: str
     instruction: str
-    agent: AgentOut
-    when: WhenOut
+    agent: ScheduleAgentOut
+    when: ScheduleWhenOut
     next_run_at: datetime | None
     state: State
     pause_reason: str | None
     email: bool
     created_by: str
     created_at: datetime
-    month: MonthOut
+    month: ScheduleMonthOut
 
 
-class CountsOut(BaseModel):
+class ScheduleCountsOut(BaseModel):
     all: int
     active: int
     paused: int
     archived: int
 
 
-class ListOut(BaseModel):
+class ScheduleListOut(BaseModel):
     timezone: str
-    counts: CountsOut
+    counts: ScheduleCountsOut
     #: El reparto de la bolsa llega con la partida de Consumo.
     spend: None = None
     schedules: list[ScheduleOut]
@@ -121,7 +121,7 @@ class SchedulePatch(BaseModel):
     email: bool | None = None
 
 
-class PreviewIn(BaseModel):
+class SchedulePreviewIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cadence: Cadence
@@ -131,7 +131,7 @@ class PreviewIn(BaseModel):
     run_date: date | None = None
 
 
-class PreviewOut(BaseModel):
+class SchedulePreviewOut(BaseModel):
     next: list[datetime]
     timezone: str
 
@@ -141,7 +141,7 @@ def _refused(exc: service.ScheduleError) -> HTTPException:
     return HTTPException(status_code=exc.status, detail=exc.code)
 
 
-async def _month_of(scope: ClientScope, schedule_id: uuid.UUID) -> MonthOut:
+async def _month_of(scope: ClientScope, schedule_id: uuid.UUID) -> ScheduleMonthOut:
     since = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     row = (
         await scope.session.execute(
@@ -154,7 +154,7 @@ async def _month_of(scope: ClientScope, schedule_id: uuid.UUID) -> MonthOut:
             )
         )
     ).one()
-    return MonthOut(cost_micros=int(row[0]), runs=int(row[1]))
+    return ScheduleMonthOut(cost_micros=int(row[0]), runs=int(row[1]))
 
 
 async def _out(scope: ClientScope, schedule: Schedule) -> ScheduleOut:
@@ -164,12 +164,12 @@ async def _out(scope: ClientScope, schedule: Schedule) -> ScheduleOut:
         id=schedule.id,
         name=schedule.name,
         instruction=schedule.instruction,
-        agent=AgentOut(
+        agent=ScheduleAgentOut(
             id=schedule.agent_id,
             name=agent.name if agent else "",
             state="attending" if agent and agent.lifecycle == service.ATTENDING else "paused",
         ),
-        when=WhenOut(
+        when=ScheduleWhenOut(
             cadence=schedule.cadence,
             local_time=schedule.local_time,
             weekdays=schedule.weekdays,
@@ -193,12 +193,12 @@ async def _find(scope: ClientScope, schedule_id: uuid.UUID) -> Schedule:
     return schedule
 
 
-@router.get("", response_model=ListOut)
+@router.get("", response_model=ScheduleListOut)
 async def list_schedules(
     agent: Annotated[uuid.UUID | None, Query()] = None,
     state: Annotated[State | None, Query()] = None,
     scope: ClientScope = Depends(client_scope("schedules:read")),
-) -> ListOut:
+) -> ScheduleListOut:
     rows = (
         await scope.session.scalars(
             sa.select(Schedule)
@@ -207,7 +207,7 @@ async def list_schedules(
         )
     ).all()
     out = [await _out(scope, row) for row in rows]
-    counts = CountsOut(
+    counts = ScheduleCountsOut(
         all=len(out),
         active=sum(1 for s in out if s.state == "active"),
         paused=sum(1 for s in out if s.state == "paused"),
@@ -215,7 +215,7 @@ async def list_schedules(
     )
     if state is not None:
         out = [s for s in out if s.state == state]
-    return ListOut(timezone=scope.tenant.timezone, counts=counts, schedules=out)
+    return ScheduleListOut(timezone=scope.tenant.timezone, counts=counts, schedules=out)
 
 
 @router.post("", response_model=ScheduleOut, status_code=status.HTTP_201_CREATED)
@@ -235,11 +235,11 @@ async def create_schedule(
     return await _out(scope, made)
 
 
-@router.post("/preview", response_model=PreviewOut)
+@router.post("/preview", response_model=SchedulePreviewOut)
 async def preview(
-    body: PreviewIn,
+    body: SchedulePreviewIn,
     scope: ClientScope = Depends(client_scope("schedules:read")),
-) -> PreviewOut:
+) -> SchedulePreviewOut:
     """Las próximas tres, ya resueltas en la zona del negocio. No escribe."""
     try:
         runs = when.next_runs(
@@ -253,7 +253,7 @@ async def preview(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail="unknown_cadence") from exc
-    return PreviewOut(next=runs, timezone=scope.tenant.timezone)
+    return SchedulePreviewOut(next=runs, timezone=scope.tenant.timezone)
 
 
 @router.get("/{schedule_id}", response_model=ScheduleOut)
