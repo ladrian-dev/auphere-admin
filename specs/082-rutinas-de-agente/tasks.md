@@ -9,10 +9,16 @@
 - `[P]` = se puede hacer en paralelo con la anterior.
 - Cada tarea cita sus requisitos. Una tarea sin trazabilidad no entra.
 
-**Estado** (2026-11-27): T001 a T014 entregadas en el PR #74, rama
-`082-rutinas-de-agente`, sin fusionar todavía. **T015 va a medias**: la elección
-de herramientas está hecha y probada, el bucle que llama al modelo llega con el
-manejador de la cola (T017). 70 pruebas en verde.
+**Estado** (2026-11-27): **T001 a T020 entregadas** en el PR #74, rama
+`082-rutinas-de-agente`, sin fusionar todavía. Con eso una rutina se crea, se
+gobierna y **se ejecuta de punta a punta**: el turno sin cliente final, el
+manejador de la cola y el cobro a la bolsa en su propia partida. 87 pruebas en
+verde (56 en la API, 31 en el worker).
+
+Falta T021, la pantalla de la consola, y de ahí en adelante el calendario (fase
+4) y lo demás. Dos deudas marcadas a propósito: `spend` viaja en `null` hasta
+que llegue la partida en pantalla (T028), y las escrituras que piden aprobación
+se retienen hasta que exista la pregunta desde la consola, que es spec aparte.
 
 ## Fase 1: Preparación
 
@@ -75,24 +81,24 @@ manejador de la cola (T017). 70 pruebas en verde.
   - una conexión sin activación no aporta nada.
 
   _Requisitos: 4.2, 4.5, 5.1, 5.2_
-- [ ] **T015** Implementa `apps/worker/src/nexus_worker/runtime/schedule_turn.py`: bucle ReAct con el `AgentBundle` de la versión publicada, la política de operador y el conocimiento, el `dispatch` con lista blanca y el tope de iteraciones. Sin clasificador, sin enrutado por intención, sin formateo de burbujas y sin escalado. La lista de herramientas sale de `activations._load_tool_policy` con las dos restas. T013 y T014 en verde.
+- [x] **T015** Implementa `apps/worker/src/nexus_worker/runtime/schedule_turn.py`: bucle ReAct con el `AgentBundle` de la versión publicada, la política de operador y el conocimiento, el `dispatch` con lista blanca y el tope de iteraciones. Sin clasificador, sin enrutado por intención, sin formateo de burbujas y sin escalado. La lista de herramientas sale de `activations._load_tool_policy` con las dos restas. T013 y T014 en verde.
 
-  **A medias.** `select_tools` y `tools_for_routine` están hechas y probadas: es la parte que sostiene las garantías 2 y 8. Falta el bucle que llama al modelo, que necesita el resolutor de modelo, la puerta de presupuesto y la medición, y se escribe junto a T017.
+  **Entera**: la elección de herramientas y el bucle, con sus 16 pruebas unitarias.
 
   _Requisitos: 4.1, 4.2, 4.3, 4.4, 4.5, 4.7_
-- [ ] **T016** Integración `apps/api/tests/integration/schedules/test_run.py`, en rojo: «Ejecutar ahora» deja la ejecución con su respuesta, lo que usó, lo que tardó y lo que costó; una herramienta retenida la deja en `partial` con `withheld` relleno; la bolsa vacía devuelve `409 bag_empty`.
+- [x] **T016** Integración `apps/api/tests/integration/schedules/test_run.py`, en rojo: «Ejecutar ahora» deja la ejecución con su respuesta, lo que usó, lo que tardó y lo que costó; una herramienta retenida la deja en `partial` con `withheld` relleno; la bolsa vacía devuelve `409 bag_empty`.
 
   _Requisitos: 4.7, 5.3, 6.1, 6.2, 6.4_
-- [ ] **T017** Manejador `apps/worker/src/nexus_worker/jobs/handlers/schedule_run.py` y el tipo `schedule_run` en `JOB_KINDS` y en el registro. Corre el turno, cierra la fila de la ejecución y publica lo medido. **El efecto consecuente, una sola vez por ejecución**, con el mismo mecanismo que ya usa el turno de canal.
+- [x] **T017** Manejador `apps/worker/src/nexus_worker/jobs/handlers/schedule_run.py` y el tipo `schedule_run` en `JOB_KINDS` y en el registro. Corre el turno, cierra la fila de la ejecución y publica lo medido. **El efecto consecuente, una sola vez por ejecución**, con el mismo mecanismo que ya usa el turno de canal.
 
   _Requisitos: 4.6, 6.1, 7.1_
-- [ ] **T018** **Medidor.** `services/wallet/schedules.py` con `charge_schedule`, calcado de `charge_tests`: cobra de la bolsa con el asiento `debit_schedule` y la `usage_ref` de la ejecución, **no suma al tope del agente**, y pausa a los agentes si la bolsa llega a cero. Más la entrada `"schedule": "schedules"` en `USAGE_LINE_BY_SOURCE`.
+- [x] **T018** **Medidor.** `services/wallet/schedules.py` con `charge_schedule`, calcado de `charge_tests`: cobra de la bolsa con el asiento `debit_schedule` y la `usage_ref` de la ejecución, **no suma al tope del agente**, y pausa a los agentes si la bolsa llega a cero. Más la entrada `"schedule": "schedules"` en `USAGE_LINE_BY_SOURCE`.
 
   _Requisitos: 9.1, 9.2, 9.4_
-- [ ] **T019** [P] Integración `test_run_charges.py`: la misma ejecución no se cobra dos veces, y el asiento cae en `debit_schedule` y no en `debit_turn`.
+- [x] **T019** [P] Integración `test_run_charges.py`: la misma ejecución no se cobra dos veces, y el asiento cae en `debit_schedule` y no en `debit_turn`.
 
   _Requisitos: 9.1, 9.2_
-- [ ] **T020** Rutas `POST …/{id}/run` y `POST …/agents/{agent_id}/schedules/try`, las dos con `202`. La segunda ejecuta sin crear rutina.
+- [x] **T020** Rutas `POST …/{id}/run` y `POST …/agents/{agent_id}/schedules/try`, las dos con `202`. La segunda ejecuta sin crear rutina.
 
   _Requisitos: 6.1, 6.2, 6.3_
 - [ ] **T021** Consola: la página `/schedules` con elegir cliente, la lista y el panel lateral del alta, con el nombre de tope 60, la instrucción con su contador de 2.000 y las próximas ejecuciones de `preview`. «Probar ahora» y «Ejecutar ahora».

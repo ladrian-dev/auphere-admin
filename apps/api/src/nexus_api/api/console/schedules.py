@@ -34,11 +34,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from nexus_api.db.models import Agent, Schedule, ScheduleRun
+from nexus_api.services import jobs as jobs_service
+from nexus_api.services.schedules import runs as runs_service
 from nexus_api.services.schedules import service, when
 
 from .deps import ClientScope, client_scope
 
 router = APIRouter(prefix="/clients/{ref}/schedules")
+#: «Probar ahora» cuelga del agente, no de una rutina: todavía no hay ninguna.
+try_router = APIRouter(prefix="/clients/{ref}/agents/{agent_id}/schedules/try")
+#: El tipo de trabajo que ejecuta una rutina.
+SCHEDULE_JOB = "schedule_run"
 
 Cadence = Literal["daily", "weekly", "monthly", "once"]
 State = Literal["active", "paused", "archived"]
@@ -283,6 +289,92 @@ async def patch_schedule(
     except service.ScheduleError as exc:
         raise _refused(exc) from exc
     return await _out(scope, schedule)
+
+
+class RunQueuedOut(BaseModel):
+    """Una ejecución encolada. ``schedule_id`` va a ``null`` en «Probar ahora»:
+    ahí no hay rutina, y decirlo con un nulo es más honesto que inventar un id."""
+
+    run_id: uuid.UUID | None
+    job_id: uuid.UUID
+    schedule_id: uuid.UUID | None
+
+
+class TryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    instruction: str = Field(max_length=2000)
+
+
+async def _bag_has_money(scope: ClientScope) -> bool:
+    from nexus_api.services.wallet.bags import balance_left
+
+    left = await balance_left(scope.principal.partner.id, scope.tenant.id)
+    return left is not None
+
+
+@router.post(
+    "/{schedule_id}/run", response_model=RunQueuedOut, status_code=status.HTTP_202_ACCEPTED
+)
+async def run_now(
+    schedule_id: uuid.UUID,
+    scope: ClientScope = Depends(client_scope("schedules:write")),
+) -> RunQueuedOut:
+    """«Ejecutar ahora»: la misma ejecución que correría a su hora, con las
+    mismas herramientas y el mismo cobro. Queda marcada como manual."""
+    schedule = await _find(scope, schedule_id)
+    if not await _bag_has_money(scope):
+        raise HTTPException(status_code=409, detail="bag_empty")
+
+    run = await runs_service.open_run(scope.session, schedule=schedule, trigger="manual")
+    job = await jobs_service.create_job(
+        scope.session,
+        kind=SCHEDULE_JOB,
+        agent_id=schedule.agent_id,
+        created_by=scope.principal.user_id,
+    )
+    job.progress = {
+        "step": None,
+        "blocks": [],
+        "input": runs_service.as_input(schedule.id, run.id),
+    }
+    run.job_id = job.id
+    await scope.session.flush()
+    jobs_service.enqueue_after_commit(scope.session, job)
+    return RunQueuedOut(run_id=run.id, job_id=job.id, schedule_id=schedule.id)
+
+
+@try_router.post("", response_model=RunQueuedOut, status_code=status.HTTP_202_ACCEPTED)
+async def try_now(
+    agent_id: uuid.UUID,
+    body: TryIn,
+    scope: ClientScope = Depends(client_scope("schedules:write")),
+) -> RunQueuedOut:
+    """«Probar ahora» desde el alta, sin haber guardado (requisito 6.3).
+
+    No crea rutina **ni ejecución**: la instrucción viaja en el trabajo y la
+    respuesta vuelve en su resultado. El historial es de las rutinas que
+    existen, y una prueba no es una de ellas.
+    """
+    if not body.instruction.strip():
+        raise HTTPException(status_code=422, detail="instruction_required")
+    if not await _bag_has_money(scope):
+        raise HTTPException(status_code=409, detail="bag_empty")
+
+    job = await jobs_service.create_job(
+        scope.session,
+        kind=SCHEDULE_JOB,
+        agent_id=agent_id,
+        created_by=scope.principal.user_id,
+    )
+    job.progress = {
+        "step": None,
+        "blocks": [],
+        "input": {"agent_id": str(agent_id), "instruction": body.instruction.strip()},
+    }
+    await scope.session.flush()
+    jobs_service.enqueue_after_commit(scope.session, job)
+    return RunQueuedOut(run_id=None, job_id=job.id, schedule_id=None)
 
 
 @router.post("/{schedule_id}/pause", response_model=ScheduleOut)

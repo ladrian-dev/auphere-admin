@@ -75,25 +75,40 @@ def make_schedule_run_handler(*, provider_factory: Any = None) -> JobHandler:
         from nexus_worker.runtime.pipeline import agent_respond_model
 
         data = await _input(ctx)
-        try:
-            run_id = uuid.UUID(str(data["run_id"]))
-            schedule_id = uuid.UUID(str(data["schedule_id"]))
-        except (KeyError, ValueError) as exc:
-            raise JobFailed("bad_input") from exc
-
         sm = get_sessionmaker()
-        async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
-            schedule = await session.get(Schedule, schedule_id)
-            run = await session.get(ScheduleRun, run_id)
-            if schedule is None or run is None:
-                raise JobFailed("not_found")
-            await runs_service.start(session, run, job_id=ctx.job_id)
-            instruction = run.instruction
-            agent_id = schedule.agent_id
+        run_id: uuid.UUID | None = None
+
+        if data.get("run_id"):
+            # Una rutina de verdad: la instrucción sale de su ejecución, que la
+            # guardó al abrirse.
+            try:
+                run_id = uuid.UUID(str(data["run_id"]))
+                schedule_id = uuid.UUID(str(data["schedule_id"]))
+            except (KeyError, ValueError) as exc:
+                raise JobFailed("bad_input") from exc
+            async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
+                schedule = await session.get(Schedule, schedule_id)
+                run = await session.get(ScheduleRun, run_id)
+                if schedule is None or run is None:
+                    raise JobFailed("not_found")
+                await runs_service.start(session, run, job_id=ctx.job_id)
+                instruction = run.instruction
+                agent_id = schedule.agent_id
+        else:
+            # «Probar ahora» desde el alta: no hay rutina ni fila que abrir, y
+            # la respuesta vuelve en el resultado del trabajo.
+            try:
+                agent_id = uuid.UUID(str(data["agent_id"]))
+            except (KeyError, ValueError) as exc:
+                raise JobFailed("bad_input") from exc
+            instruction = str(data.get("instruction") or "").strip()
+            if not instruction:
+                raise JobFailed("bad_input")
 
         provider = make_provider()
         if provider is None:
-            await _fail(ctx, run_id, "no_model")
+            if run_id is not None:
+                await _fail(ctx, run_id, "no_model")
             raise JobFailed("no_model")
 
         bundle = await get_default_loader().load(ctx.tenant_id, agent_id)
@@ -105,7 +120,7 @@ def make_schedule_run_handler(*, provider_factory: Any = None) -> JobHandler:
         try:
             async with usage_turn(
                 tenant_id=ctx.tenant_id,
-                turn_id=f"schedule:{run_id}",
+                turn_id=f"schedule:{run_id or ctx.job_id}",
                 source=SOURCE_SCHEDULE,
                 agent_id=agent_id,
             ):
@@ -125,27 +140,33 @@ def make_schedule_run_handler(*, provider_factory: Any = None) -> JobHandler:
                 run_id=str(run_id),
                 error=type(exc).__name__,
             )
-            await _fail(ctx, run_id, "model_failed")
+            if run_id is not None:
+                await _fail(ctx, run_id, "model_failed")
             raise JobFailed("model_failed") from exc
 
         elapsed = int((time.monotonic() - started) * 1000)
-        async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
-            row = await session.get(ScheduleRun, run_id)
-            if row is not None:
-                await runs_service.close(
-                    session,
-                    row,
-                    answer=answer.text,
-                    tools_used=answer.tools_used,
-                    withheld=tuple(w.as_dict() for w in answer.withheld),
-                    partial=answer.partial,
-                    duration_ms=elapsed,
-                )
+        if run_id is not None:
+            async with sm() as session, tenant_scoped_session(session, ctx.tenant_id):
+                row = await session.get(ScheduleRun, run_id)
+                if row is not None:
+                    await runs_service.close(
+                        session,
+                        row,
+                        answer=answer.text,
+                        tools_used=answer.tools_used,
+                        withheld=tuple(w.as_dict() for w in answer.withheld),
+                        partial=answer.partial,
+                        duration_ms=elapsed,
+                    )
         return JobOutcome(
             result={
-                "run_id": str(run_id),
+                "run_id": str(run_id) if run_id else None,
                 "status": "partial" if answer.partial else "done",
                 "tools_used": list(answer.tools_used),
+                "withheld": [w.as_dict() for w in answer.withheld],
+                # Solo en «Probar ahora»: sin fila donde guardarla, la respuesta
+                # viaja en el resultado del trabajo.
+                "answer": None if run_id else answer.text,
             }
         )
 

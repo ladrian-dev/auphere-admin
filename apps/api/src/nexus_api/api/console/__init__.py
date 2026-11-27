@@ -170,6 +170,7 @@ router.include_router(capabilities_client.router)
 router.include_router(knowledge.router)
 # Spec 082 — rutinas de agente.
 router.include_router(schedules.router)
+router.include_router(schedules.try_router)
 # Spec 047 (T133): la capa de conocimiento de cada agente y «Enseñar».
 router.include_router(agent_knowledge.router)
 # Spec 047 (T128): autorizar una vez por cliente, activar por agente.
