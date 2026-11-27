@@ -27,8 +27,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "0244_schedules"
-down_revision: str | Sequence[str] | None = "0243_template_edit_vocabulary"
+revision: str = "0245_schedules"
+down_revision: str | Sequence[str] | None = "0244_owner_links_meta_social"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

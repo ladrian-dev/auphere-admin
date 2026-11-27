@@ -1,6 +1,6 @@
 # Fase 1 — el modelo
 
-Migración **0244**. Dos tablas nuevas por cliente, cuatro listas que crecen y una función de descubrimiento.
+Migración **0245**. Dos tablas nuevas por cliente, cuatro listas que crecen y una función de descubrimiento.
 
 ## `schedules` — la rutina
 

@@ -10,7 +10,7 @@ createdb nexus_test_082
 DATABASE_URL=postgresql+asyncpg://localhost/nexus_test_082 uv run alembic upgrade head
 ```
 
-La 0244 crea `schedules` y `schedule_runs` con RLS forzada, amplía los cuatro `CHECK` y deja la función `due_schedules`.
+La 0245 crea `schedules` y `schedule_runs` con RLS forzada, amplía los cuatro `CHECK` y deja la función `due_schedules`.
 
 Comprobación rápida de que la RLS quedó donde tiene que quedar:
 

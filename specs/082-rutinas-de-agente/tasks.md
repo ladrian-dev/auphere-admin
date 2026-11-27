@@ -35,7 +35,7 @@ se retienen hasta que exista la pregunta desde la consola, que es spec aparte.
   - `due_schedules` devuelve solo identificadores y horas, nunca instrucción ni respuesta.
 
   _Requisitos: 1.1, 1.3, 1.4_
-- [x] **T004** Migración `apps/api/alembic/versions/0244_schedules.py`: las dos tablas con sus `CHECK` e índices (incluido el parcial sobre `next_run_at`), los cuatro `CHECK` ampliados (`ck_jobs_kind`, `ck_usage_source`, `ck_client_wallet_entries_kind` y el del asiento), y la función `due_schedules` como `SECURITY DEFINER`. T003 en verde.
+- [x] **T004** Migración `apps/api/alembic/versions/0245_schedules.py`: las dos tablas con sus `CHECK` e índices (incluido el parcial sobre `next_run_at`), los cuatro `CHECK` ampliados (`ck_jobs_kind`, `ck_usage_source`, `ck_client_wallet_entries_kind` y el del asiento), y la función `due_schedules` como `SECURITY DEFINER`. T003 en verde.
 
   _Requisitos: 1.1, 3.1, 7.7, 12.1_
 - [x] **T005** [P] Modelos `apps/api/src/nexus_api/db/models/schedule.py` (`Schedule`, `ScheduleRun`), exportados en `models/__init__.py`.

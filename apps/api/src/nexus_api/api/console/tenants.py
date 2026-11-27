@@ -396,10 +396,19 @@ def _money(cents: int | None, currency: str = CURRENCY) -> MoneyOut | None:
 
 
 def _visible_out(state: VisibleState) -> VisibleStateOut:
+    """``VisibleState.reason`` lleva dos cosas distintas: el motivo de una pausa
+    y, desde la spec 063 (2.6), el ``unconfigured`` de un agente listo cuyo
+    número no está configurado. Lo segundo no es una pausa y no cabe en el
+    ``Literal`` de ``pause_reason``: metiéndolo igual, un solo agente en ese
+    estado tiraba la lista entera de clientes con un 500.
+
+    Así que el motivo viaja **solo cuando hay pausa**, que es además lo único
+    que lee la consola (``client-v2-model.ts::agentStateText``). El código del
+    estado ya dice el resto."""
     return VisibleStateOut(
         code=state.code,  # type: ignore[arg-type]
         tone=state.tone,  # type: ignore[arg-type]
-        pause_reason=state.reason,  # type: ignore[arg-type]
+        pause_reason=state.reason if state.code == "paused" else None,  # type: ignore[arg-type]
     )
 
 

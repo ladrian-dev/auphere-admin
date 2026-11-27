@@ -103,7 +103,7 @@ AGENT_TABLES: dict[str, Case | Reason] = {
     ),
     "usage_ledger": Reason("Libro del partner (RLS por ``partner_id``): ningún agente lo lee."),
     "schedules": Reason(
-        "Rutinas de agente (spec 082, 0244). Ningún agente las lee: el turno de "
+        "Rutinas de agente (spec 082, 0245). Ningún agente las lee: el turno de "
         "una rutina recibe su instrucción ya resuelta y no consulta la tabla, y "
         "a la consola llegan por el ámbito del cliente con la RLS puesta. La "
         "clave compuesta ``(tenant_id, agent_id)`` impide además que una rutina "

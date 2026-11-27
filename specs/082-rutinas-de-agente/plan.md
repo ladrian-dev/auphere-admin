@@ -20,7 +20,7 @@ Dos tablas nuevas por cliente, un disparador en el scheduler, un tipo de trabajo
 
 **Primary Dependencies**: FastAPI, SQLAlchemy async, Alembic, LangGraph solo para lo que ya existe del turno de canal, el registro MCP propio (`nexus_mcp`) y Redis para el stream de trabajos. **No entra ninguna dependencia nueva**: la aritmética de zonas horarias la da `zoneinfo`, de la biblioteca estándar.
 
-**Storage**: PostgreSQL con RLS forzada. Dos tablas nuevas por cliente y una migración, la **0244**, que además amplía cuatro `CHECK` existentes: `ck_jobs_kind`, `ck_usage_source`, `ck_client_wallet_entries_kind` y el estado de los trabajos no se toca.
+**Storage**: PostgreSQL con RLS forzada. Dos tablas nuevas por cliente y una migración, la **0245**, que además amplía cuatro `CHECK` existentes: `ck_jobs_kind`, `ck_usage_source`, `ck_client_wallet_entries_kind` y el estado de los trabajos no se toca.
 
 **Testing**: pytest.
 - Integración de la API: `apps/api/tests/integration/schedules`.
@@ -82,7 +82,7 @@ specs/082-rutinas-de-agente/
 
 ```text
 apps/api/
-├── alembic/versions/0244_schedules.py          # las dos tablas, los CHECK ampliados, la función del barrido
+├── alembic/versions/0245_schedules.py          # las dos tablas, los CHECK ampliados, la función del barrido
 ├── src/nexus_api/
 │   ├── db/models/schedule.py                   # Schedule y ScheduleRun
 │   ├── services/schedules/
@@ -111,7 +111,7 @@ Las cinco historias de la spec, en orden, y cada una entregable sola.
 
 | Fase | Historia | Qué entra | Qué se puede enseñar al acabar |
 |---|---|---|---|
-| **0** | — | La migración 0244, los modelos, el servicio del alta y las rutas de lectura y escritura. | Nada que ejecute. Es el suelo de las dos siguientes. |
+| **0** | — | La migración 0245, los modelos, el servicio del alta y las rutas de lectura y escritura. | Nada que ejecute. Es el suelo de las dos siguientes. |
 | **1** | P1 | El turno sin cliente final, el manejador de la cola, el cobro y «Ejecutar ahora». | El partner escribe la instrucción, pulsa y lee la respuesta. Es lo que hoy se hace a mano. |
 | **2** | P2 | `when.py`, `next_run_at`, el barrido y la ventana de gracia. | La misma rutina, repetida sola, a la hora del negocio. |
 | **3** | P3 | El hilo del historial, el panel de consumo partido y la lista con sus filtros. | Lo que gasta un cliente en rutinas, defendible ante el cliente. |

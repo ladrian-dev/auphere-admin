@@ -1,4 +1,4 @@
-"""Rutinas de agente — spec 082 (migración 0244, ``data-model.md``).
+"""Rutinas de agente — spec 082 (migración 0245, ``data-model.md``).
 
 Una rutina es una instrucción que el agente de un cliente ejecuta a su hora, y
 cuya respuesta lee el partner en la consola. Todo cuelga del cliente: FORCE RLS

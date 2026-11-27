@@ -48,7 +48,7 @@ JOB_KINDS: tuple[str, ...] = (
     "sector_identify",
     # Spec 057 (requisito 3.6, migración 0229): proponer el texto de la agenda.
     "agenda_text",
-    # Spec 082 (migración 0244): una ejecución de rutina.
+    # Spec 082 (migración 0245): una ejecución de rutina.
     "schedule_run",
 )
 JOB_STATUSES: tuple[str, ...] = ("queued", "running", "done", "failed")
