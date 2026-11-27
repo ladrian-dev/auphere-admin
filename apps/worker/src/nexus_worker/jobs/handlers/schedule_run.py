@@ -120,7 +120,10 @@ def make_schedule_run_handler(*, provider_factory: Any = None) -> JobHandler:
         try:
             async with usage_turn(
                 tenant_id=ctx.tenant_id,
-                turn_id=f"schedule:{run_id or ctx.job_id}",
+                # Solo el identificador: el medidor ya le pone delante el origen, y
+                # la referencia que sale es la que el hilo busca para enseñar
+                # lo que costó (``usage_ref_for``).
+                turn_id=str(run_id or ctx.job_id),
                 source=SOURCE_SCHEDULE,
                 agent_id=agent_id,
             ):

@@ -9,57 +9,18 @@ borrar**.
 
 from __future__ import annotations
 
-import uuid
 from typing import Any
 
 import pytest
-import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.conftest import add_console_member
 
+from .conftest import body as _body
+from .conftest import make_agent as _agent
+from .conftest import url as _url
+
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
-
-
-async def _agent(db_session: AsyncSession, tenant_id: uuid.UUID, *, name: str = "Soporte") -> str:
-    agent_id = uuid.uuid4()
-    await db_session.execute(
-        sa.text(
-            "INSERT INTO agents (id, tenant_id, name, lifecycle) VALUES (:a, :t, :n, 'published')"
-        ),
-        {"a": str(agent_id), "t": str(tenant_id), "n": name},
-    )
-    await db_session.commit()
-    return str(agent_id)
-
-
-def _body(agent_id: str, **over: Any) -> dict[str, Any]:
-    return {
-        "agent_id": agent_id,
-        "name": "Altas de ayer en Notion",
-        "instruction": "Revisa la vista «Usuarios» y dime quién se dio de alta ayer.",
-        "cadence": "daily",
-        "local_time": "09:00",
-        "email": False,
-        **over,
-    }
-
-
-@pytest.fixture
-async def world(db_session: AsyncSession, console_world: dict[str, Any]) -> dict[str, Any]:
-    a = console_world["a"]
-    return {
-        "ref": a["ref"],
-        "tenant_id": a["tenant_id"],
-        "partner_id": a["partner_id"],
-        "headers": a["headers"],
-        "agent_id": await _agent(db_session, a["tenant_id"]),
-        "other_ref": console_world["b"]["ref"],
-    }
-
-
-def _url(world: dict[str, Any], tail: str = "") -> str:
-    return f"/console/clients/{world['ref']}/schedules{tail}"
 
 
 # ── el alta y la lista ──────────────────────────────────────────────────────

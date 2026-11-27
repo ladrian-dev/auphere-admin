@@ -28,6 +28,15 @@ from nexus_api.services.wallet import bags
 
 #: El asiento de la bolsa de una ejecución de rutina.
 ENTRY_KIND = "debit_schedule"
+#: El prefijo de la referencia del cobro. Lo escribe el medidor al cobrar y lo
+#: lee el hilo para enseñar lo que salió de la bolsa: una sola forma, aquí, o
+#: las dos puntas dejan de encontrarse.
+REF_PREFIX = "schedule"
+
+
+def usage_ref_for(run_id: uuid.UUID) -> str:
+    """La referencia con la que se cobra —y se encuentra— una ejecución."""
+    return f"{REF_PREFIX}:{run_id}"
 
 
 async def charge_schedule(
@@ -59,4 +68,4 @@ async def charge_schedule(
     return debit
 
 
-__all__ = ["ENTRY_KIND", "charge_schedule"]
+__all__ = ["ENTRY_KIND", "REF_PREFIX", "charge_schedule", "usage_ref_for"]

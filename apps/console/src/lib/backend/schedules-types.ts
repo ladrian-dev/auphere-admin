@@ -79,6 +79,31 @@ export type SchedulePreview = {
   timezone: string;
 };
 
+/** Lo que salió de la bolsa del cliente: un precio, nunca un coste (C9). */
+export type ScheduleMoney = { amount_micros: number; currency: string };
+
+export type ScheduleRun = {
+  id: string;
+  scheduled_for: string;
+  trigger: "schedule" | "manual";
+  status: "running" | "done" | "partial" | "failed";
+  attempts: number;
+  duration_ms: number | null;
+  /** `null` mientras no se haya cobrado: un cero diría que fue gratis. */
+  spend: ScheduleMoney | null;
+  answer: string | null;
+  tools_used: string[];
+  withheld: { tool: string; reason: string }[] | null;
+  error_code: string | null;
+  /** La de ese momento: editar la rutina no reescribe lo ya contestado. */
+  instruction: string;
+};
+
+export type ScheduleRunPage = {
+  runs: ScheduleRun[];
+  next_cursor: string | null;
+};
+
 export type RunQueued = {
   run_id: string | null;
   job_id: string;

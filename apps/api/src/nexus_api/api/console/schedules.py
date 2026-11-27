@@ -7,7 +7,9 @@
 - ``POST   …/schedules/preview`` [``schedules:read``] — las próximas ejecuciones
   antes de guardar, sin escribir nada;
 - ``GET    …/schedules/{id}`` · ``PATCH …/schedules/{id}``;
-- ``POST   …/schedules/{id}/pause`` · ``/resume`` · ``/archive`` · ``/restore``.
+- ``POST   …/schedules/{id}/pause`` · ``/resume`` · ``/archive`` · ``/restore``;
+- ``GET    …/schedules/{id}/runs`` [``schedules:read``] — el hilo, paginado por
+  cursor y la más reciente arriba.
 
 **No hay ``DELETE``**, y no es un olvido: borrar no existe, se archiva
 (constitución §IV). La ruta del detalle responde 405 a quien lo intente.
@@ -25,6 +27,7 @@ en ``null`` antes que mentir con un cero.
 
 from __future__ import annotations
 
+import base64
 import uuid
 from datetime import UTC, date, datetime, time
 from typing import Annotated, Any, Literal, cast
@@ -33,10 +36,11 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from nexus_api.db.models import Agent, Schedule, ScheduleRun
+from nexus_api.db.models import Agent, ClientWalletEntry, Schedule, ScheduleRun
 from nexus_api.services import jobs as jobs_service
 from nexus_api.services.schedules import runs as runs_service
 from nexus_api.services.schedules import service, when
+from nexus_api.services.wallet.schedules import ENTRY_KIND, usage_ref_for
 
 from .deps import ClientScope, client_scope
 
@@ -107,6 +111,40 @@ class ScheduleListOut(BaseModel):
     schedules: list[ScheduleOut]
 
 
+class ScheduleMoneyOut(BaseModel):
+    """Lo que salió de la bolsa del cliente, en su moneda.
+
+    Es un **precio**, no un coste: el asiento de la bolsa, el mismo que suma la
+    partida de Consumo. Lo que nos costó el modelo no sale de aquí (C9).
+    """
+
+    amount_micros: int
+    currency: str
+
+
+class ScheduleRunOut(BaseModel):
+    id: uuid.UUID
+    scheduled_for: datetime
+    trigger: str
+    status: str
+    attempts: int
+    duration_ms: int | None
+    #: ``None`` mientras no se haya cobrado: un cero diría que fue gratis.
+    spend: ScheduleMoneyOut | None
+    answer: str | None
+    tools_used: list[Any]
+    withheld: list[Any] | None
+    error_code: str | None
+    #: La de ese momento, no la de ahora: editar la rutina no reescribe lo
+    #: ya contestado (requisito 15.2).
+    instruction: str
+
+
+class ScheduleRunsOut(BaseModel):
+    runs: list[ScheduleRunOut]
+    next_cursor: str | None = None
+
+
 class ScheduleIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -147,6 +185,23 @@ class SchedulePreviewIn(BaseModel):
 class SchedulePreviewOut(BaseModel):
     next: list[datetime]
     timezone: str
+
+
+def _encode_cursor(scheduled_for: datetime, id_: uuid.UUID) -> str:
+    raw = f"{scheduled_for.isoformat()}|{id_}".encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+    """Un cursor que no se entiende es un 422, no una página vacía: lo segundo
+    le diría al partner que no hay historial cuando sí lo hay."""
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        text = base64.urlsafe_b64decode(padded.encode()).decode()
+        ts, id_ = text.split("|", 1)
+        return datetime.fromisoformat(ts), uuid.UUID(id_)
+    except Exception:
+        raise HTTPException(status_code=422, detail="bad_cursor") from None
 
 
 def _refused(exc: service.ScheduleError) -> HTTPException:
@@ -272,6 +327,94 @@ async def read_schedule(
     scope: ClientScope = Depends(client_scope("schedules:read")),
 ) -> ScheduleOut:
     return await _out(scope, await _find(scope, schedule_id))
+
+
+@router.get("/{schedule_id}/runs", response_model=ScheduleRunsOut)
+async def list_runs(
+    schedule_id: uuid.UUID,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    cursor: Annotated[str | None, Query()] = None,
+    scope: ClientScope = Depends(client_scope("schedules:read")),
+) -> ScheduleRunsOut:
+    """El hilo de una rutina, la más reciente arriba.
+
+    La rutina se busca primero: así el historial de otro cliente no existe, en
+    vez de existir vacío.
+    """
+    await _find(scope, schedule_id)
+    stmt = (
+        sa.select(ScheduleRun)
+        .where(ScheduleRun.schedule_id == schedule_id)
+        .order_by(ScheduleRun.scheduled_for.desc(), ScheduleRun.id.desc())
+        .limit(limit + 1)
+    )
+    if cursor is not None:
+        c_at, c_id = _decode_cursor(cursor)
+        stmt = stmt.where(
+            sa.or_(
+                ScheduleRun.scheduled_for < c_at,
+                sa.and_(ScheduleRun.scheduled_for == c_at, ScheduleRun.id < c_id),
+            )
+        )
+    rows = list((await scope.session.scalars(stmt)).all())
+    page, has_more = rows[:limit], len(rows) > limit
+    spent = await _spend_of(scope, [row.id for row in page])
+    return ScheduleRunsOut(
+        runs=[_run_out(row, spent.get(row.id)) for row in page],
+        next_cursor=_encode_cursor(page[-1].scheduled_for, page[-1].id)
+        if has_more and page
+        else None,
+    )
+
+
+async def _spend_of(
+    scope: ClientScope, run_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, ScheduleMoneyOut]:
+    """Lo cobrado por cada ejecución, del libro de la bolsa.
+
+    No se guarda en la fila de la ejecución a propósito: el cobro lo hace el
+    medidor después de cerrarla, y dos sitios con la misma cifra terminan
+    siendo dos cifras distintas.
+    """
+    if not run_ids:
+        return {}
+    by_ref = {usage_ref_for(run_id): run_id for run_id in run_ids}
+    rows = (
+        await scope.session.execute(
+            sa.select(
+                ClientWalletEntry.usage_ref,
+                sa.func.sum(-ClientWalletEntry.amount_micros),
+                ClientWalletEntry.currency,
+            )
+            .where(
+                ClientWalletEntry.kind == ENTRY_KIND,
+                ClientWalletEntry.usage_ref.in_(list(by_ref)),
+            )
+            .group_by(ClientWalletEntry.usage_ref, ClientWalletEntry.currency)
+        )
+    ).all()
+    return {
+        by_ref[str(ref)]: ScheduleMoneyOut(amount_micros=int(total or 0), currency=str(currency))
+        for ref, total, currency in rows
+        if str(ref) in by_ref
+    }
+
+
+def _run_out(row: ScheduleRun, spend: ScheduleMoneyOut | None) -> ScheduleRunOut:
+    return ScheduleRunOut(
+        id=row.id,
+        scheduled_for=row.scheduled_for,
+        trigger=row.trigger,
+        status=row.status,
+        attempts=row.attempts,
+        duration_ms=row.duration_ms,
+        spend=spend,
+        answer=row.answer,
+        tools_used=list(row.tools_used or []),
+        withheld=row.withheld,
+        error_code=row.error_code,
+        instruction=row.instruction,
+    )
 
 
 @router.patch("/{schedule_id}", response_model=ScheduleOut)

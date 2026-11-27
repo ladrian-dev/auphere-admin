@@ -122,10 +122,10 @@ se retienen hasta que exista la pregunta desde la consola, que es spec aparte.
 
 ## Fase 5: Historia 3 — el historial y lo que cuesta (P3)
 
-- [ ] **T026** Integración `test_runs_history.py`, en rojo: el hilo pagina por cursor con el más reciente primero, cada ejecución trae la instrucción con la que corrió, y editar la rutina no toca las ya hechas.
+- [x] **T026** Integración `test_runs_history.py`, en rojo: el hilo pagina por cursor con el más reciente primero, cada ejecución trae la instrucción con la que corrió, y editar la rutina no toca las ya hechas.
 
   _Requisitos: 15.2_
-- [ ] **T027** Ruta `GET …/{id}/runs` y la lectura del detalle.
+- [x] **T027** Ruta `GET …/{id}/runs` y la lectura del detalle.
 
   _Requisitos: 4.7_
 - [x] **T028** **Medidor, segunda parte.** La partida `schedules` en `services/wallet/usage_lines.py`: entrada en `LINES`, `PAYER` a `client_bag` y su asiento en `_BAG_ENTRY`. Con su prueba de que la suma de las partidas cuadra con lo cobrado de la bolsa.

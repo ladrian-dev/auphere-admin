@@ -8,6 +8,7 @@ import type {
   SchedulePatchBody,
   SchedulePreview,
   ScheduleBody,
+  ScheduleRunPage,
   ScheduleState,
 } from "./schedules-types";
 
@@ -52,6 +53,10 @@ export function schedulesApi(call: Call) {
       call<Schedule>(`${one(ref, id)}/archive`, { method: "POST" }),
     restoreSchedule: (ref: string, id: string) =>
       call<Schedule>(`${one(ref, id)}/restore`, { method: "POST" }),
+    listRuns: (ref: string, id: string, page?: { limit?: number; cursor?: string }) =>
+      call<ScheduleRunPage>(
+        `${one(ref, id)}/runs${q({ limit: page?.limit?.toString(), cursor: page?.cursor })}`,
+      ),
     runSchedule: (ref: string, id: string) =>
       call<RunQueued>(`${one(ref, id)}/run`, { method: "POST" }),
     trySchedule: (ref: string, agentId: string, instruction: string) =>
