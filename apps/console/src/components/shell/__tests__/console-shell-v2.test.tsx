@@ -69,7 +69,7 @@ describe("ConsoleShellV2 — el marco", () => {
     render(<Shell />);
     const aside = sidebar();
     const operate = within(aside).getByRole("list", { name: "Operar" });
-    expect(linksIn(operate)).toEqual(["Panel", "Clientes", "Métricas", "Auditoría", "Guía del partner", "Teammate"]);
+    expect(linksIn(operate)).toEqual(["Panel", "Clientes", "Rutinas", "Métricas", "Auditoría", "Guía del partner", "Teammate"]);
     expect(within(aside).queryByRole("list", { name: "Cuenta" })).toBeNull();
     expect(within(aside).queryByRole("link", { name: "Facturación" })).toBeNull();
   });

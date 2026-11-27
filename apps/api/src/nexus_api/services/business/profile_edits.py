@@ -219,6 +219,7 @@ async def update_basics(
 
     currency_before = await services_catalog.known_currency(session)
 
+    timezone_moved = False
     for key, value in clean.items():
         if key == "name":
             tenant.name = value
@@ -230,11 +231,19 @@ async def update_basics(
         elif key == "timezone":
             tenant.timezone = value
             profile.timezone = value
+            # Spec 082 (3.7): la hora de una rutina es local, así que mudarse de
+            # huso mueve el instante. Sin esto seguiría disparándose a la hora
+            # de la zona vieja hasta que alguien la editara.
+            timezone_moved = True
         elif key == "sector":
             profile.sector = value
         else:
             setattr(profile, key, value)
     await session.flush()
+    if timezone_moved:
+        from nexus_api.services.schedules.service import recompute_for_tenant
+
+        await recompute_for_tenant(session, tenant_id)
     after = (await client_spec.section_view(session, "basics"))["business"]
     changed = [k for k in BASICS_FIELDS if before.get(k) != after.get(k)]
     if not changed:

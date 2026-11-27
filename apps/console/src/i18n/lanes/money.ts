@@ -263,6 +263,7 @@ export const moneyMessages = {
   "money.lines.description": { es: "En qué se va este mes y quién paga cada cosa.", en: "Where this month goes and who pays for each thing." },
   "money.line.conversations": { es: "Conversaciones", en: "Conversations" },
   "money.line.client_tests": { es: "Pruebas a cargo del cliente", en: "Tests paid by the client" },
+  "money.line.schedules": { es: "Rutinas", en: "Routines" },
   "money.line.meta": { es: "Mensajes de Meta", en: "Meta messages" },
   "money.line.build": { es: "Construcción y pruebas", en: "Building and testing" },
   "money.line.companion": { es: "Companion y teammates", en: "Companion and teammates" },
@@ -273,6 +274,10 @@ export const moneyMessages = {
   "money.line.client_tests.payer": {
     es: "La paga la bolsa de cada cliente: las pasadas completas que se piden después de la primera de cada agente, que paga Auphere.",
     en: "Paid by each client’s bag: the full test runs requested after each agent’s first one, which Auphere pays for.",
+  },
+  "money.line.schedules.payer": {
+    es: "La paga la bolsa de cada cliente: lo que gasta su agente al ejecutar una rutina a su hora, aparte de lo que gasta atendiendo.",
+    en: "Paid by each client’s bag: what their agent spends running a routine at its hour, apart from what it spends attending.",
   },
   "money.line.meta.payer": {
     es: "La paga el negocio, a Meta: plantillas y mensajes de servicio por encima de los 1.000 gratis al mes. Es una estimación y no sale de la bolsa.",

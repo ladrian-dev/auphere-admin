@@ -43,7 +43,7 @@ from nexus_api.services.attention import AttentionItem
 from nexus_api.services.attention_live import Client, Gate
 from nexus_api.services.console_reporting import month_bounds
 from nexus_api.services.console_traffic import customer_conversation_ids
-from nexus_api.services.wallet.usage_lines import Balances, balances, spend
+from nexus_api.services.wallet.usage_lines import BAG_LINES, Balances, balances, spend
 
 log = structlog.get_logger(__name__)
 
@@ -142,12 +142,12 @@ async def build_panel(
             since=since,
             until=now,
             with_outside=False,
-            lines=("conversations", "client_tests"),
+            lines=BAG_LINES,
         )
         per_client: dict[uuid.UUID, int] = defaultdict(int)
         for (_d, line, tid), amount in month.cells.items():
             # Lo que le gasta su bolsa, como «Gasto del mes» de Consumo (46.7).
-            if line in {"conversations", "client_tests"} and tid is not None:
+            if line in set(BAG_LINES) and tid is not None:
                 per_client[tid] += amount
         by_id = {c.tenant_id: c for c in clients}
         ranked = sorted(per_client.items(), key=lambda kv: (-kv[1], by_id[kv[0]].ref))

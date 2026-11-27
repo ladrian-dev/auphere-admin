@@ -162,7 +162,7 @@ async def usage_summary(
                     bag=_money(bag.balance_micros, bag.currency) if bag is not None else None,
                     month_spent=_money(
                         lines.total(
-                            lines=("conversations", "client_tests"),
+                            lines=_CLIENT_BAGS,
                             tenant=m.tenant_id,
                             since=month_day,
                         ),

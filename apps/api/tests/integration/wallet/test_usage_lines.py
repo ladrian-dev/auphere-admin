@@ -21,6 +21,7 @@ from nexus_api.core.tenant_context import tenant_scoped_session
 from nexus_api.db.models import UsageLedger, UsageRecord
 from nexus_api.db.models.daily_cost_snapshot import DailyCostSnapshot
 from nexus_api.services.wallet import build_budget, fx
+from nexus_api.services.wallet.schedules import charge_schedule
 from nexus_api.services.wallet.turns import charge_turn
 
 from ._wallet_world import EUR_USD, UNIT, MoneyWorld, money, money_world
@@ -119,10 +120,19 @@ async def test_the_three_figures_the_lines_and_the_table(client: Any, db_session
     assert out["projected"]["amount_micros"] >= out["month_spend"]["amount_micros"]
 
     lines = {line["line"]: line for line in out["lines"]}
-    assert set(lines) == {"conversations", "client_tests", "meta", "build", "companion"}
+    assert set(lines) == {
+        "conversations",
+        "client_tests",
+        "schedules",
+        "meta",
+        "build",
+        "companion",
+    }
     assert {k: v["payer"] for k, v in lines.items()} == {
         "conversations": "client_bag",
         "client_tests": "client_bag",
+        # Spec 082: las rutinas también las paga la bolsa del cliente.
+        "schedules": "client_bag",
         "meta": "business_meta",
         "build": "auphere",
         "companion": "account",
@@ -181,7 +191,14 @@ async def test_the_daily_chart_is_7_30_or_90_days_filterable(client: Any, db_ses
         assert resp.status_code == 200, resp.text
         out = resp.json()
         assert len(out["days"]) == days and len(out["total"]) == days
-        assert set(out["series"]) == {"conversations", "client_tests", "meta", "build", "companion"}
+        assert set(out["series"]) == {
+            "conversations",
+            "client_tests",
+            "schedules",
+            "meta",
+            "build",
+            "companion",
+        }
         assert out["total"][-1] == sum(v[-1] for v in out["series"].values())
     assert (
         await client.get("/console/usage/daily?days=14", headers=world.headers())
@@ -254,3 +271,37 @@ async def test_the_panel_month_spend_adds_up_to_its_parts(client: Any, db_sessio
     )
     summary = (await client.get("/console/usage/summary", headers=world.headers())).json()
     assert spend["total"] == summary["month_spend"]
+
+
+async def test_a_routine_lands_on_its_own_line_and_in_the_month(
+    client: Any, db_session: Any
+) -> None:
+    """Spec 082 (T028, decisión del owner): las rutinas son una partida **visible**
+    de Consumo, y lo que gastan sale de la bolsa del cliente.
+
+    Lo que se mira aquí es el cuadre: el mismo asiento tiene que aparecer en su
+    partida y dentro del «Gasto del mes», que es la suma de lo que pagan las
+    bolsas. Una partida que se enseña pero no se suma —o al revés— es la forma
+    callada de que las cifras de Consumo dejen de cuadrar entre sí.
+    """
+    world = await _seed(client, db_session)
+    before = (await client.get("/console/usage/summary", headers=world.headers())).json()
+
+    await charge_schedule(
+        partner_id=world.partner_id,
+        tenant_id=world.us.tenant_id,
+        agent_id=None,
+        amount_usd=UNIT // 4,
+        usage_ref=f"schedule:{uuid.uuid4().hex}",
+    )
+
+    out = (await client.get("/console/usage/summary", headers=world.headers())).json()
+    lines = {line["line"]: line for line in out["lines"]}
+    assert lines["schedules"]["amount"] == money(UNIT // 4, "USD")
+    assert lines["schedules"]["payer"] == "client_bag"
+    # Y no se le cuela a Conversaciones: son dos cosas distintas en la pantalla.
+    was = {line["line"]: line for line in before["lines"]}
+    assert lines["conversations"]["amount"] == was["conversations"]["amount"]
+    assert out["month_spend"]["amount_micros"] - before["month_spend"]["amount_micros"] == UNIT // 4
+    row = next(r for r in out["clients"] if r["ref"] == world.us.ref)
+    assert row["month_spent"] == money(2 * UNIT + UNIT // 4, "USD")

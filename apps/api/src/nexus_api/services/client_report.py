@@ -62,8 +62,9 @@ FIRST_RESPONSE_TARGET_PCT: Final = 95
 FIRST_RESPONSE_TARGET_SECONDS: Final = 60
 #: Las incidencias que la lista enseña; el recuento las cuenta todas.
 INCIDENT_LIST_LIMIT: Final = 100
-#: Las partidas de la bolsa del cliente: la fila del cliente en Consumo.
-BAG_LINES: Final = ("conversations", "client_tests")
+#: Las partidas de la bolsa del cliente: la fila del cliente en Consumo. Se
+#: toman del medidor para que una partida nueva entre aquí sola.
+BAG_LINES: Final = usage_lines.BAG_LINES
 
 #: Quién hizo una operación de agenda.
 WHO: Final = ("agent", "person", "customer")
@@ -276,6 +277,8 @@ class Spend:
     total: Money
     conversations: Money
     client_tests: Money
+    #: Spec 082: lo que gastaron las rutinas del cliente.
+    schedules: Money
     meta: Money
     approx: bool
     per_conversation: Money | None
@@ -534,6 +537,7 @@ async def _spend(
         total=total,
         conversations=money(("conversations",)),
         client_tests=money(("client_tests",)),
+        schedules=money(("schedules",)),
         meta=money(("meta",)),
         approx=bool(found.approx_lines & set(BAG_LINES)),
         per_conversation=Money(round(total.amount_micros / conversations), currency)

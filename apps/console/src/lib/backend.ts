@@ -597,6 +597,7 @@ export type { Opts };
  * merge hotspot of every package.
  */
 import { agendaApi } from "./backend/agenda";
+import { schedulesApi } from "./backend/schedules";
 import { agentConnectorsApi } from "./backend/agent-connectors";
 import { agentDraftApi } from "./backend/agent-draft";
 import { agentImproveApi } from "./backend/agent-improve";
@@ -676,6 +677,7 @@ export function backendFor(principal: Principal) {
     ...agentConnectorsApi(call),
     // Spec 057: la agenda de cada agente («Agenda (Reservas)» en Conectores).
     ...agendaApi(call),
+    ...schedulesApi(call),
     // Spec 047 (historia 23): Agente › Avanzado › Calidad.
     ...modelQualityApi(call),
     // Spec 017 (R5): herramientas y habilidades, en una sola lectura.

@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nexus_api.core.llm_proxy import current_llm_proxy_partner
 
+from ..isolation.conftest import seed_active_agent_config  # type: ignore[import-not-found]
 from .builder._builder_world import RECEPTION, FakeBuilder, run_jobs, start_draft
 from .business._business_world import Biz, new_business, write
 from .clients._reader_world import (
@@ -191,6 +192,57 @@ async def _agenda_text(s: Sweep) -> None:
     assert resp.json()["proposal_reason"] is None, resp.json()
 
 
+async def _schedule_run(s: Sweep) -> None:
+    """Spec 082 (T017): una rutina ejecutada a mano. Necesita bolsa con saldo,
+    porque la ruta cierra antes de gastar si no la hay."""
+    import sqlalchemy as sa
+
+    # Una rutina corre la versión **publicada** del agente: con solo el
+    # borrador del constructor, el cargador se niega y el trabajo no llega a
+    # ningún modelo. Aquí se siembra una activa directamente, sin pasar por el
+    # constructor, que no es lo que se barre.
+    await seed_active_agent_config(
+        s.db_session,
+        tenant_id=s.biz.tenant_id,
+        system_prompt="Eres el agente de este negocio.",
+        tools=["inventory.check_stock"],
+    )
+    agent_id = (
+        await s.db_session.execute(
+            sa.text("SELECT id FROM agents WHERE tenant_id = :t ORDER BY created_at LIMIT 1"),
+            {"t": str(s.biz.tenant_id)},
+        )
+    ).scalar_one()
+    await s.db_session.execute(
+        sa.text(
+            "INSERT INTO client_wallets "
+            "(tenant_id, partner_id, currency, balance_micros, month) "
+            "VALUES (:t, :p, 'USD', 1000000, date_trunc('month', now())::date) "
+            "ON CONFLICT (tenant_id) DO UPDATE SET balance_micros = 1000000"
+        ),
+        {"t": str(s.biz.tenant_id), "p": str(s.biz.partner_id)},
+    )
+    await s.db_session.commit()
+
+    made = await s.client.post(
+        f"/console/clients/{s.biz.ref}/schedules",
+        json={
+            "agent_id": str(agent_id),
+            "name": "Altas de ayer",
+            "instruction": "Dime cuántos pedidos entraron ayer.",
+            "cadence": "daily",
+            "local_time": "09:00",
+        },
+        headers=s.biz.headers(),
+    )
+    assert made.status_code == 201, made.text
+    resp = await s.client.post(
+        f"/console/clients/{s.biz.ref}/schedules/{made.json()['id']}/run",
+        headers=s.biz.headers(),
+    )
+    assert resp.status_code == 202, resp.text
+
+
 #: Lo mínimo para que cada tipo llegue a su modelo. Un tipo registrado sin mundo
 #: aquí es un trabajo que nadie ha visto salir por el proxy.
 WORLDS: dict[str, Callable[[Sweep], Awaitable[None]]] = {
@@ -201,6 +253,7 @@ WORLDS: dict[str, Callable[[Sweep], Awaitable[None]]] = {
     "tests": _tests,
     "publish": _publish,
     "sector_identify": _sector_identify,
+    "schedule_run": _schedule_run,
 }
 
 

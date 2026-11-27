@@ -109,6 +109,7 @@ from nexus_worker.streams.reservation_offers_cron import run_reservation_offers_
 from nexus_worker.streams.reservation_outbox_cron import run_reservation_outbox_cron
 from nexus_worker.streams.reservation_templates_cron import run_reservation_templates_cron
 from nexus_worker.streams.reservations_cron import run_reservations_cron
+from nexus_worker.streams.schedule_dispatch_cron import run_schedule_dispatch_cron
 from nexus_worker.streams.service_memberships_cron import run_service_memberships_cron
 from nexus_worker.streams.teammate_task_expiry_cron import run_teammate_task_expiry_cron
 from nexus_worker.streams.tiktok_token_refresh_cron import run_tiktok_token_refresh_cron
@@ -179,6 +180,8 @@ SCHEDULER_TASK_NAMES = frozenset(
         "grade-consumer",
         "platform-watcher",
         "reminder-cron",
+        # Spec 082: el barrido que dispara las rutinas vencidas.
+        "schedule-dispatch-cron",
         "cobranza-reminder-cron",
         "agent-sales-poll-cron",
         "partner-receipt-cron",
@@ -600,6 +603,8 @@ def scheduler_tasks(ctx: WorkerContext, *, heartbeat: bool = True) -> list[async
         ),
         _spawn("platform-watcher", run_platform_watcher(ctx.redis, stop=ctx.stop)),
         _spawn("reminder-cron", run_reminder_cron(stop=ctx.stop)),
+        # Spec 082: las rutinas vencidas, por vencimiento y no cliente a cliente.
+        _spawn("schedule-dispatch-cron", run_schedule_dispatch_cron(stop=ctx.stop)),
         _spawn("workflow-pack-cron", run_workflow_pack_cron(stop=ctx.stop)),
         # Spec 003: las tareas de teammate que vencieron esperando (R6.1).
         _spawn("teammate-task-expiry-cron", run_teammate_task_expiry_cron(stop=ctx.stop)),

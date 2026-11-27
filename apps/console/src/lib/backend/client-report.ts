@@ -90,6 +90,7 @@ export type ClientReport = {
     total: Money;
     conversations: Money;
     client_tests: Money;
+    schedules: Money;
     meta: Money;
     approx: boolean;
     per_conversation: Money | null;

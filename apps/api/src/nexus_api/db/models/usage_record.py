@@ -140,6 +140,10 @@ USAGE_LINE_BY_SOURCE: dict[str, str] = {
     # The ones the partner launches when changing quality come as ``tests``.
     "certification": "platform",
     "companion": "companion",
+    # Spec 082: una ejecución de rutina. La paga la bolsa del cliente, como
+    # las conversaciones, y va en su propia partida para que el partner
+    # pueda distinguir lo que gasta atendiendo de lo que gasta sola.
+    "schedule": "schedules",
 }
 
 

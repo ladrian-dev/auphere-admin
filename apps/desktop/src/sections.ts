@@ -24,6 +24,8 @@ export const CONSOLE_SECTIONS = [
   // Same order as the console (owner, 2026-10-03).
   { key: "inicio", path: "/", permission: null, exact: true },
   { key: "clientes", path: "/clients", permission: "clients:read" },
+  // Spec 082: rutinas de agente, entre los clientes y sus números.
+  { key: "rutinas", path: "/schedules", permission: "schedules:read" },
   { key: "consumo", path: "/usage", permission: "usage:read" },
   { key: "auditoria", path: "/audit", permission: "audit:read" },
   { key: "conocimiento", path: "/knowledge", permission: "playbook:read" },

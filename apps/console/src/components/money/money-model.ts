@@ -200,16 +200,17 @@ export function noteProblem(note: string): "too_long" | null {
 export const LINE_LABEL: Record<UsageLine, MessageKey> = {
   conversations: "money.line.conversations",
   client_tests: "money.line.client_tests",
+  schedules: "money.line.schedules",
   meta: "money.line.meta",
   build: "money.line.build",
   companion: "money.line.companion",
 };
 
 /** Lo que la gráfica enseña sin filtro: lo que sale del dinero del partner (46.1). */
-export const PARTNER_PAYS: readonly UsageLine[] = ["conversations", "companion", "client_tests"];
+export const PARTNER_PAYS: readonly UsageLine[] = ["conversations", "companion", "client_tests", "schedules"];
 
 export function parseLine(raw: string | undefined): UsageLine | null {
-  return raw === "conversations" || raw === "client_tests" || raw === "meta" || raw === "build" || raw === "companion" ? raw : null;
+  return raw === "conversations" || raw === "client_tests" || raw === "schedules" || raw === "meta" || raw === "build" || raw === "companion" ? raw : null;
 }
 
 export function parseDays(raw: string | undefined): 7 | 30 | 90 {
@@ -222,12 +223,13 @@ const DAY_SHORT = new Intl.DateTimeFormat("es-ES", { weekday: "short", timeZone:
 
 /**
  * Las series de la gráfica: la partida elegida o, sin filtro, las que paga el partner. Las
- * pruebas a cargo del cliente solo si hubo alguna: lo normal es que no, y la gráfica no
- * lleva una serie a cero.
+ * pruebas a cargo del cliente y las rutinas solo si hubo alguna: lo normal es que no, y la
+ * gráfica no lleva una serie a cero.
  */
 export function chartLines(daily: Pick<UsageDaily, "lines"> & Partial<Pick<UsageDaily, "series">>, line: UsageLine | null): UsageLine[] {
   if (line) return [line];
-  return PARTNER_PAYS.filter((l) => daily.lines.includes(l) && (l !== "client_tests" || (daily.series?.client_tests ?? []).some((v) => v > 0)));
+  const onlyIfSpent: readonly UsageLine[] = ["client_tests", "schedules"];
+  return PARTNER_PAYS.filter((l) => daily.lines.includes(l) && (!onlyIfSpent.includes(l) || (daily.series?.[l] ?? []).some((v) => v > 0)));
 }
 
 /**

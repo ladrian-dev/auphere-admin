@@ -614,7 +614,7 @@ async def balance_left(partner_id: uuid.UUID, tenant_id: uuid.UUID) -> tuple[int
 
 
 #: Lo que la bolsa cobra como gasto: los turnos y las pruebas a su cargo (68.6).
-SPEND_KINDS: Final = ("debit_turn", "debit_tests")
+SPEND_KINDS: Final = ("debit_turn", "debit_tests", "debit_schedule")
 #: El ritmo de la proyección: los últimos 7 días, como en el libro de la cuenta.
 PROJECTION_WINDOW: Final = timedelta(days=7)
 

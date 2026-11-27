@@ -288,6 +288,7 @@ from nexus_api.db.models.router import (
     RouterTaxonomy,
 )
 from nexus_api.db.models.sales import AgentSale
+from nexus_api.db.models.schedule import Schedule, ScheduleRun
 from nexus_api.db.models.scheduled_job import (
     ScheduledJob,
     ScheduledJobKind,
@@ -564,6 +565,8 @@ __all__ = [
     "RouterProfile",
     "RouterTaxonomy",
     "SavedReply",
+    "Schedule",
+    "ScheduleRun",
     "ScheduledJob",
     "ScheduledJobKind",
     "ScheduledJobStatus",
