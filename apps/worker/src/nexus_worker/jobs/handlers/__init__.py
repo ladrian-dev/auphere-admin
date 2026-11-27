@@ -23,6 +23,7 @@ from nexus_worker.jobs.handlers import (
     agent_tests,
     client_builder,
     client_read,
+    schedule_run,
     sector_identify,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     "agent_tests",
     "client_builder",
     "client_read",
+    "schedule_run",
     "sector_identify",
 ]
