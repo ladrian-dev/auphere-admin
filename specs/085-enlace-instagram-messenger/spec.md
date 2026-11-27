@@ -182,8 +182,9 @@ Si la persona administra más de una cuenta de Instagram o más de una Página, 
 
 ## Supuestos
 
-- **Apertura:** a todos los partners, sin interruptor nuevo, solo después de dos pruebas en vivo:
+- **Apertura:** a todos los partners, sin interruptor nuevo, solo después de dos pruebas en vivo. Las dos están comprobadas desde el 2026-11-27 (Luis): Gali entró con su cuenta de Instagram, y sus DMs llegan y reciben respuesta.
   - la T008 del hotfix 081: un DM real que llega con la conexión con Página;
   - la T072 de la 049: entrar con Instagram, probado en vivo.
+- **Va en el paso a producción del PR 77** (Luis, 2026-11-27).
 - **Meta no pide una revisión nueva:** el dueño entra con las mismas configuraciones y permisos que ya usa la consola, igual que el enlace de WhatsApp usa los del registro integrado. Se confirma antes de abrir.
-- **El bug de la cuota llega antes:** la 085 cuenta con que el enlace ya use la regla de cuota de la consola.
+- **El bug de la cuota ya está en `develop`** (PR 78, `services/channel_quota.py`). La 085 parte de él.
