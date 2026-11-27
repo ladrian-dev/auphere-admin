@@ -119,10 +119,19 @@ async def test_the_three_figures_the_lines_and_the_table(client: Any, db_session
     assert out["projected"]["amount_micros"] >= out["month_spend"]["amount_micros"]
 
     lines = {line["line"]: line for line in out["lines"]}
-    assert set(lines) == {"conversations", "client_tests", "meta", "build", "companion"}
+    assert set(lines) == {
+        "conversations",
+        "client_tests",
+        "schedules",
+        "meta",
+        "build",
+        "companion",
+    }
     assert {k: v["payer"] for k, v in lines.items()} == {
         "conversations": "client_bag",
         "client_tests": "client_bag",
+        # Spec 082: las rutinas también las paga la bolsa del cliente.
+        "schedules": "client_bag",
         "meta": "business_meta",
         "build": "auphere",
         "companion": "account",
@@ -181,7 +190,14 @@ async def test_the_daily_chart_is_7_30_or_90_days_filterable(client: Any, db_ses
         assert resp.status_code == 200, resp.text
         out = resp.json()
         assert len(out["days"]) == days and len(out["total"]) == days
-        assert set(out["series"]) == {"conversations", "client_tests", "meta", "build", "companion"}
+        assert set(out["series"]) == {
+            "conversations",
+            "client_tests",
+            "schedules",
+            "meta",
+            "build",
+            "companion",
+        }
         assert out["total"][-1] == sum(v[-1] for v in out["series"].values())
     assert (
         await client.get("/console/usage/daily?days=14", headers=world.headers())
