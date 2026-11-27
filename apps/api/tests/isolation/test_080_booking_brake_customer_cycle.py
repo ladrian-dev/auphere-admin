@@ -9,6 +9,8 @@ en esta conversación».
 Lo que se barre:
 
 - la reserva hecha a mano para **este** cliente, creada o movida en el ciclo, respalda;
+- también la adelantada al aceptar una oferta de la lista de espera, que se
+  mueve con ``waitlist_accepted`` y sin ``moved`` (revisión antes de producción, BE-1);
 - la de **otro** cliente final del mismo negocio no, ni siquiera viva y reciente;
 - desde otro negocio, nada;
 - cancelada, o creada antes del ciclo sin moverse después, no;
@@ -148,6 +150,25 @@ async def test_only_this_cycle_counts(db_session, tenants_ab) -> None:
     # Tras resolver y reabrir, el corte manda: lo de antes del corte ya no cuenta.
     await _set(a, asked.id, context_from=datetime.now(UTC) + timedelta(seconds=1))
     assert not await conversation_backed(a, asked.id), f"{moved} es de antes del corte"
+
+
+async def test_a_move_by_accepting_a_waitlist_offer_in_this_cycle_backs(
+    db_session, tenants_ab
+) -> None:
+    """BE-1: aceptar una oferta de la lista de espera con una reserva viva la
+    adelanta con ``move_booking(event="waitlist_accepted")``: en su historial no
+    hay ``moved``. Ese adelanto respalda «te la he adelantado» igual que una movida."""
+    a, b = tenants_ab["a"], tenants_ab["b"]
+    world = await make_world(db_session, tenant_id=a)
+    asked = await _conversation(world, "+34600008020")
+    long_ago = datetime.now(UTC) - timedelta(days=10)
+
+    await _by_hand(
+        a, asked.customer_id, events=(("created", long_ago), ("waitlist_accepted", None))
+    )
+
+    assert await conversation_backed(a, asked.id), "el adelanto por lista de espera no respaldó"
+    assert not await conversation_backed(b, asked.id), "desde otro negocio no existe"
 
 
 async def test_a_booking_without_a_customer_backs_nobody(db_session, tenants_ab) -> None:

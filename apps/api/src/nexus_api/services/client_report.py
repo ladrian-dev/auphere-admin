@@ -68,6 +68,11 @@ BAG_LINES: Final = ("conversations", "client_tests")
 #: Quién hizo una operación de agenda.
 WHO: Final = ("agent", "person", "customer")
 AGENDA_KINDS: Final = ("created", "moved", "cancelled")
+#: Aceptar una oferta de la lista de espera con una reserva viva la mueve
+#: (``move_booking(event="waitlist_accepted")``, sin ``moved``): es una movida. Sin
+#: reserva, la crea y deja ``created`` y ``waitlist_accepted`` en la misma
+#: transacción, con la misma hora: es un alta, ya contada.
+WAITLIST_ACCEPTED: Final = "waitlist_accepted"
 #: El «no» a la confirmación va en la misma transacción que su cancelación (D11).
 REPLIED_NO_WINDOW: Final = timedelta(seconds=60)
 REMINDER_KINDS: Final = ("reminder", "ask_confirmation")
@@ -129,12 +134,20 @@ def agenda_counts(
     """Quién creó, movió y canceló. Las cancelaciones del sistema son liberaciones;
     sus altas, la importación «Paso a Reservas», que no cuenta. Una cancelación de
     «cliente» sin su «contestó que no» la hizo el agente (``reservas.cancel`` la
-    graba como del cliente hasta la spec 080)."""
+    graba como del cliente hasta la spec 080). Aceptar una oferta de la lista de
+    espera con una reserva viva es una movida (``WAITLIST_ACCEPTED``)."""
     counts = {kind: _blank() for kind in AGENDA_KINDS}
     released = 0
+    events = list(events)
+    made = {(e.reservation_id, e.at) for e in events if e.kind == "created"}
     for event in events:
         who = event.actor_kind
-        if event.kind == "cancelled":
+        kind = event.kind
+        if kind == WAITLIST_ACCEPTED:
+            if (event.reservation_id, event.at) in made:
+                continue
+            kind = "moved"
+        if kind == "cancelled":
             if who == "system":
                 released += 1
                 continue
@@ -143,10 +156,10 @@ def agenda_counts(
                 for t in replied_no.get(event.reservation_id, ())
             ):
                 who = "agent"
-        if event.kind not in counts or who not in WHO:
+        if kind not in counts or who not in WHO:
             continue
-        counts[event.kind][who] += 1
-        counts[event.kind]["total"] += 1
+        counts[kind][who] += 1
+        counts[kind]["total"] += 1
     return AgendaCounts(
         created=counts["created"],
         moved=counts["moved"],
@@ -420,7 +433,7 @@ async def _agenda(
                     ReservationEvent.actor_name,
                     ReservationEvent.created_at,
                 ).where(
-                    ReservationEvent.kind.in_(AGENDA_KINDS),
+                    ReservationEvent.kind.in_((*AGENDA_KINDS, WAITLIST_ACCEPTED)),
                     ReservationEvent.created_at >= since,
                     ReservationEvent.created_at < until,
                 )

@@ -522,6 +522,28 @@ async def test_agenda_reminders_and_spend(client, db_session, console_world) -> 
     assert spend["approx"] is False
 
 
+async def test_accepting_a_waitlist_offer_counts_as_a_move(
+    client, db_session, console_world
+) -> None:
+    """BE-1: el adelanto por lista de espera se graba como ``waitlist_accepted``,
+    sin ``moved``, y el informe lo cuenta como movida. Una reserva nueva desde la
+    lista lleva los dos eventos a la misma hora y cuenta solo como creada."""
+    w = console_world["a"]
+    p = await Pilot(db_session, w["tenant_id"], w["partner_id"]).setup()
+    await p.reservas()
+    earlier, new = await p.reservation(), await p.reservation()
+    await p.booking_event(earlier, "created", "agent", T)
+    await p.booking_event(earlier, "waitlist_accepted", "customer", T + h(1))
+    await p.booking_event(new, "created", "customer", T + h(2))
+    await p.booking_event(new, "waitlist_accepted", "customer", T + h(2))
+
+    r = await _report(client, w)
+    assert r.status_code == 200, r.text
+    agenda = r.json()["agenda"]
+    assert agenda["created"] == {"agent": 1, "person": 0, "customer": 1, "total": 2}
+    assert agenda["moved"] == {"agent": 0, "person": 0, "customer": 1, "total": 1}
+
+
 async def test_spend_that_cannot_be_read_is_partial(
     client, db_session, console_world, monkeypatch
 ) -> None:
