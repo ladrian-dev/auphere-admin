@@ -340,12 +340,22 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
     },
     [refreshList, refreshOpen],
   );
-  const live = useInboxStream(onEvent, () => {
-    // A network blip rejects; that is what «Reconectando…» already says.
-    void inboxCountsAction()
-      .then(guard)
-      .catch(() => undefined);
-  });
+  const live = useInboxStream(
+    onEvent,
+    () => {
+      // A network blip rejects; that is what «Reconectando…» already says.
+      void inboxCountsAction()
+        .then(guard)
+        .catch(() => undefined);
+    },
+    true,
+    // Spec 082 (R3.10): back after a drop, what arrived meanwhile is read again.
+    () => {
+      void refreshList();
+      const current = latest.current.selectedId;
+      if (current) void refreshOpen(current, document.visibilityState === "visible");
+    },
+  );
 
   // ── writes ──────────────────────────────────────────────────────────
   async function control(r: ActionResult<InboxDetail>) {
@@ -705,6 +715,7 @@ export function InboxView({ initial }: { initial: InboxInitial }) {
                 items={shown}
                 hasOlder={Boolean(nextBefore)}
                 loadingOlder={loadingOlder}
+                contactId={detail.id}
                 contactInitials={initials}
                 now={now}
                 onOlder={() => void older()}

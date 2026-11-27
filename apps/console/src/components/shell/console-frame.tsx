@@ -3,6 +3,9 @@ import { cache } from "react";
 
 import { CompanionLauncher } from "@/components/companion/companion-launcher";
 import { ViewerKindProvider } from "@/components/error-boundary";
+import { InboxAlerts } from "@/components/live/inbox-alerts";
+import { LiveStreamProvider } from "@/components/live/live-stream";
+import { QueryProvider } from "@/components/query-provider";
 import { ConsoleShellV1 } from "@/components/shell/console-shell-v1";
 import { ConsoleShellV2 } from "@/components/shell/console-shell-v2";
 import { NAV_COLLAPSED, NAV_COOKIE, resolveConsoleVersion } from "@/components/shell/console-version";
@@ -33,6 +36,8 @@ const consoleVersionOf = cache(async (principal: PartnerPrincipal): Promise<Cons
  * Spec 056 (14.2) takes it out of `(console)/layout.tsx` so the 404 of a route
  * that does not exist (`app/not-found.tsx`, outside the route groups) is drawn
  * inside the same console, with its menu.
+ *
+ * Spec 082: both frames sit inside one query cache per tab (`QueryProvider`).
  */
 export async function ConsoleFrame({ principal, children }: { principal: Principal; children: React.ReactNode }) {
   const { t } = await getT(principal.locale);
@@ -40,23 +45,35 @@ export async function ConsoleFrame({ principal, children }: { principal: Princip
   if (principal.kind === "partner" && (await consoleVersionOf(principal)) === "v2") {
     const collapsed = (await cookies()).get(NAV_COOKIE)?.value === NAV_COLLAPSED;
     return (
-      <ConsoleShellV2
-        who={{ role: principal.role, modules: principal.modules }}
-        user={{ name: principal.name, email: principal.email }}
-        partnerName={principal.partnerName}
-        defaultCollapsed={collapsed}
-        // Spec 032: the Companion is a module Auphere switches on per partner.
-        companion={principal.modules.includes("companion") ? <CompanionLauncher role={principal.role} userId={principal.userId} aboveTabbar /> : null}
-      >
-        {/* Spec 056 (10.1): the new frame is a partner's. */}
-        <ViewerKindProvider kind="partner">{children}</ViewerKindProvider>
-      </ConsoleShellV2>
+      <QueryProvider>
+        <ConsoleShellV2
+          who={{ role: principal.role, modules: principal.modules }}
+          user={{ name: principal.name, email: principal.email }}
+          partnerName={principal.partnerName}
+          defaultCollapsed={collapsed}
+          // Spec 032: the Companion is a module Auphere switches on per partner.
+          companion={principal.modules.includes("companion") ? <CompanionLauncher role={principal.role} userId={principal.userId} aboveTabbar /> : null}
+        >
+          {/* Spec 056 (10.1): the new frame is a partner's. */}
+          <ViewerKindProvider kind="partner">{children}</ViewerKindProvider>
+        </ConsoleShellV2>
+      </QueryProvider>
     );
   }
 
+  // Spec 082: one live line per tab for a client person with the Inbox or
+  // Reservas (R3.11); the sound and the count in the title only with the Inbox.
+  const client = principal.kind === "client";
+  const inbox = client && principal.modules.includes("inbox");
+  const live = inbox || (client && principal.modules.includes("reservas"));
   return (
-    <ConsoleShellV1 principal={principal} skipLabel={t("shell.skip")}>
-      {children}
-    </ConsoleShellV1>
+    <QueryProvider>
+      <LiveStreamProvider enabled={live}>
+        {inbox ? <InboxAlerts /> : null}
+        <ConsoleShellV1 principal={principal} skipLabel={t("shell.skip")}>
+          {children}
+        </ConsoleShellV1>
+      </LiveStreamProvider>
+    </QueryProvider>
   );
 }

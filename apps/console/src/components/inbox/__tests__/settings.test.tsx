@@ -122,3 +122,44 @@ describe("Bandeja · «Se cerró por inactividad» (spec 064)", () => {
     expect(eventText("resolved", { ...me, is_me: false } as InboxAuthor, null, t as never)).toBe("Ana la marcó como resuelta");
   });
 });
+
+/**
+ * Spec 082 (requisito 3.4): the sound when a message arrives, on or off in this
+ * browser. On by default; saved at once, with no API; it does not wait for the
+ * server's read of the other settings.
+ */
+describe("Bandeja · el sonido (spec 082)", () => {
+  const SOUND = "Sonido al llegar un mensaje";
+  beforeEach(() => window.localStorage.removeItem("nexus.inbox.sound"));
+
+  it("is on by default, and is there while the settings still load", async () => {
+    a.inboxSettingsAction.mockReturnValue(new Promise(() => {}));
+    await open();
+    const dialog = await screen.findByRole("dialog", { name: "Ajustes de la Bandeja" });
+    const sound = within(dialog).getByRole("switch", { name: SOUND });
+    expect(sound).toBeChecked();
+    expect(sound).toHaveAccessibleDescription(/salvo en la conversación que tienes abierta/);
+  });
+
+  it("turning it off is saved in this browser at once, without asking the API", async () => {
+    a.inboxSettingsAction.mockResolvedValue({ ok: true, data: { autoclose_hours: null } });
+    await open();
+    const dialog = await screen.findByRole("dialog", { name: "Ajustes de la Bandeja" });
+    await userEvent.click(within(dialog).getByRole("switch", { name: SOUND }));
+    expect(within(dialog).getByRole("switch", { name: SOUND })).not.toBeChecked();
+    expect(window.localStorage.getItem("nexus.inbox.sound")).toBe("off");
+    const { soundOn } = await import("@/components/live/chime");
+    expect(soundOn()).toBe(false);
+    expect(a.patchInboxSettingsAction).not.toHaveBeenCalled();
+  });
+
+  it("opens as this browser left it", async () => {
+    window.localStorage.setItem("nexus.inbox.sound", "off");
+    a.inboxSettingsAction.mockResolvedValue({ ok: true, data: { autoclose_hours: null } });
+    await open();
+    const dialog = await screen.findByRole("dialog", { name: "Ajustes de la Bandeja" });
+    await waitFor(() => expect(within(dialog).getByRole("switch", { name: SOUND })).not.toBeChecked());
+    await userEvent.click(within(dialog).getByRole("switch", { name: SOUND }));
+    expect(window.localStorage.getItem("nexus.inbox.sound")).toBe("on");
+  });
+});

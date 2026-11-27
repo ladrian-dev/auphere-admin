@@ -8,6 +8,7 @@ import type { InboxThreadItem } from "@/lib/backend/inbox";
 import { inboxMediaUrl } from "@/lib/inbox-urls";
 
 import { CommentPost, type LoadCommentPost } from "./comment-post";
+import { ContactAvatar } from "./contact-avatar";
 
 import { clock } from "./inbox-model";
 
@@ -19,12 +20,15 @@ import { clock } from "./inbox-model";
  */
 export function MessageBubble({
   item,
+  contactId,
   contactInitials,
   onCorrect,
   loadCommentPost,
 }: {
   loadCommentPost?: LoadCommentPost;
   item: InboxThreadItem;
+  /** Spec 082 (5.1): the conversation id — the same colour as the list, the header and the panel. */
+  contactId?: string;
   contactInitials: string;
   /** Spec 047 (52.1): «Corregir esta respuesta», solo sobre una respuesta del agente. */
   onCorrect?: () => void;
@@ -38,12 +42,7 @@ export function MessageBubble({
   if (inbound) {
     return (
       <div className="flex max-w-[72%] items-end gap-2 self-start">
-        <span
-          aria-hidden="true"
-          className="mb-5 grid size-7 shrink-0 place-items-center rounded-full bg-accent-soft text-xs font-semibold text-accent-deep"
-        >
-          {contactInitials}
-        </span>
+        <ContactAvatar conversationId={contactId ?? ""} initials={contactInitials} className="mb-5 size-7 text-xs" />
         <div className="flex min-w-0 flex-col items-start gap-1">
           {item.comment && loadCommentPost ? <CommentPost messageId={item.id} load={loadCommentPost} /> : null}
           <MediaPreview item={item} tone="light" />

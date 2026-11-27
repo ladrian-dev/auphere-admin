@@ -5,6 +5,7 @@ import { SidebarProvider } from "@nexus/ui";
 
 import { LocaleProvider } from "@/i18n/client";
 import { PARTNER_MODULES } from "@/lib/principal-access";
+import { withQuery } from "@/test/query";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -26,11 +27,13 @@ const { AppSidebar } = await import("../app-sidebar");
  */
 function renderSidebar(props: Parameters<typeof AppSidebar>[0], open = true) {
   return render(
-    <LocaleProvider locale="es">
-      <SidebarProvider defaultOpen={open}>
-        <AppSidebar {...props} />
-      </SidebarProvider>
-    </LocaleProvider>,
+    withQuery(
+      <LocaleProvider locale="es">
+        <SidebarProvider defaultOpen={open}>
+          <AppSidebar {...props} />
+        </SidebarProvider>
+      </LocaleProvider>,
+    ),
   );
 }
 
@@ -63,13 +66,37 @@ describe("AppSidebar — consola lite", () => {
       user,
     });
     const inbox = screen.getByRole("link", { name: /Bandeja de entrada/ });
-    expect(await within(inbox).findByText("3")).toBeTruthy();
-    expect(within(inbox).getByText("3 sin leer")).toBeTruthy();
+    expect(await within(inbox).findByText("3 sin leer")).toBeTruthy();
+    expect(within(inbox).getAllByText("3")).toHaveLength(2); // open and folded
     // The open Inbox announces fresher counts and the badge follows at once.
     act(() => {
       window.dispatchEvent(new CustomEvent("nexus:inbox-counts", { detail: { unread: 5, waiting: 0 } }));
     });
-    expect(within(inbox).getByText("5")).toBeTruthy();
+    expect(await within(inbox).findByText("5 sin leer")).toBeTruthy();
+    counts.unread = 0;
+  });
+
+  it("folded, the number sits on the inbox icon's corner, in green, named for screen readers (spec 082, 3.9, 3.13)", async () => {
+    counts.unread = 120;
+    renderSidebar(
+      {
+        who: { kind: "client", modules: ["panel", "inbox", "usage"], clientName: "Flor y Encanto" },
+        partnerName: "Amacrux",
+        partnerSlug: "amacrux",
+        user,
+      },
+      false,
+    );
+    const inbox = await screen.findByRole("link", { name: /Bandeja de entrada.*120 sin leer/ });
+    const folded = inbox.querySelector("[data-slot=nav-badge-folded]");
+    expect(folded?.textContent).toBe("99+");
+    expect(folded?.getAttribute("aria-hidden")).toBe("true");
+    // Shown only in the icon rail, and never in amber (the design system keeps amber for warnings).
+    expect(folded?.className).toContain("group-data-[collapsible=icon]:grid");
+    expect(folded?.className).toContain("bg-primary");
+    expect(folded?.className).not.toMatch(/warning|amber/);
+    // Not a <span>: the rail fades every direct <span> of the button out.
+    expect(folded?.tagName).toBe("SUP");
     counts.unread = 0;
   });
 

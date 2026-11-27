@@ -1,7 +1,9 @@
 import { render } from "@testing-library/react";
 import { vi } from "vitest";
 
+import { LiveStreamProvider } from "@/components/live/live-stream";
 import { LocaleProvider } from "@/i18n/client";
+import { withQuery } from "@/test/query";
 
 import type { InboxInitial } from "../inbox-view";
 import { conversation, page } from "./fixtures";
@@ -81,10 +83,15 @@ export function renderInbox(initial: Partial<InboxInitial> = {}) {
     suggested: [],
     ...initial,
   };
+  // Spec 082: the Inbox listens to the console's shared live line.
   return render(
-    <LocaleProvider locale="es">
-      <InboxViewRef.current initial={full} />
-    </LocaleProvider>,
+    withQuery(
+      <LiveStreamProvider enabled>
+        <LocaleProvider locale="es">
+          <InboxViewRef.current initial={full} />
+        </LocaleProvider>
+      </LiveStreamProvider>,
+    ),
   );
 }
 

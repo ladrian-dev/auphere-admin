@@ -95,6 +95,7 @@ export function AppSidebar({ who, partnerName, partnerSlug, user, badges }: Prop
                       <SidebarMenuButton
                         isActive={active}
                         tooltip={t(item.labelKey)}
+                        className="relative"
                         render={
                           <Link href={item.href} aria-current={active ? "page" : undefined}>
                             <Icon className="size-4" aria-hidden="true" />
@@ -104,6 +105,19 @@ export function AppSidebar({ who, partnerName, partnerSlug, user, badges }: Prop
                                 <span className="sr-only">{t("nav.unread", { count: badge })}</span>
                                 <span aria-hidden="true">{badge > 99 ? "99+" : badge}</span>
                               </span>
+                            ) : null}
+                            {/* Spec 082 (R3.9): folded to icons, the number sits on the icon's
+                                corner. Not a <span> — the rail fades those out — and hidden
+                                from screen readers: the name above already says it. Green or
+                                neutral, never amber (R3.13). */}
+                            {badge > 0 ? (
+                              <sup
+                                aria-hidden="true"
+                                data-slot="nav-badge-folded"
+                                className="pointer-events-none absolute top-0 right-0 hidden h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-xs leading-none font-semibold text-primary-foreground tabular-nums ring-2 ring-sidebar group-data-[collapsible=icon]:grid"
+                              >
+                                {badge > 99 ? "99+" : badge}
+                              </sup>
                             ) : null}
                           </Link>
                         }
