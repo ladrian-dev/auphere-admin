@@ -44,6 +44,12 @@ export default async function SchedulesPage({
     );
   }
 
+  // El nombre del cliente, no su referencia: «flor-y-encanto todavía no tiene
+  // ninguna rutina» se lee como un identificador, no como un negocio.
+  const name = await api
+    .getClient(client)
+    .then((c) => c.name ?? client)
+    .catch(() => client);
   const page = await api.listSchedules(client, {
     agent,
     state: state === "active" || state === "paused" || state === "archived" ? state : undefined,
@@ -88,7 +94,7 @@ export default async function SchedulesPage({
           },
           noMatch: t("schedules.filter.none"),
           empty: {
-            title: t("schedules.empty.title", { client }),
+            title: t("schedules.empty.title", { client: name }),
             body: t("schedules.empty.body"),
           },
           toolsNote: t("schedules.tools.note"),

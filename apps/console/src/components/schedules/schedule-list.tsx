@@ -50,9 +50,9 @@ export function ScheduleList({
   };
 
   if (page.counts.all === 0) {
-    return (
-      <EmptyState title={copy.empty.title} description={copy.empty.body} />
-    );
+    // `readonly` mientras el alta no exista: la regla de los cinco estados pide
+    // una salida, y la salida de aquí es «Nueva rutina», que llega con su panel.
+    return <EmptyState title={copy.empty.title} description={copy.empty.body} readonly />;
   }
 
   return (
